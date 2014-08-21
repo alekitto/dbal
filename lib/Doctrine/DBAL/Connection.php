@@ -116,7 +116,7 @@ class Connection implements DriverConnection
      *
      * @var boolean
      */
-    private $_isConnected = false;
+    protected $_isConnected = false;
 
     /**
      * The current auto-commit mode of this connection.

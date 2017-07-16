@@ -12,12 +12,12 @@ class MySqlPointType extends Type
         return 'point';
     }
 
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
         return strtoupper($this->getName());
     }
 
-    public function getMappedDatabaseTypes(AbstractPlatform $platform)
+    public function getMappedDatabaseTypes()
     {
         return array('point');
     }

@@ -31,17 +31,17 @@ class StringType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getVarcharTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getVarcharTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getDefaultLength(AbstractPlatform $platform)
+    public function getDefaultLength()
     {
-        return $platform->getVarcharDefaultLength();
+        return $this->platform->getVarcharDefaultLength();
     }
 
     /**

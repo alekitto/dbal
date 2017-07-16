@@ -530,9 +530,9 @@ class PostgreSqlPlatform extends AbstractPlatform
 
             $oldColumnName = $columnDiff->getOldColumnName()->getQuotedName($this);
             $column = $columnDiff->column;
+            $type = $this->_connection->getType($column->getType());
 
             if ($columnDiff->hasChanged('type') || $columnDiff->hasChanged('precision') || $columnDiff->hasChanged('scale') || $columnDiff->hasChanged('fixed')) {
-                $type = $column->getType();
 
                 // here was a server version check before, but DBAL API does not support this anymore.
                 $query = 'ALTER ' . $oldColumnName . ' TYPE ' . $type->getSQLDeclaration($column->toArray(), $this);
@@ -577,7 +577,7 @@ class PostgreSqlPlatform extends AbstractPlatform
             }
 
             if ($columnDiff->hasChanged('length')) {
-                $query = 'ALTER ' . $oldColumnName . ' TYPE ' . $column->getType()->getSQLDeclaration($column->toArray(), $this);
+                $query = 'ALTER ' . $oldColumnName . ' TYPE ' . $type->getSQLDeclaration($column->toArray(), $this);
                 $sql[] = 'ALTER TABLE ' . $diff->getName($this)->getQuotedName($this) . ' ' . $query;
             }
         }
@@ -628,7 +628,7 @@ class PostgreSqlPlatform extends AbstractPlatform
      */
     private function isUnchangedBinaryColumn(ColumnDiff $columnDiff)
     {
-        $columnType = $columnDiff->column->getType();
+        $columnType = $this->_connection->getType($columnDiff->column->getType());
 
         if ( ! $columnType instanceof BinaryType && ! $columnType instanceof BlobType) {
             return false;
@@ -637,7 +637,7 @@ class PostgreSqlPlatform extends AbstractPlatform
         $fromColumn = $columnDiff->fromColumn instanceof Column ? $columnDiff->fromColumn : null;
 
         if ($fromColumn) {
-            $fromColumnType = $fromColumn->getType();
+            $fromColumnType = $this->_connection->getType($fromColumn->getType());
 
             if ( ! $fromColumnType instanceof BinaryType && ! $fromColumnType instanceof BlobType) {
                 return false;

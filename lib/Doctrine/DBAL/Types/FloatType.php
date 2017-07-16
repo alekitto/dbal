@@ -34,15 +34,15 @@ class FloatType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getFloatDeclarationSQL($fieldDeclaration);
+        return $this->platform->getFloatDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         return (null === $value) ? null : (double) $value;
     }

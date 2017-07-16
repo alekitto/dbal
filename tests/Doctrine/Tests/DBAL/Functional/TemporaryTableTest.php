@@ -41,7 +41,7 @@ class TemporaryTableTest extends \Doctrine\Tests\DbalFunctionalTestCase
         }
 
         $platform = $this->_conn->getDatabasePlatform();
-        $columnDefinitions = array("id" => array("type" => Type::getType("integer"), "notnull" => true));
+        $columnDefinitions = array("id" => array("type" => "integer", "notnull" => true));
         $tempTable = $platform->getTemporaryTableName("my_temporary");
 
         $createTempTableSQL = $platform->getCreateTemporaryTableSnippetSQL() . ' ' . $tempTable . ' ('
@@ -77,7 +77,7 @@ class TemporaryTableTest extends \Doctrine\Tests\DbalFunctionalTestCase
         }
 
         $platform = $this->_conn->getDatabasePlatform();
-        $columnDefinitions = array("id" => array("type" => Type::getType("integer"), "notnull" => true));
+        $columnDefinitions = array("id" => array("type" => "integer", "notnull" => true));
         $tempTable = $platform->getTemporaryTableName("my_temporary");
 
         $createTempTableSQL = $platform->getCreateTemporaryTableSnippetSQL() . ' ' . $tempTable . ' ('

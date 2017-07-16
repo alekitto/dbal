@@ -797,11 +797,12 @@ END;';
 
             /* @var $columnDiff \Doctrine\DBAL\Schema\ColumnDiff */
             $column = $columnDiff->column;
+            $type = $this->_connection->getType($column->getType());
 
             // Do not generate column alteration clause if type is binary and only fixed property has changed.
             // Oracle only supports binary type columns with variable length.
             // Avoids unnecessary table alteration statements.
-            if ($column->getType() instanceof BinaryType &&
+            if ($type instanceof BinaryType &&
                 $columnDiff->hasChanged('fixed') &&
                 count($columnDiff->changedProperties) === 1
             ) {

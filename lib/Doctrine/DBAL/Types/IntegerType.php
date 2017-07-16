@@ -40,15 +40,15 @@ class IntegerType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getIntegerTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getIntegerTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         return (null === $value) ? null : (int) $value;
     }

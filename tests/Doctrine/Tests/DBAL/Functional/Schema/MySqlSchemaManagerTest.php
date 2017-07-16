@@ -7,6 +7,7 @@ use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\Tests\Types\MySqlPointType;
 
 class MySqlSchemaManagerTest extends SchemaManagerFunctionalTestCase
 {
@@ -14,8 +15,8 @@ class MySqlSchemaManagerTest extends SchemaManagerFunctionalTestCase
     {
         parent::setUp();
 
-        if (!Type::hasType('point')) {
-            Type::addType('point', 'Doctrine\Tests\Types\MySqlPointType');
+        if (! $this->_conn->hasType('point')) {
+            $this->_conn->addType(new MySqlPointType($this->_conn->getDatabasePlatform()));
         }
     }
 

@@ -438,13 +438,13 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
                 : null,
         );
 
-        $column = new Column($tableColumn['field'], Type::getType($type), $options);
+        $column = new Column($tableColumn['field'], $type, $options);
 
         if (isset($tableColumn['collation']) && !empty($tableColumn['collation'])) {
             $column->setPlatformOption('collation', $tableColumn['collation']);
         }
 
-        if ($column->getType()->getName() === 'json_array') {
+        if ($column->getType() === Type::JSON_ARRAY) {
             $column->setPlatformOption('jsonb', $jsonb);
         }
 

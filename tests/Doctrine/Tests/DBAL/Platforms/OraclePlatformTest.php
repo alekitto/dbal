@@ -389,19 +389,19 @@ class OraclePlatformTest extends AbstractPlatformTestCase
         $tableDiff = new \Doctrine\DBAL\Schema\TableDiff('mytable');
         $tableDiff->changedColumns['foo'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'foo', new \Doctrine\DBAL\Schema\Column(
-                'foo', \Doctrine\DBAL\Types\Type::getType('string'), array('default' => 'bla', 'notnull' => true)
+                'foo', 'string', array('default' => 'bla', 'notnull' => true)
             ),
             array('type')
         );
         $tableDiff->changedColumns['bar'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'bar', new \Doctrine\DBAL\Schema\Column(
-                'baz', \Doctrine\DBAL\Types\Type::getType('string'), array('default' => 'bla', 'notnull' => true)
+                'baz', 'string', array('default' => 'bla', 'notnull' => true)
             ),
             array('type', 'notnull')
         );
         $tableDiff->changedColumns['metar'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'metar', new \Doctrine\DBAL\Schema\Column(
-                'metar', \Doctrine\DBAL\Types\Type::getType('string'), array('length' => 2000, 'notnull' => false)
+                'metar', 'string', array('length' => 2000, 'notnull' => false)
             ),
             array('notnull')
         );
@@ -666,8 +666,8 @@ class OraclePlatformTest extends AbstractPlatformTestCase
      */
     public function testAltersTableColumnCommentWithExplicitlyQuotedIdentifiers()
     {
-        $table1 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'))));
-        $table2 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'), array('comment' => 'baz'))));
+        $table1 = new Table('"foo"', array(new Column('"bar"', 'integer')));
+        $table2 = new Table('"foo"', array(new Column('"bar"', 'integer', array('comment' => 'baz'))));
 
         $comparator = new Comparator();
 

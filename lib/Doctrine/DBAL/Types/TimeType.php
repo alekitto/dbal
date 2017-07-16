@@ -39,22 +39,22 @@ class TimeType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getTimeTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getTimeTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return $value;
         }
 
         if ($value instanceof \DateTime) {
-            return $value->format($platform->getTimeFormatString());
+            return $value->format($this->platform->getTimeFormatString());
         }
 
         throw ConversionException::conversionFailedInvalidType($value, $this->getName(), ['null', 'DateTime']);
@@ -63,15 +63,15 @@ class TimeType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value instanceof \DateTime) {
             return $value;
         }
 
-        $val = \DateTime::createFromFormat('!' . $platform->getTimeFormatString(), $value);
+        $val = \DateTime::createFromFormat('!' . $this->platform->getTimeFormatString(), $value);
         if ( ! $val) {
-            throw ConversionException::conversionFailedFormat($value, $this->getName(), $platform->getTimeFormatString());
+            throw ConversionException::conversionFailedFormat($value, $this->getName(), $this->platform->getTimeFormatString());
         }
 
         return $val;

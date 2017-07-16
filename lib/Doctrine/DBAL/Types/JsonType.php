@@ -32,15 +32,15 @@ class JsonType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getJsonTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getJsonTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return null;
@@ -58,7 +58,7 @@ class JsonType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value === '') {
             return null;
@@ -88,14 +88,9 @@ class JsonType extends Type
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
-        /*
-         * should be switched back to the platform detection at 3.0, when
-         * JsonArrayType will be dropped
-         */
-        //return ! $platform->hasNativeJsonType();
-        return true;
+        return ! $this->platform->hasNativeJsonType();
     }
 
     /**

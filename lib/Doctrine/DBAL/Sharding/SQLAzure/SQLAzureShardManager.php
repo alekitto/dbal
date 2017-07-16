@@ -233,7 +233,7 @@ class SQLAzureShardManager implements ShardManager
      */
     public function splitFederation($splitDistributionValue)
     {
-        $type = Type::getType($this->distributionType);
+        $type = $this->conn->getType($this->distributionType);
 
         $sql = "ALTER FEDERATION " . $this->getFederationName() . " " .
                "SPLIT AT (" . $this->getDistributionKey() . " = " .

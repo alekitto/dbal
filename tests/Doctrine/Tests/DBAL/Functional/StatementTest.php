@@ -4,6 +4,7 @@ namespace Doctrine\Tests\DBAL\Functional;
 
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\BlobType;
 use Doctrine\DBAL\Types\Type;
 
 class StatementTest extends \Doctrine\Tests\DbalFunctionalTestCase
@@ -109,11 +110,8 @@ EOF
         $stmt = $this->_conn->prepare('SELECT contents FROM stmt_long_blob');
         $stmt->execute();
 
-        $stream = Type::getType('blob')
-            ->convertToPHPValue(
-                $stmt->fetchColumn(),
-                $this->_conn->getDatabasePlatform()
-            );
+        $type = new BlobType($this->_conn->getDatabasePlatform());
+        $stream = $type->convertToPHPValue($stmt->fetchColumn());
 
         if ($this->_conn->getDriver()->getName() === 'pdo_sqlsrv') {
             $this->markTestSkipped('Skipping on pdo_sqlsrv due to https://github.com/Microsoft/msphpsql/issues/270');

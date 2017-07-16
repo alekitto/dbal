@@ -21,8 +21,8 @@ class DateTimeImmutableTypeTest extends \PHPUnit_Framework_TestCase
 
     protected function setUp()
     {
-        $this->type = Type::getType('datetime_immutable');
         $this->platform = $this->prophesize(AbstractPlatform::class);
+        $this->type = new DateTimeImmutableType($this->platform);
     }
 
     public function testFactoryCreatesCorrectType()
@@ -49,39 +49,39 @@ class DateTimeImmutableTypeTest extends \PHPUnit_Framework_TestCase
 
         $this->assertSame(
             '2016-01-01 15:58:59',
-            $this->type->convertToDatabaseValue($date->reveal(), $this->platform->reveal())
+            $this->type->convertToDatabaseValue($date->reveal())
         );
     }
 
     public function testConvertsNullToDatabaseValue()
     {
-        $this->assertNull($this->type->convertToDatabaseValue(null, $this->platform->reveal()));
+        $this->assertNull($this->type->convertToDatabaseValue(null));
     }
 
     public function testDoesNotSupportMutableDateTimeToDatabaseValueConversion()
     {
         $this->expectException(ConversionException::class);
 
-        $this->type->convertToDatabaseValue(new \DateTime(), $this->platform->reveal());
+        $this->type->convertToDatabaseValue(new \DateTime());
     }
 
     public function testConvertsDateTimeImmutableInstanceToPHPValue()
     {
         $date = new \DateTimeImmutable();
 
-        $this->assertSame($date, $this->type->convertToPHPValue($date, $this->platform->reveal()));
+        $this->assertSame($date, $this->type->convertToPHPValue($date));
     }
 
     public function testConvertsNullToPHPValue()
     {
-        $this->assertNull($this->type->convertToPHPValue(null, $this->platform->reveal()));
+        $this->assertNull($this->type->convertToPHPValue(null));
     }
 
     public function testConvertsDateTimeStringToPHPValue()
     {
         $this->platform->getDateTimeFormatString()->willReturn('Y-m-d H:i:s')->shouldBeCalled();
 
-        $date = $this->type->convertToPHPValue('2016-01-01 15:58:59', $this->platform->reveal());
+        $date = $this->type->convertToPHPValue('2016-01-01 15:58:59');
 
         $this->assertInstanceOf(\DateTimeImmutable::class, $date);
         $this->assertSame('2016-01-01 15:58:59', $date->format('Y-m-d H:i:s'));
@@ -94,7 +94,7 @@ class DateTimeImmutableTypeTest extends \PHPUnit_Framework_TestCase
     {
         $this->platform->getDateTimeFormatString()->willReturn('Y-m-d H:i:s');
 
-        $date = $this->type->convertToPHPValue('2016-01-01 15:58:59.123456', $this->platform->reveal());
+        $date = $this->type->convertToPHPValue('2016-01-01 15:58:59.123456');
 
         $this->assertSame('2016-01-01 15:58:59', $date->format('Y-m-d H:i:s'));
     }
@@ -103,11 +103,11 @@ class DateTimeImmutableTypeTest extends \PHPUnit_Framework_TestCase
     {
         $this->expectException(ConversionException::class);
 
-        $this->type->convertToPHPValue('invalid datetime string', $this->platform->reveal());
+        $this->type->convertToPHPValue('invalid datetime string');
     }
 
     public function testRequiresSQLCommentHint()
     {
-        $this->assertTrue($this->type->requiresSQLCommentHint($this->platform->reveal()));
+        $this->assertTrue($this->type->requiresSQLCommentHint());
     }
 }

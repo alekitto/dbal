@@ -24,7 +24,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testColumns()
     {
-        $type = Type::getType('integer');
+        $type = 'integer';
         $columns = array();
         $columns[] = new Column("foo", $type);
         $columns[] = new Column("bar", $type);
@@ -56,7 +56,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testCreateColumn()
     {
-        $type = Type::getType('integer');
+        $type = 'integer';
 
         $table = new Table("foo");
 
@@ -68,7 +68,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testDropColumn()
     {
-        $type = Type::getType('integer');
+        $type = 'integer';
         $columns = array();
         $columns[] = new Column("foo", $type);
         $columns[] = new Column("bar", $type);
@@ -95,7 +95,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
     {
         $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
 
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array();
         $columns[] = new Column("foo", $type);
         $columns[] = new Column("foo", $type);
@@ -104,7 +104,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testCreateIndex()
     {
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array(new Column("foo", $type), new Column("bar", $type), new Column("baz", $type));
         $table = new Table("foo", $columns);
 
@@ -117,7 +117,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testIndexCaseInsensitive()
     {
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array(
             new Column("foo", $type),
             new Column("bar", $type),
@@ -134,7 +134,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
 
     public function testAddIndexes()
     {
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array(
             new Column("foo", $type),
             new Column("bar", $type),
@@ -166,7 +166,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
     {
         $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
 
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array(new Column("foo", $type), new Column("bar", $type));
         $indexes = array(
             new Index("the_primary", array("foo"), true, true),
@@ -179,7 +179,7 @@ class TableTest extends \Doctrine\Tests\DbalTestCase
     {
         $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
 
-        $type = \Doctrine\DBAL\Types\Type::getType('integer');
+        $type = 'integer';
         $columns = array(new Column("foo", $type), new Column("bar", $type));
         $indexes = array(
             new Index("an_idx", array("foo"), false, false),

@@ -82,8 +82,8 @@ class WriteTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $sql = "INSERT INTO write_table (test_int, test_string) VALUES (?, ?)";
         $stmt = $this->_conn->prepare($sql);
 
-        $stmt->bindValue(1, 1, Type::getType('integer'));
-        $stmt->bindValue(2, "foo", Type::getType('string'));
+        $stmt->bindValue(1, 1, $this->_conn->getType('integer'));
+        $stmt->bindValue(2, "foo", $this->_conn->getType('string'));
         $stmt->execute();
 
         $this->assertEquals(1, $stmt->rowCount());

@@ -31,15 +31,15 @@ class TextType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getClobTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getClobTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         return (is_resource($value)) ? stream_get_contents($value) : $value;
     }

@@ -74,13 +74,13 @@ class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
     public function testIdempotentDataConversion($type, $originalValue, $expectedPhpType)
     {
         $columnName = "test_" . $type;
-        $typeInstance = Type::getType($type);
-        $insertionValue = $typeInstance->convertToDatabaseValue($originalValue, $this->_conn->getDatabasePlatform());
+        $typeInstance = $this->_conn->getType($type);
+        $insertionValue = $typeInstance->convertToDatabaseValue($originalValue);
 
         $this->_conn->insert('type_conversion', array('id' => ++self::$typeCounter, $columnName => $insertionValue));
 
         $sql = "SELECT " . $columnName . " FROM type_conversion WHERE id = " . self::$typeCounter;
-        $actualDbValue = $typeInstance->convertToPHPValue($this->_conn->fetchColumn($sql), $this->_conn->getDatabasePlatform());
+        $actualDbValue = $typeInstance->convertToPHPValue($this->_conn->fetchColumn($sql));
 
         if ($originalValue instanceof \DateTime) {
             $this->assertInstanceOf($expectedPhpType, $actualDbValue, "The expected type from the conversion to and back from the database should be " . $expectedPhpType);

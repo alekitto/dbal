@@ -57,22 +57,22 @@ class DateTimeTzType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getDateTimeTzTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getDateTimeTzTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return $value;
         }
 
         if ($value instanceof \DateTime) {
-            return $value->format($platform->getDateTimeTzFormatString());
+            return $value->format($this->platform->getDateTimeTzFormatString());
         }
 
         throw ConversionException::conversionFailedInvalidType($value, $this->getName(), ['null', 'DateTime']);
@@ -81,15 +81,15 @@ class DateTimeTzType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value instanceof \DateTime) {
             return $value;
         }
 
-        $val = \DateTime::createFromFormat($platform->getDateTimeTzFormatString(), $value);
+        $val = \DateTime::createFromFormat($this->platform->getDateTimeTzFormatString(), $value);
         if ( ! $val) {
-            throw ConversionException::conversionFailedFormat($value, $this->getName(), $platform->getDateTimeTzFormatString());
+            throw ConversionException::conversionFailedFormat($value, $this->getName(), $this->platform->getDateTimeTzFormatString());
         }
 
         return $val;

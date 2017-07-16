@@ -156,6 +156,11 @@ abstract class AbstractPlatform
     protected $_keywords;
 
     /**
+     * @var Connection
+     */
+    protected $_connection;
+
+    /**
      * Constructor.
      */
     public function __construct()
@@ -180,6 +185,16 @@ abstract class AbstractPlatform
     public function getEventManager()
     {
         return $this->_eventManager;
+    }
+
+    /**
+     * Sets the connection holding this Platform.
+     *
+     * @param Connection $connection
+     */
+    public function setConnection(Connection $connection)
+    {
+        $this->_connection = $connection;
     }
 
     /**
@@ -244,8 +259,8 @@ abstract class AbstractPlatform
     {
         $this->initializeDoctrineTypeMappings();
 
-        foreach (Type::getTypesMap() as $typeName => $className) {
-            foreach (Type::getType($typeName)->getMappedDatabaseTypes($this) as $dbType) {
+        foreach ($this->_connection->getTypesMap() as $typeName => $type) {
+            foreach ($type->getMappedDatabaseTypes() as $dbType) {
                 $this->doctrineTypeMapping[$dbType] = $typeName;
             }
         }
@@ -395,16 +410,16 @@ abstract class AbstractPlatform
             $this->initializeAllDoctrineTypeMappings();
         }
 
-        if (!Types\Type::hasType($doctrineType)) {
+        if (! $this->_connection->hasType($doctrineType)) {
             throw DBALException::typeNotFound($doctrineType);
         }
 
         $dbType = strtolower($dbType);
         $this->doctrineTypeMapping[$dbType] = $doctrineType;
 
-        $doctrineType = Type::getType($doctrineType);
+        $doctrineType = $this->_connection->getType($doctrineType);
 
-        if ($doctrineType->requiresSQLCommentHint($this)) {
+        if ($doctrineType->requiresSQLCommentHint()) {
             $this->markDoctrineTypeCommented($doctrineType);
         }
     }
@@ -460,10 +475,8 @@ abstract class AbstractPlatform
     {
         $this->doctrineTypeComments = array();
 
-        foreach (Type::getTypesMap() as $typeName => $className) {
-            $type = Type::getType($typeName);
-
-            if ($type->requiresSQLCommentHint($this)) {
+        foreach ($this->_connection->getTypesMap() as $typeName => $type) {
+            if ($type->requiresSQLCommentHint()) {
                 $this->doctrineTypeComments[] = $typeName;
             }
         }
@@ -523,9 +536,10 @@ abstract class AbstractPlatform
     protected function getColumnComment(Column $column)
     {
         $comment = $column->getComment();
+        $type = $this->_connection->getType($column->getType());
 
-        if ($this->isCommentedDoctrineType($column->getType())) {
-            $comment .= $this->getDoctrineTypeComment($column->getType());
+        if ($this->isCommentedDoctrineType($type)) {
+            $comment .= $this->getDoctrineTypeComment($type);
         }
 
         return $comment;
@@ -2244,7 +2258,7 @@ abstract class AbstractPlatform
             $check = (isset($field['check']) && $field['check']) ?
                     ' ' . $field['check'] : '';
 
-            $typeDecl = $field['type']->getSQLDeclaration($field, $this);
+            $typeDecl = $this->_connection->getType($field['type'])->getSQLDeclaration($field);
             $columnDef = $typeDecl . $charset . $default . $notnull . $unique . $check . $collation;
         }
 

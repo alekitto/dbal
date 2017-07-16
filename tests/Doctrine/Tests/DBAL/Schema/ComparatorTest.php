@@ -48,14 +48,14 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer' ) ),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
                 )
             ),
         ) );
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer') ),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
                 )
             ),
         ) );
@@ -70,16 +70,16 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
                 )
             ),
         ) );
@@ -92,7 +92,7 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
     public function testCompareMissingTable()
     {
         $schemaConfig = new \Doctrine\DBAL\Schema\SchemaConfig;
-        $table = new Table('bugdb', array ('integerfield1' => new Column('integerfield1', Type::getType('integer'))));
+        $table = new Table('bugdb', array ('integerfield1' => new Column('integerfield1', 'integer')));
         $table->setSchemaConfig($schemaConfig);
 
         $schema1 = new Schema( array($table), array(), $schemaConfig );
@@ -106,7 +106,7 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
     public function testCompareNewTable()
     {
         $schemaConfig = new \Doctrine\DBAL\Schema\SchemaConfig;
-        $table = new Table('bugdb', array ('integerfield1' => new Column('integerfield1', Type::getType('integer'))));
+        $table = new Table('bugdb', array ('integerfield1' => new Column('integerfield1', 'integer')));
         $table->setSchemaConfig($schemaConfig);
 
         $schema1 = new Schema( array(),       array(), $schemaConfig );
@@ -119,8 +119,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testCompareOnlyAutoincrementChanged()
     {
-        $column1 = new Column('foo', Type::getType('integer'), array('autoincrement' => true));
-        $column2 = new Column('foo', Type::getType('integer'), array('autoincrement' => false));
+        $column1 = new Column('foo', 'integer', array('autoincrement' => true));
+        $column2 = new Column('foo', 'integer', array('autoincrement' => false));
 
         $comparator = new Comparator();
         $changedProperties = $comparator->diffColumn($column1, $column2);
@@ -130,19 +130,19 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testCompareMissingField()
     {
-        $missingColumn = new Column('integerfield1', Type::getType('integer'));
+        $missingColumn = new Column('integerfield1', 'integer');
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
                     'integerfield1' => $missingColumn,
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
@@ -167,15 +167,15 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
                 )
             ),
         ) );
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
@@ -184,7 +184,7 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
             array (
                 'bugdb' => new TableDiff ('bugdb',
                     array (
-                        'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                        'integerfield2' => new Column('integerfield2', 'integer'),
                     )
                 ),
             )
@@ -197,8 +197,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testCompareChangedColumns_ChangeType()
     {
-        $column1 = new Column('charfield1', Type::getType('string'));
-        $column2 = new Column('charfield1', Type::getType('integer'));
+        $column1 = new Column('charfield1', 'string');
+        $column2 = new Column('charfield1', 'integer');
 
         $c = new Comparator();
         $this->assertEquals(array('type'), $c->diffColumn($column1, $column2));
@@ -207,8 +207,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testCompareChangedColumns_ChangeCustomSchemaOption()
     {
-        $column1 = new Column('charfield1', Type::getType('string'));
-        $column2 = new Column('charfield1', Type::getType('string'));
+        $column1 = new Column('charfield1', 'string');
+        $column2 = new Column('charfield1', 'string');
 
         $column1->setCustomSchemaOption('foo', 'bar');
         $column2->setCustomSchemaOption('foo', 'bar');
@@ -246,8 +246,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary',
@@ -262,8 +262,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
@@ -293,16 +293,16 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 )
             ),
         ) );
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary',
@@ -340,8 +340,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary',
@@ -356,8 +356,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary',
@@ -394,8 +394,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema1 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary', array('integerfield1', 'integerfield2'), true)
@@ -405,8 +405,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $schema2 = new Schema( array(
             'bugdb' => new Table('bugdb',
                 array (
-                    'integerfield1' => new Column('integerfield1', Type::getType('integer')),
-                    'integerfield2' => new Column('integerfield2', Type::getType('integer')),
+                    'integerfield1' => new Column('integerfield1', 'integer'),
+                    'integerfield2' => new Column('integerfield2', 'integer'),
                 ),
                 array (
                     'primary' => new Index('primary', array('integerfield2', 'integerfield1'), true)
@@ -828,10 +828,10 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
      */
     public function testDiffDecimalWithNullPrecision()
     {
-        $column = new Column('foo', Type::getType('decimal'));
+        $column = new Column('foo', 'decimal');
         $column->setPrecision(null);
 
-        $column2 = new Column('foo', Type::getType('decimal'));
+        $column2 = new Column('foo', 'decimal');
 
         $c = new Comparator();
         $this->assertEquals(array(), $c->diffColumn($column, $column2));
@@ -1093,10 +1093,10 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testDiffColumnPlatformOptions()
     {
-        $column1 = new Column('foo', Type::getType('string'), array('platformOptions' => array('foo' => 'foo', 'bar' => 'bar')));
-        $column2 = new Column('foo', Type::getType('string'), array('platformOptions' => array('foo' => 'foo', 'foobar' => 'foobar')));
-        $column3 = new Column('foo', Type::getType('string'), array('platformOptions' => array('foo' => 'foo', 'bar' => 'rab')));
-        $column4 = new Column('foo', Type::getType('string'));
+        $column1 = new Column('foo', 'string', array('platformOptions' => array('foo' => 'foo', 'bar' => 'bar')));
+        $column2 = new Column('foo', 'string', array('platformOptions' => array('foo' => 'foo', 'foobar' => 'foobar')));
+        $column3 = new Column('foo', 'string', array('platformOptions' => array('foo' => 'foo', 'bar' => 'rab')));
+        $column4 = new Column('foo', 'string');
 
         $comparator = new Comparator();
 
@@ -1110,12 +1110,12 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
 
     public function testComplexDiffColumn()
     {
-        $column1 = new Column('foo', Type::getType('string'), array(
+        $column1 = new Column('foo', 'string', array(
             'platformOptions' => array('foo' => 'foo'),
             'customSchemaOptions' => array('foo' => 'bar'),
         ));
 
-        $column2 = new Column('foo', Type::getType('string'), array(
+        $column2 = new Column('foo', 'string', array(
             'platformOptions' => array('foo' => 'bar'),
         ));
 
@@ -1178,10 +1178,10 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
     {
         $comparator = new Comparator();
 
-        $column1 = new Column('foo', Type::getType('guid'), array('comment' => 'GUID 1'));
+        $column1 = new Column('foo', 'guid', array('comment' => 'GUID 1'));
         $column2 = new Column(
             'foo',
-            Type::getType('guid'),
+            'guid',
             array('notnull' => false, 'length' => '36', 'fixed' => true, 'default' => 'NEWID()', 'comment' => 'GUID 2.')
         );
 
@@ -1196,8 +1196,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
      */
     public function testCompareColumnComments($comment1, $comment2, $equals)
     {
-        $column1 = new Column('foo', Type::getType('integer'), array('comment' => $comment1));
-        $column2 = new Column('foo', Type::getType('integer'), array('comment' => $comment2));
+        $column1 = new Column('foo', 'integer', array('comment' => $comment1));
+        $column2 = new Column('foo', 'integer', array('comment' => $comment2));
 
         $comparator = new Comparator();
 
@@ -1242,12 +1242,12 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $fromSchema = new Schema( array(
             'table1' => new Table('table1',
                 array(
-                    'id' => new Column('id', Type::getType('integer')),
+                    'id' => new Column('id', 'integer'),
                 )),
             'table2' => new Table('table2',
                 array(
-                    'id' => new Column('id', Type::getType('integer')),
-                    'id_table1' => new Column('id_table1', Type::getType('integer'))
+                    'id' => new Column('id', 'integer'),
+                    'id_table1' => new Column('id_table1', 'integer')
                 ),
                 array(),
                 array(),
@@ -1258,8 +1258,8 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
         $toSchema = new Schema( array(
             'table2' => new Table('table2',
                 array(
-                    'id' => new Column('id', Type::getType('integer')),
-                    'id_table3' => new Column('id_table3', Type::getType('integer'))
+                    'id' => new Column('id', 'integer'),
+                    'id_table3' => new Column('id_table3', 'integer')
                 ),
                 array(),
                 array(),
@@ -1268,7 +1268,7 @@ class ComparatorTest extends \PHPUnit_Framework_TestCase
                 )),
             'table3' => new Table('table3',
                 array(
-                    'id' => new Column('id', Type::getType('integer'))
+                    'id' => new Column('id', 'integer')
                 ))
         ));
         $actual = Comparator::compareSchemas($fromSchema, $toSchema);

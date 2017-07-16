@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\JsonType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -23,7 +24,7 @@ class JsonTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->platform = new MockPlatform();
-        $this->type     = Type::getType('json');
+        $this->type     = new JsonType($this->platform);
     }
 
     public function testReturnsBindingType()
@@ -38,24 +39,24 @@ class JsonTest extends \Doctrine\Tests\DbalTestCase
 
     public function testReturnsSQLDeclaration()
     {
-        $this->assertSame('DUMMYJSON', $this->type->getSQLDeclaration(array(), $this->platform));
+        $this->assertSame('DUMMYJSON', $this->type->getSQLDeclaration(array()));
     }
 
     public function testJsonNullConvertsToPHPValue()
     {
-        $this->assertNull($this->type->convertToPHPValue(null, $this->platform));
+        $this->assertNull($this->type->convertToPHPValue(null));
     }
 
     public function testJsonEmptyStringConvertsToPHPValue()
     {
-        $this->assertNull($this->type->convertToPHPValue('', $this->platform));
+        $this->assertNull($this->type->convertToPHPValue(''));
     }
 
     public function testJsonStringConvertsToPHPValue()
     {
         $value         = array('foo' => 'bar', 'bar' => 'foo');
         $databaseValue = json_encode($value);
-        $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
+        $phpValue      = $this->type->convertToPHPValue($databaseValue);
 
         $this->assertEquals($value, $phpValue);
     }
@@ -64,7 +65,7 @@ class JsonTest extends \Doctrine\Tests\DbalTestCase
     public function testConversionFailure($data)
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->type->convertToPHPValue($data, $this->platform);
+        $this->type->convertToPHPValue($data);
     }
 
     public function providerFailure()
@@ -76,13 +77,13 @@ class JsonTest extends \Doctrine\Tests\DbalTestCase
     {
         $value         = array('foo' => 'bar', 'bar' => 'foo');
         $databaseValue = fopen('data://text/plain;base64,' . base64_encode(json_encode($value)), 'r');
-        $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
+        $phpValue      = $this->type->convertToPHPValue($databaseValue);
 
         $this->assertSame($value, $phpValue);
     }
 
     public function testRequiresSQLCommentHint()
     {
-        $this->assertTrue($this->type->requiresSQLCommentHint($this->platform));
+        $this->assertTrue($this->type->requiresSQLCommentHint());
     }
 }

@@ -241,7 +241,7 @@ class OracleSchemaManager extends AbstractSchemaManager
             'platformDetails' => array(),
         );
 
-        return new Column($this->getQuotedIdentifierName($tableColumn['column_name']), Type::getType($type), $options);
+        return new Column($this->getQuotedIdentifierName($tableColumn['column_name']), $type, $options);
     }
 
     /**

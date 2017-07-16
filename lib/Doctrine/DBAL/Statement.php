@@ -108,7 +108,7 @@ class Statement implements \IteratorAggregate, DriverStatement
         $this->types[$name] = $type;
         if ($type !== null) {
             if (is_string($type)) {
-                $type = Type::getType($type);
+                $type = $this->conn->getType($type);
             }
             if ($type instanceof Type) {
                 $value = $type->convertToDatabaseValue($value, $this->platform);

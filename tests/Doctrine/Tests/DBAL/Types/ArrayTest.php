@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\ArrayType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -14,7 +15,7 @@ class ArrayTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->_platform = new MockPlatform();
-        $this->_type = Type::getType('array');
+        $this->_type = new ArrayType($this->_platform);
     }
 
     protected function tearDown()
@@ -26,14 +27,14 @@ class ArrayTest extends \Doctrine\Tests\DbalTestCase
     public function testArrayConvertsToDatabaseValue()
     {
         $this->assertTrue(
-            is_string($this->_type->convertToDatabaseValue(array(), $this->_platform))
+            is_string($this->_type->convertToDatabaseValue(array()))
         );
     }
 
     public function testArrayConvertsToPHPValue()
     {
         $this->assertTrue(
-            is_array($this->_type->convertToPHPValue(serialize(array()), $this->_platform))
+            is_array($this->_type->convertToPHPValue(serialize(array())))
         );
     }
 
@@ -41,12 +42,12 @@ class ArrayTest extends \Doctrine\Tests\DbalTestCase
     {
         error_reporting( (E_ALL | E_STRICT) - \E_NOTICE );
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->_type->convertToPHPValue('abcdefg', $this->_platform);
+        $this->_type->convertToPHPValue('abcdefg');
     }
 
     public function testNullConversion()
     {
-        $this->assertNull($this->_type->convertToPHPValue(null, $this->_platform));
+        $this->assertNull($this->_type->convertToPHPValue(null));
     }
 
     /**
@@ -54,6 +55,6 @@ class ArrayTest extends \Doctrine\Tests\DbalTestCase
      */
     public function testFalseConversion()
     {
-        $this->assertFalse($this->_type->convertToPHPValue(serialize(false), $this->_platform));
+        $this->assertFalse($this->_type->convertToPHPValue(serialize(false)));
     }
 }

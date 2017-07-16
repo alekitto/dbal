@@ -485,7 +485,7 @@ class SchemaManagerFunctionalTestCase extends \Doctrine\Tests\DbalFunctionalTest
 
         $tableDiff = new \Doctrine\DBAL\Schema\TableDiff("alter_table");
         $tableDiff->fromTable = $alterTable;
-        $tableDiff->addedColumns['foo'] = new \Doctrine\DBAL\Schema\Column('foo', Type::getType('integer'));
+        $tableDiff->addedColumns['foo'] = new \Doctrine\DBAL\Schema\Column('foo', $this->_conn->getType('integer'));
         $tableDiff->removedColumns['test'] = $table->getColumn('test');
 
         $this->_sm->alterTable($tableDiff);
@@ -716,11 +716,11 @@ class SchemaManagerFunctionalTestCase extends \Doctrine\Tests\DbalFunctionalTest
         $tableDiff->fromTable = $table;
         $tableDiff->changedColumns['id'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'id', new \Doctrine\DBAL\Schema\Column(
-                'id', \Doctrine\DBAL\Types\Type::getType('integer'), array('primary' => true)
+                'id', $this->_conn->getType('integer'), array('primary' => true)
             ),
             array('comment'),
             new \Doctrine\DBAL\Schema\Column(
-                'id', \Doctrine\DBAL\Types\Type::getType('integer'), array('comment' => 'This is a comment')
+                'id', $this->_conn->getType('integer'), array('comment' => 'This is a comment')
             )
         );
 
@@ -801,16 +801,16 @@ class SchemaManagerFunctionalTestCase extends \Doctrine\Tests\DbalFunctionalTest
         $tableDiff->fromTable = $table;
         $tableDiff->changedColumns['col_int'] = new ColumnDiff(
             'col_int',
-            new Column('col_int', Type::getType('integer'), array('default' => 666)),
+            new Column('col_int', $this->_conn->getType('integer'), array('default' => 666)),
             array('type'),
-            new Column('col_int', Type::getType('smallint'), array('default' => 666))
+            new Column('col_int', $this->_conn->getType('smallint'), array('default' => 666))
         );
 
         $tableDiff->changedColumns['col_string'] = new ColumnDiff(
             'col_string',
-            new Column('col_string', Type::getType('string'), array('default' => 'foo', 'fixed' => true)),
+            new Column('col_string', $this->_conn->getType('string'), array('default' => 'foo', 'fixed' => true)),
             array('fixed'),
-            new Column('col_string', Type::getType('string'), array('default' => 'foo'))
+            new Column('col_string', $this->_conn->getType('string'), array('default' => 'foo'))
         );
 
         $this->_sm->alterTable($tableDiff);

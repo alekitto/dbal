@@ -29,8 +29,6 @@ abstract class BaseDateTypeTestCase extends PHPUnit_Framework_TestCase
     {
         $this->platform        = new MockPlatform();
         $this->currentTimezone = date_default_timezone_get();
-
-        $this->assertInstanceOf('Doctrine\DBAL\Types\Type', $this->type);
     }
 
     /**

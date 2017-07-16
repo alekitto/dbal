@@ -31,15 +31,15 @@ class ObjectType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getClobTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getClobTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         return serialize($value);
     }
@@ -47,7 +47,7 @@ class ObjectType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null) {
             return null;
@@ -73,7 +73,7 @@ class ObjectType extends Type
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
         return true;
     }

@@ -9,6 +9,7 @@ use Doctrine\DBAL\Schema\ColumnDiff;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\Types\BooleanType;
 use Doctrine\DBAL\Types\Type;
 
 class DB2PlatformTest extends AbstractPlatformTestCase
@@ -291,7 +292,7 @@ class DB2PlatformTest extends AbstractPlatformTestCase
     {
         $data = parent::getIsCommentedDoctrineType();
 
-        $data[Type::BOOLEAN] = array(Type::getType(Type::BOOLEAN), true);
+        $data[Type::BOOLEAN] = array(new BooleanType($this->_platform), true);
 
         return $data;
     }
@@ -579,57 +580,57 @@ class DB2PlatformTest extends AbstractPlatformTestCase
         return array(
             array(
                 'columnDefinition',
-                new Column('bar', Type::getType('decimal'), array('columnDefinition' => 'MONEY NOT NULL')),
+                new Column('bar', 'decimal', array('columnDefinition' => 'MONEY NOT NULL')),
                 'MONEY NOT NULL'
             ),
             array(
                 'type',
-                new Column('bar', Type::getType('integer')),
+                new Column('bar', 'integer'),
                 'SET DATA TYPE INTEGER'
             ),
             array(
                 'length',
-                new Column('bar', Type::getType('string'), array('length' => 100)),
+                new Column('bar', 'string', array('length' => 100)),
                 'SET DATA TYPE VARCHAR(100)'
             ),
             array(
                 'precision',
-                new Column('bar', Type::getType('decimal'), array('precision' => 10, 'scale' => 2)),
+                new Column('bar', 'decimal', array('precision' => 10, 'scale' => 2)),
                 'SET DATA TYPE NUMERIC(10, 2)'
             ),
             array(
                 'scale',
-                new Column('bar', Type::getType('decimal'), array('precision' => 5, 'scale' => 4)),
+                new Column('bar', 'decimal', array('precision' => 5, 'scale' => 4)),
                 'SET DATA TYPE NUMERIC(5, 4)'
             ),
             array(
                 'fixed',
-                new Column('bar', Type::getType('string'), array('length' => 20, 'fixed' => true)),
+                new Column('bar', 'string', array('length' => 20, 'fixed' => true)),
                 'SET DATA TYPE CHAR(20)'
             ),
             array(
                 'notnull',
-                new Column('bar', Type::getType('string'), array('notnull' => true)),
+                new Column('bar', 'string', array('notnull' => true)),
                 'SET NOT NULL'
             ),
             array(
                 'notnull',
-                new Column('bar', Type::getType('string'), array('notnull' => false)),
+                new Column('bar', 'string', array('notnull' => false)),
                 'DROP NOT NULL'
             ),
             array(
                 'default',
-                new Column('bar', Type::getType('string'), array('default' => 'foo')),
+                new Column('bar', 'string', array('default' => 'foo')),
                 "SET DEFAULT 'foo'"
             ),
             array(
                 'default',
-                new Column('bar', Type::getType('integer'), array('autoincrement' => true, 'default' => 666)),
+                new Column('bar', 'integer', array('autoincrement' => true, 'default' => 666)),
                 null
             ),
             array(
                 'default',
-                new Column('bar', Type::getType('string')),
+                new Column('bar', 'string'),
                 "DROP DEFAULT"
             ),
         );

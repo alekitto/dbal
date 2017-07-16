@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\TimeType;
 use Doctrine\DBAL\Types\Type;
 
 class TimeTest extends BaseDateTypeTestCase
@@ -11,19 +12,18 @@ class TimeTest extends BaseDateTypeTestCase
      */
     protected function setUp()
     {
-        $this->type = Type::getType('time');
-
         parent::setUp();
+        $this->type = new TimeType($this->platform);
     }
 
     public function testTimeConvertsToPHPValue()
     {
-        $this->assertInstanceOf('DateTime', $this->type->convertToPHPValue('5:30:55', $this->platform));
+        $this->assertInstanceOf('DateTime', $this->type->convertToPHPValue('5:30:55'));
     }
 
     public function testDateFieldResetInPHPValue()
     {
-        $time = $this->type->convertToPHPValue('01:23:34', $this->platform);
+        $time = $this->type->convertToPHPValue('01:23:34');
 
         $this->assertEquals('01:23:34', $time->format('H:i:s'));
         $this->assertEquals('1970-01-01', $time->format('Y-m-d'));
@@ -32,6 +32,6 @@ class TimeTest extends BaseDateTypeTestCase
     public function testInvalidTimeFormatConversion()
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->type->convertToPHPValue('abcdefg', $this->platform);
+        $this->type->convertToPHPValue('abcdefg');
     }
 }

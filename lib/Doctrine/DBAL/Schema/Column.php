@@ -99,10 +99,10 @@ class Column extends AbstractAsset
      * Creates a new Column.
      *
      * @param string $columnName
-     * @param Type   $type
+     * @param string $type
      * @param array  $options
      */
-    public function __construct($columnName, Type $type, array $options=array())
+    public function __construct($columnName, $type, array $options=array())
     {
         $this->_setName($columnName);
         $this->setType($type);
@@ -127,11 +127,11 @@ class Column extends AbstractAsset
     }
 
     /**
-     * @param Type $type
+     * @param string $type
      *
      * @return Column
      */
-    public function setType(Type $type)
+    public function setType($type)
     {
         $this->_type = $type;
 
@@ -272,7 +272,7 @@ class Column extends AbstractAsset
     }
 
     /**
-     * @return Type
+     * @return string
      */
     public function getType()
     {

@@ -13,8 +13,8 @@ class ColumnDiffTest extends \PHPUnit_Framework_TestCase
      */
     public function testPreservesOldColumnNameQuotation()
     {
-        $fromColumn = new Column('"foo"', Type::getType(Type::INTEGER));
-        $toColumn = new Column('bar', Type::getType(Type::INTEGER));
+        $fromColumn = new Column('"foo"', Type::INTEGER);
+        $toColumn = new Column('bar', Type::INTEGER);
 
         $columnDiff = new ColumnDiff('"foo"', $toColumn, array());
         $this->assertTrue($columnDiff->getOldColumnName()->isQuoted());

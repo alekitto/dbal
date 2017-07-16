@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\DateIntervalType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -23,7 +24,7 @@ class DateIntervalTest  extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->platform = new MockPlatform();
-        $this->type     = Type::getType('dateinterval');
+        $this->type     = new DateIntervalType($this->platform);
 
         $this->assertInstanceOf('Doctrine\DBAL\Types\DateIntervalType', $this->type);
     }
@@ -33,14 +34,14 @@ class DateIntervalTest  extends \Doctrine\Tests\DbalTestCase
         $interval = new \DateInterval('P2Y1DT1H2M3S');
 
         $expected = 'P0002-00-01T01:02:03';
-        $actual = $this->type->convertToDatabaseValue($interval, $this->platform);
+        $actual = $this->type->convertToDatabaseValue($interval);
 
         $this->assertEquals($expected, $actual);
     }
 
     public function testDateIntervalConvertsToPHPValue()
     {
-        $date = $this->type->convertToPHPValue('P0002-00-01T01:02:03', $this->platform);
+        $date = $this->type->convertToPHPValue('P0002-00-01T01:02:03');
         $this->assertInstanceOf('DateInterval', $date);
         $this->assertEquals('P2Y0M1DT1H2M3S', $date->format('P%yY%mM%dDT%hH%iM%sS'));
     }
@@ -48,12 +49,12 @@ class DateIntervalTest  extends \Doctrine\Tests\DbalTestCase
     public function testInvalidDateIntervalFormatConversion()
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->type->convertToPHPValue('abcdefg', $this->platform);
+        $this->type->convertToPHPValue('abcdefg');
     }
 
     public function testDateIntervalNullConversion()
     {
-        $this->assertNull($this->type->convertToPHPValue(null, $this->platform));
+        $this->assertNull($this->type->convertToPHPValue(null));
     }
 
     /**
@@ -61,7 +62,7 @@ class DateIntervalTest  extends \Doctrine\Tests\DbalTestCase
      */
     public function testRequiresSQLCommentHint()
     {
-        $this->assertTrue($this->type->requiresSQLCommentHint($this->platform));
+        $this->assertTrue($this->type->requiresSQLCommentHint());
     }
 
     /**
@@ -73,7 +74,7 @@ class DateIntervalTest  extends \Doctrine\Tests\DbalTestCase
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
 
-        $this->type->convertToDatabaseValue($value, $this->platform);
+        $this->type->convertToDatabaseValue($value);
     }
 
     /**

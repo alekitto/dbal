@@ -27,6 +27,7 @@ use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Identifier;
 use Doctrine\DBAL\Schema\Constraint;
+use Doctrine\DBAL\Types\Type;
 
 /**
  * The SqlitePlatform class describes the specifics and dialects of the SQLite
@@ -907,7 +908,7 @@ class SqlitePlatform extends AbstractPlatform
             if ( ! $columnDiff->fromColumn instanceof Column ||
                 ! $columnDiff->column instanceof Column ||
                 ! $columnDiff->column->getAutoincrement() ||
-                ! (string) $columnDiff->column->getType() === 'Integer'
+                $columnDiff->column->getType() !== Type::INTEGER
             ) {
                 continue;
             }
@@ -918,9 +919,9 @@ class SqlitePlatform extends AbstractPlatform
                 continue;
             }
 
-            $fromColumnType = (string) $columnDiff->fromColumn->getType();
+            $fromColumnType = $columnDiff->fromColumn->getType();
 
-            if ($fromColumnType === 'SmallInt' || $fromColumnType === 'BigInt') {
+            if ($fromColumnType === Type::SMALLINT || $fromColumnType === Type::BIGINT) {
                 unset($diff->changedColumns[$oldColumnName]);
             }
         }

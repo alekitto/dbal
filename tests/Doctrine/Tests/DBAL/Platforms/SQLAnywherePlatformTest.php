@@ -195,7 +195,7 @@ class SQLAnywherePlatformTest extends AbstractPlatformTestCase
         $tableDiff->fromTable = $table;
         $tableDiff->changedColumns['foo'] = new ColumnDiff(
             'foo',
-            new Column('foo', Type::getType('string')),
+            new Column('foo', 'string'),
             array('comment')
         );
 
@@ -914,8 +914,8 @@ class SQLAnywherePlatformTest extends AbstractPlatformTestCase
      */
     public function testAltersTableColumnCommentWithExplicitlyQuotedIdentifiers()
     {
-        $table1 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'))));
-        $table2 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'), array('comment' => 'baz'))));
+        $table1 = new Table('"foo"', array(new Column('"bar"', 'integer')));
+        $table2 = new Table('"foo"', array(new Column('"bar"', 'integer', array('comment' => 'baz'))));
 
         $comparator = new Comparator();
 

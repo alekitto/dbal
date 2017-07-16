@@ -182,8 +182,8 @@ SQL;
         $this->assertArrayHasKey('foo', $columns);
         $this->assertArrayHasKey('bar', $columns);
 
-        $this->assertSame(Type::getType(Type::STRING), $columns['foo']->getType());
-        $this->assertSame(Type::getType(Type::TEXT), $columns['bar']->getType());
+        $this->assertSame($this->_conn->getType(Type::STRING), $columns['foo']->getType());
+        $this->assertSame($this->_conn->getType(Type::TEXT), $columns['bar']->getType());
 
         $this->assertSame(64, $columns['foo']->getLength());
         $this->assertSame(100, $columns['bar']->getLength());

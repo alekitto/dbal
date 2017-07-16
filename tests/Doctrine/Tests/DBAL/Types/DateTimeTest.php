@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\DateTimeType;
 use Doctrine\DBAL\Types\Type;
 
 class DateTimeTest extends BaseDateTypeTestCase
@@ -11,9 +12,8 @@ class DateTimeTest extends BaseDateTypeTestCase
      */
     protected function setUp()
     {
-        $this->type = Type::getType('datetime');
-
         parent::setUp();
+        $this->type = new DateTimeType($this->platform);
     }
 
     public function testDateTimeConvertsToDatabaseValue()
@@ -21,7 +21,7 @@ class DateTimeTest extends BaseDateTypeTestCase
         $date = new \DateTime('1985-09-01 10:10:10');
 
         $expected = $date->format($this->platform->getDateTimeTzFormatString());
-        $actual = $this->type->convertToDatabaseValue($date, $this->platform);
+        $actual = $this->type->convertToDatabaseValue($date);
 
         $this->assertEquals($expected, $actual);
     }
@@ -29,7 +29,7 @@ class DateTimeTest extends BaseDateTypeTestCase
     public function testDateTimeConvertsToPHPValue()
     {
         // Birthday of jwage and also birthday of Doctrine. Send him a present ;)
-        $date = $this->type->convertToPHPValue('1985-09-01 00:00:00', $this->platform);
+        $date = $this->type->convertToPHPValue('1985-09-01 00:00:00');
         $this->assertInstanceOf('DateTime', $date);
         $this->assertEquals('1985-09-01 00:00:00', $date->format('Y-m-d H:i:s'));
     }
@@ -37,14 +37,14 @@ class DateTimeTest extends BaseDateTypeTestCase
     public function testInvalidDateTimeFormatConversion()
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->type->convertToPHPValue('abcdefg', $this->platform);
+        $this->type->convertToPHPValue('abcdefg');
     }
 
     public function testConvertsNonMatchingFormatToPhpValueWithParser()
     {
         $date = '1985/09/01 10:10:10.12345';
 
-        $actual = $this->type->convertToPHPValue($date, $this->platform);
+        $actual = $this->type->convertToPHPValue($date);
 
         $this->assertEquals('1985-09-01 10:10:10', $actual->format('Y-m-d H:i:s'));
     }

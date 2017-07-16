@@ -57,7 +57,7 @@ class PostgreSqlSchemaManagerTest extends SchemaManagerFunctionalTestCase
         $table = $this->_conn->getSchemaManager()->listTableDetails('domain_type_test');
         $this->assertInstanceOf('Doctrine\DBAL\Types\DecimalType', $table->getColumn('value')->getType());
 
-        Type::addType('MyMoney', 'Doctrine\Tests\DBAL\Functional\Schema\MoneyType');
+        $this->_conn->addType(new MoneyType($this->_conn->getDatabasePlatform()));
         $this->_conn->getDatabasePlatform()->registerDoctrineTypeMapping('MyMoney', 'MyMoney');
 
         $table = $this->_conn->getSchemaManager()->listTableDetails('domain_type_test');

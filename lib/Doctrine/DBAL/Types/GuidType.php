@@ -32,9 +32,9 @@ class GuidType extends StringType
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getGuidTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getGuidTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
@@ -48,8 +48,8 @@ class GuidType extends StringType
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
-        return !$platform->hasNativeGuidType();
+        return ! $this->platform->hasNativeGuidType();
     }
 }

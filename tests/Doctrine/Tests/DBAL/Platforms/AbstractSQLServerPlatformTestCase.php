@@ -675,111 +675,111 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
 
         $tableDiff = new TableDiff('mytable');
         $tableDiff->fromTable = $table;
-        $tableDiff->addedColumns['added_comment_none'] = new Column('added_comment_none', Type::getType('integer'));
-        $tableDiff->addedColumns['added_comment_null'] = new Column('added_comment_null', Type::getType('integer'), array('comment' => null));
-        $tableDiff->addedColumns['added_comment_false'] = new Column('added_comment_false', Type::getType('integer'), array('comment' => false));
-        $tableDiff->addedColumns['added_comment_empty_string'] = new Column('added_comment_empty_string', Type::getType('integer'), array('comment' => ''));
-        $tableDiff->addedColumns['added_comment_integer_0'] = new Column('added_comment_integer_0', Type::getType('integer'), array('comment' => 0));
-        $tableDiff->addedColumns['added_comment_float_0'] = new Column('added_comment_float_0', Type::getType('integer'), array('comment' => 0.0));
-        $tableDiff->addedColumns['added_comment_string_0'] = new Column('added_comment_string_0', Type::getType('integer'), array('comment' => '0'));
-        $tableDiff->addedColumns['added_comment'] = new Column('added_comment', Type::getType('integer'), array('comment' => 'Doctrine'));
-        $tableDiff->addedColumns['`added_comment_quoted`'] = new Column('`added_comment_quoted`', Type::getType('integer'), array('comment' => 'rulez'));
-        $tableDiff->addedColumns['select'] = new Column('select', Type::getType('integer'), array('comment' => '666'));
-        $tableDiff->addedColumns['added_commented_type'] = new Column('added_commented_type', Type::getType('object'));
-        $tableDiff->addedColumns['added_commented_type_with_comment'] = new Column('added_commented_type_with_comment', Type::getType('array'), array('comment' => '666'));
-        $tableDiff->addedColumns['added_comment_with_string_literal_char'] = new Column('added_comment_with_string_literal_char', Type::getType('string'), array('comment' => "''"));
+        $tableDiff->addedColumns['added_comment_none'] = new Column('added_comment_none', 'integer');
+        $tableDiff->addedColumns['added_comment_null'] = new Column('added_comment_null', 'integer', array('comment' => null));
+        $tableDiff->addedColumns['added_comment_false'] = new Column('added_comment_false', 'integer', array('comment' => false));
+        $tableDiff->addedColumns['added_comment_empty_string'] = new Column('added_comment_empty_string', 'integer', array('comment' => ''));
+        $tableDiff->addedColumns['added_comment_integer_0'] = new Column('added_comment_integer_0', 'integer', array('comment' => 0));
+        $tableDiff->addedColumns['added_comment_float_0'] = new Column('added_comment_float_0', 'integer', array('comment' => 0.0));
+        $tableDiff->addedColumns['added_comment_string_0'] = new Column('added_comment_string_0', 'integer', array('comment' => '0'));
+        $tableDiff->addedColumns['added_comment'] = new Column('added_comment', 'integer', array('comment' => 'Doctrine'));
+        $tableDiff->addedColumns['`added_comment_quoted`'] = new Column('`added_comment_quoted`', 'integer', array('comment' => 'rulez'));
+        $tableDiff->addedColumns['select'] = new Column('select', 'integer', array('comment' => '666'));
+        $tableDiff->addedColumns['added_commented_type'] = new Column('added_commented_type', 'object');
+        $tableDiff->addedColumns['added_commented_type_with_comment'] = new Column('added_commented_type_with_comment', 'array', array('comment' => '666'));
+        $tableDiff->addedColumns['added_comment_with_string_literal_char'] = new Column('added_comment_with_string_literal_char', 'string', array('comment' => "''"));
 
-        $tableDiff->renamedColumns['comment_float_0'] = new Column('comment_double_0', Type::getType('decimal'), array('comment' => 'Double for real!'));
+        $tableDiff->renamedColumns['comment_float_0'] = new Column('comment_double_0', 'decimal', array('comment' => 'Double for real!'));
 
         // Add comment to non-commented column.
         $tableDiff->changedColumns['id'] = new ColumnDiff(
             'id',
-            new Column('id', Type::getType('integer'), array('autoincrement' => true, 'comment' => 'primary')),
+            new Column('id', 'integer', array('autoincrement' => true, 'comment' => 'primary')),
             array('comment'),
-            new Column('id', Type::getType('integer'), array('autoincrement' => true))
+            new Column('id', 'integer', array('autoincrement' => true))
         );
 
         // Remove comment from null-commented column.
         $tableDiff->changedColumns['comment_null'] = new ColumnDiff(
             'comment_null',
-            new Column('comment_null', Type::getType('string')),
+            new Column('comment_null', 'string'),
             array('type'),
-            new Column('comment_null', Type::getType('integer'), array('comment' => null))
+            new Column('comment_null', 'integer', array('comment' => null))
         );
 
         // Add comment to false-commented column.
         $tableDiff->changedColumns['comment_false'] = new ColumnDiff(
             'comment_false',
-            new Column('comment_false', Type::getType('integer'), array('comment' => 'false')),
+            new Column('comment_false', 'integer', array('comment' => 'false')),
             array('comment'),
-            new Column('comment_false', Type::getType('integer'), array('comment' => false))
+            new Column('comment_false', 'integer', array('comment' => false))
         );
 
         // Change type to custom type from empty string commented column.
         $tableDiff->changedColumns['comment_empty_string'] = new ColumnDiff(
             'comment_empty_string',
-            new Column('comment_empty_string', Type::getType('object')),
+            new Column('comment_empty_string', 'object'),
             array('type'),
-            new Column('comment_empty_string', Type::getType('integer'), array('comment' => ''))
+            new Column('comment_empty_string', 'integer', array('comment' => ''))
         );
 
         // Change comment to false-comment from zero-string commented column.
         $tableDiff->changedColumns['comment_string_0'] = new ColumnDiff(
             'comment_string_0',
-            new Column('comment_string_0', Type::getType('integer'), array('comment' => false)),
+            new Column('comment_string_0', 'integer', array('comment' => false)),
             array('comment'),
-            new Column('comment_string_0', Type::getType('integer'), array('comment' => '0'))
+            new Column('comment_string_0', 'integer', array('comment' => '0'))
         );
 
         // Remove comment from regular commented column.
         $tableDiff->changedColumns['comment'] = new ColumnDiff(
             'comment',
-            new Column('comment', Type::getType('integer')),
+            new Column('comment', 'integer'),
             array('comment'),
-            new Column('comment', Type::getType('integer'), array('comment' => 'Doctrine 0wnz you!'))
+            new Column('comment', 'integer', array('comment' => 'Doctrine 0wnz you!'))
         );
 
         // Change comment and change type to custom type from regular commented column.
         $tableDiff->changedColumns['`comment_quoted`'] = new ColumnDiff(
             '`comment_quoted`',
-            new Column('`comment_quoted`', Type::getType('array'), array('comment' => 'Doctrine array.')),
+            new Column('`comment_quoted`', 'array', array('comment' => 'Doctrine array.')),
             array('comment', 'type'),
-            new Column('`comment_quoted`', Type::getType('integer'), array('comment' => 'Doctrine 0wnz you!'))
+            new Column('`comment_quoted`', 'integer', array('comment' => 'Doctrine 0wnz you!'))
         );
 
         // Remove comment and change type to custom type from regular commented column.
         $tableDiff->changedColumns['create'] = new ColumnDiff(
             'create',
-            new Column('create', Type::getType('object')),
+            new Column('create', 'object'),
             array('comment', 'type'),
-            new Column('create', Type::getType('integer'), array('comment' => 'Doctrine 0wnz comments for reserved keyword columns!'))
+            new Column('create', 'integer', array('comment' => 'Doctrine 0wnz comments for reserved keyword columns!'))
         );
 
         // Add comment and change custom type to regular type from non-commented column.
         $tableDiff->changedColumns['commented_type'] = new ColumnDiff(
             'commented_type',
-            new Column('commented_type', Type::getType('integer'), array('comment' => 'foo')),
+            new Column('commented_type', 'integer', array('comment' => 'foo')),
             array('comment', 'type'),
-            new Column('commented_type', Type::getType('object'))
+            new Column('commented_type', 'object')
         );
 
         // Remove comment from commented custom type column.
         $tableDiff->changedColumns['commented_type_with_comment'] = new ColumnDiff(
             'commented_type_with_comment',
-            new Column('commented_type_with_comment', Type::getType('array')),
+            new Column('commented_type_with_comment', 'array'),
             array('comment'),
-            new Column('commented_type_with_comment', Type::getType('array'), array('comment' => 'Doctrine array type.'))
+            new Column('commented_type_with_comment', 'array', array('comment' => 'Doctrine array type.'))
         );
 
         // Change comment from comment with string literal char column.
         $tableDiff->changedColumns['comment_with_string_literal_char'] = new ColumnDiff(
             'comment_with_string_literal_char',
-            new Column('comment_with_string_literal_char', Type::getType('string'), array('comment' => "'")),
+            new Column('comment_with_string_literal_char', 'string', array('comment' => "'")),
             array('comment'),
-            new Column('comment_with_string_literal_char', Type::getType('array'), array('comment' => "O'Reilly"))
+            new Column('comment_with_string_literal_char', 'array', array('comment' => "O'Reilly"))
         );
 
-        $tableDiff->removedColumns['comment_integer_0'] = new Column('comment_integer_0', Type::getType('integer'), array('comment' => 0));
+        $tableDiff->removedColumns['comment_integer_0'] = new Column('comment_integer_0', 'integer', array('comment' => 0));
 
         $this->assertEquals(
             array(

@@ -128,7 +128,7 @@ class SQLServerSchemaManager extends AbstractSchemaManager
             'comment'       => $tableColumn['comment'] !== '' ? $tableColumn['comment'] : null,
         );
 
-        $column = new Column($tableColumn['name'], Type::getType($type), $options);
+        $column = new Column($tableColumn['name'], $type, $options);
 
         if (isset($tableColumn['collation']) && $tableColumn['collation'] !== 'NULL') {
             $column->setPlatformOption('collation', $tableColumn['collation']);

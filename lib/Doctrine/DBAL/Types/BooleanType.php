@@ -31,25 +31,25 @@ class BooleanType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getBooleanTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getBooleanTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
-        return $platform->convertBooleansToDatabaseValue($value);
+        return $this->platform->convertBooleansToDatabaseValue($value);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
-        return $platform->convertFromBoolean($value);
+        return $this->platform->convertFromBoolean($value);
     }
 
     /**

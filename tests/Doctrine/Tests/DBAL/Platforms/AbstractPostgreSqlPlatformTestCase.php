@@ -419,25 +419,25 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
         $tableDiff->changedColumns['dloo1'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'dloo1', new \Doctrine\DBAL\Schema\Column(
-                'dloo1', \Doctrine\DBAL\Types\Type::getType('decimal'), array('precision' => 16, 'scale' => 6)
+                'dloo1', 'decimal', array('precision' => 16, 'scale' => 6)
             ),
             array('precision')
         );
         $tableDiff->changedColumns['dloo2'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'dloo2', new \Doctrine\DBAL\Schema\Column(
-                'dloo2', \Doctrine\DBAL\Types\Type::getType('decimal'), array('precision' => 10, 'scale' => 4)
+                'dloo2', 'decimal', array('precision' => 10, 'scale' => 4)
             ),
             array('scale')
         );
         $tableDiff->changedColumns['dloo3'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'dloo3', new \Doctrine\DBAL\Schema\Column(
-                'dloo3', \Doctrine\DBAL\Types\Type::getType('decimal'), array('precision' => 10, 'scale' => 6)
+                'dloo3', 'decimal', array('precision' => 10, 'scale' => 6)
             ),
             array()
         );
         $tableDiff->changedColumns['dloo4'] = new \Doctrine\DBAL\Schema\ColumnDiff(
             'dloo4', new \Doctrine\DBAL\Schema\Column(
-                'dloo4', \Doctrine\DBAL\Types\Type::getType('decimal'), array('precision' => 16, 'scale' => 8)
+                'dloo4', 'decimal', array('precision' => 16, 'scale' => 8)
             ),
             array('precision', 'scale')
         );
@@ -745,8 +745,8 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
      */
     public function testAltersTableColumnCommentWithExplicitlyQuotedIdentifiers()
     {
-        $table1 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'))));
-        $table2 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'), array('comment' => 'baz'))));
+        $table1 = new Table('"foo"', array(new Column('"bar"', 'integer')));
+        $table2 = new Table('"foo"', array(new Column('"bar"', 'integer', array('comment' => 'baz'))));
 
         $comparator = new Comparator();
 

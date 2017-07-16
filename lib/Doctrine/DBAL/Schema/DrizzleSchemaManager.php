@@ -51,7 +51,7 @@ class DrizzleSchemaManager extends AbstractSchemaManager
                 : null,
         );
 
-        $column = new Column($tableColumn['COLUMN_NAME'], Type::getType($type), $options);
+        $column = new Column($tableColumn['COLUMN_NAME'], $type, $options);
 
         if ( ! empty($tableColumn['COLLATION_NAME'])) {
             $column->setPlatformOption('collation', $tableColumn['COLLATION_NAME']);

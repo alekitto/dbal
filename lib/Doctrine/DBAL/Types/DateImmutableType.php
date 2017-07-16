@@ -40,14 +40,14 @@ class DateImmutableType extends DateType
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return $value;
         }
 
         if ($value instanceof \DateTimeImmutable) {
-            return $value->format($platform->getDateFormatString());
+            return $value->format($this->platform->getDateFormatString());
         }
 
         throw ConversionException::conversionFailedInvalidType(
@@ -60,19 +60,19 @@ class DateImmutableType extends DateType
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value instanceof \DateTimeImmutable) {
             return $value;
         }
 
-        $dateTime = \DateTimeImmutable::createFromFormat('!' . $platform->getDateFormatString(), $value);
+        $dateTime = \DateTimeImmutable::createFromFormat('!' . $this->platform->getDateFormatString(), $value);
 
         if (! $dateTime) {
             throw ConversionException::conversionFailedFormat(
                 $value,
                 $this->getName(),
-                $platform->getDateFormatString()
+                $this->platform->getDateFormatString()
             );
         }
 
@@ -82,7 +82,7 @@ class DateImmutableType extends DateType
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
         return true;
     }

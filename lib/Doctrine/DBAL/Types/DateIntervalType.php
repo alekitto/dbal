@@ -20,18 +20,18 @@ class DateIntervalType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
         $fieldDeclaration['length'] = 20;
         $fieldDeclaration['fixed']  = true;
 
-        return $platform->getVarcharTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getVarcharTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return null;
@@ -49,7 +49,7 @@ class DateIntervalType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value instanceof \DateInterval) {
             return $value;
@@ -65,7 +65,7 @@ class DateIntervalType extends Type
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
         return true;
     }

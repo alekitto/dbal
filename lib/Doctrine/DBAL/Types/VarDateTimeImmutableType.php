@@ -40,14 +40,14 @@ class VarDateTimeImmutableType extends VarDateTimeType
     /**
      * {@inheritdoc}
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value)
     {
         if (null === $value) {
             return $value;
         }
 
         if ($value instanceof \DateTimeImmutable) {
-            return $value->format($platform->getDateTimeFormatString());
+            return $value->format($this->platform->getDateTimeFormatString());
         }
 
         throw ConversionException::conversionFailedInvalidType(
@@ -60,7 +60,7 @@ class VarDateTimeImmutableType extends VarDateTimeType
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         if ($value === null || $value instanceof \DateTimeImmutable) {
             return $value;
@@ -78,7 +78,7 @@ class VarDateTimeImmutableType extends VarDateTimeType
     /**
      * {@inheritdoc}
      */
-    public function requiresSQLCommentHint(AbstractPlatform $platform)
+    public function requiresSQLCommentHint()
     {
         return true;
     }

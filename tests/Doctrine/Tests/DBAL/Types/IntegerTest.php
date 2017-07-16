@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\IntegerType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -14,17 +15,17 @@ class IntegerTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->_platform = new MockPlatform();
-        $this->_type = Type::getType('integer');
+        $this->_type = new IntegerType($this->_platform);
     }
 
     public function testIntegerConvertsToPHPValue()
     {
-        $this->assertInternalType('integer', $this->_type->convertToPHPValue('1', $this->_platform));
-        $this->assertInternalType('integer', $this->_type->convertToPHPValue('0', $this->_platform));
+        $this->assertInternalType('integer', $this->_type->convertToPHPValue('1'));
+        $this->assertInternalType('integer', $this->_type->convertToPHPValue('0'));
     }
 
     public function testIntegerNullConvertsToPHPValue()
     {
-        $this->assertNull($this->_type->convertToPHPValue(null, $this->_platform));
+        $this->assertNull($this->_type->convertToPHPValue(null));
     }
 }

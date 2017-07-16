@@ -312,7 +312,7 @@ class Table extends AbstractAsset
      */
     public function addColumn($columnName, $typeName, array $options=array())
     {
-        $column = new Column($columnName, Type::getType($typeName), $options);
+        $column = new Column($columnName, $typeName, $options);
 
         $this->_addColumn($column);
 

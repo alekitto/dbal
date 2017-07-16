@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\BinaryType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -23,7 +24,7 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->platform = new MockPlatform();
-        $this->type     = Type::getType('binary');
+        $this->type     = new BinaryType($this->platform);
     }
 
     public function testReturnsBindingType()
@@ -38,18 +39,18 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
 
     public function testReturnsSQLDeclaration()
     {
-        $this->assertSame('DUMMYBINARY', $this->type->getSQLDeclaration(array(), $this->platform));
+        $this->assertSame('DUMMYBINARY', $this->type->getSQLDeclaration(array()));
     }
 
     public function testBinaryNullConvertsToPHPValue()
     {
-        $this->assertNull($this->type->convertToPHPValue(null, $this->platform));
+        $this->assertNull($this->type->convertToPHPValue(null));
     }
 
     public function testBinaryStringConvertsToPHPValue()
     {
         $databaseValue = 'binary string';
-        $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
+        $phpValue      = $this->type->convertToPHPValue($databaseValue);
 
         $this->assertInternalType('resource', $phpValue);
         $this->assertEquals($databaseValue, stream_get_contents($phpValue));
@@ -58,7 +59,7 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
     public function testBinaryResourceConvertsToPHPValue()
     {
         $databaseValue = fopen('data://text/plain;base64,' . base64_encode('binary string'), 'r');
-        $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
+        $phpValue      = $this->type->convertToPHPValue($databaseValue);
 
         $this->assertSame($databaseValue, $phpValue);
     }
@@ -69,7 +70,7 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
      */
     public function testThrowsConversionExceptionOnInvalidDatabaseValue($value)
     {
-        $this->type->convertToPHPValue($value, $this->platform);
+        $this->type->convertToPHPValue($value);
     }
 
     public function getInvalidDatabaseValues()

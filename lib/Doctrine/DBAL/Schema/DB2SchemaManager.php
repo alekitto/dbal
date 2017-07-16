@@ -110,7 +110,7 @@ class DB2SchemaManager extends AbstractSchemaManager
             $options['precision'] = $precision;
         }
 
-        return new Column($tableColumn['colname'], \Doctrine\DBAL\Types\Type::getType($type), $options);
+        return new Column($tableColumn['colname'], $type, $options);
     }
 
     /**

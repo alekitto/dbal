@@ -40,9 +40,9 @@ class BigIntType extends Type
     /**
      * {@inheritdoc}
      */
-    public function getSQLDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSQLDeclaration(array $fieldDeclaration)
     {
-        return $platform->getBigIntTypeDeclarationSQL($fieldDeclaration);
+        return $this->platform->getBigIntTypeDeclarationSQL($fieldDeclaration);
     }
 
     /**
@@ -56,7 +56,7 @@ class BigIntType extends Type
     /**
      * {@inheritdoc}
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value)
     {
         return (null === $value) ? null : (string) $value;
     }

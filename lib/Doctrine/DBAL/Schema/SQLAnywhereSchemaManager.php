@@ -134,7 +134,7 @@ class SQLAnywhereSchemaManager extends AbstractSchemaManager
 
         return new Column(
             $tableColumn['column_name'],
-            Type::getType($type),
+            $type,
             array(
                 'length'        => $type == 'string' ? $tableColumn['length'] : null,
                 'precision'     => $precision,

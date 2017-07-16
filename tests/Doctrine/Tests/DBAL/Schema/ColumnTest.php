@@ -12,7 +12,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
         $column = $this->createColumn();
 
         $this->assertEquals("foo", $column->getName());
-        $this->assertSame(Type::getType('string'), $column->getType());
+        $this->assertSame('string', $column->getType());
 
         $this->assertEquals(200, $column->getLength());
         $this->assertEquals(5, $column->getPrecision());
@@ -37,7 +37,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
     {
         $expected = array(
             'name' => 'foo',
-            'type' => Type::getType('string'),
+            'type' => 'string',
             'default' => 'baz',
             'notnull' => false,
             'length' => 200,
@@ -72,7 +72,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
             'customSchemaOptions' => array('bar' => 'baz'),
         );
 
-        $string = Type::getType('string');
+        $string = 'string';
         return new Column("foo", $string, $options);
     }
 
@@ -82,7 +82,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
      */
     public function testQuotedColumnName()
     {
-        $string = Type::getType('string');
+        $string = 'string';
         $column = new Column("`bar`", $string, array());
 
         $mysqlPlatform = new \Doctrine\DBAL\Platforms\MySqlPlatform();
@@ -106,7 +106,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
      */
     public function testIsQuoted($columnName, $isQuoted)
     {
-        $type = Type::getType('string');
+        $type = 'string';
         $column = new Column($columnName, $type);
 
         $this->assertSame($isQuoted, $column->isQuoted());
@@ -127,7 +127,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
      */
     public function testColumnComment()
     {
-        $column = new Column("bar", Type::getType('string'));
+        $column = new Column("bar", 'string');
         $this->assertNull($column->getComment());
 
         $column->setComment("foo");

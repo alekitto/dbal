@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\Types\SmallIntType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
@@ -14,17 +15,17 @@ class SmallIntTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->_platform = new MockPlatform();
-        $this->_type = Type::getType('smallint');
+        $this->_type = new SmallIntType($this->_platform);
     }
 
     public function testSmallIntConvertsToPHPValue()
     {
-        $this->assertInternalType('integer', $this->_type->convertToPHPValue('1', $this->_platform));
-        $this->assertInternalType('integer', $this->_type->convertToPHPValue('0', $this->_platform));
+        $this->assertInternalType('integer', $this->_type->convertToPHPValue('1'));
+        $this->assertInternalType('integer', $this->_type->convertToPHPValue('0'));
     }
 
     public function testSmallIntNullConvertsToPHPValue()
     {
-        $this->assertNull($this->_type->convertToPHPValue(null, $this->_platform));
+        $this->assertNull($this->_type->convertToPHPValue(null));
     }
 }

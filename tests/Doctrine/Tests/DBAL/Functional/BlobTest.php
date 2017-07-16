@@ -2,6 +2,7 @@
 
 namespace Doctrine\Tests\DBAL\Functional;
 
+use Doctrine\DBAL\Types\BlobType;
 use Doctrine\DBAL\Types\Type;
 use PDO;
 
@@ -78,7 +79,8 @@ class BlobTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $this->assertEquals(1, count($rows));
         $row = array_change_key_case($rows[0], CASE_LOWER);
 
-        $blobValue = Type::getType('binary')->convertToPHPValue($row['binaryfield'], $this->_conn->getDatabasePlatform());
+        $type = new BlobType($this->_conn->getDatabasePlatform());
+        $blobValue = $type->convertToPHPValue($row['binaryfield']);
 
         $this->assertInternalType('resource', $blobValue);
         $this->assertEquals($text, stream_get_contents($blobValue));
@@ -91,7 +93,8 @@ class BlobTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $this->assertEquals(1, count($rows));
         $row = array_change_key_case($rows[0], CASE_LOWER);
 
-        $blobValue = Type::getType('blob')->convertToPHPValue($row['blobfield'], $this->_conn->getDatabasePlatform());
+        $type = new BlobType($this->_conn->getDatabasePlatform());
+        $blobValue = $type->convertToPHPValue($row['blobfield']);
 
         $this->assertInternalType('resource', $blobValue);
         $this->assertEquals($text, stream_get_contents($blobValue));

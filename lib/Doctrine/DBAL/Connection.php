@@ -164,6 +164,13 @@ class Connection implements DriverConnection
     private $platform;
 
     /**
+     * The registered type array.
+     *
+     * @var Type[]
+     */
+    private $types = array();
+
+    /**
      * The schema manager.
      *
      * @var \Doctrine\DBAL\Schema\AbstractSchemaManager
@@ -226,6 +233,7 @@ class Connection implements DriverConnection
         $this->_expr = new Query\Expression\ExpressionBuilder($this);
 
         $this->autoCommit = $config->getAutoCommit();
+        $this->initTypes();
     }
 
     /**
@@ -399,6 +407,7 @@ class Connection implements DriverConnection
         }
 
         $this->platform->setEventManager($this->_eventManager);
+        $this->platform->setConnection($this);
     }
 
     /**
@@ -1463,6 +1472,108 @@ class Connection implements DriverConnection
     }
 
     /**
+     * Adds a type to the current connection.
+     *
+     * @param Type $type
+     *
+     * @throws DBALException
+     */
+    public function addType(Type $type)
+    {
+        $name = $type->getName();
+        if (isset($this->types[$name])) {
+            throw DBALException::typeExists($name);
+        }
+
+        $this->types[ $name ] = $type;
+    }
+
+    /**
+     * Replaces a Type in types map.
+     *
+     * @param Type $type
+     */
+    public function replaceType(Type $type)
+    {
+        $this->types[ $type->getName() ] = $type;
+    }
+
+    /**
+     * Gets the Type instance by name (as returned by getName()).
+     *
+     * @param string $name
+     *
+     * @return Type
+     *
+     * @throws DBALException
+     */
+    public function getType($name)
+    {
+        if (isset($this->types[$name])) {
+            return $this->types[$name];
+        }
+
+        throw DBALException::typeNotFound($name);
+    }
+
+    /**
+     * Checks if exists support for a type.
+     *
+     * @param $name
+     *
+     * @return bool
+     */
+    public function hasType($name)
+    {
+        return isset($this->types[$name]);
+    }
+
+    /**
+     * Gets the full types map.
+     *
+     * @return Type[]
+     */
+    public function getTypesMap()
+    {
+        return $this->types;
+    }
+    
+    private function initTypes()
+    {
+        static $builtins = array(
+            Type::TARRAY => Types\ArrayType::class,
+            Type::SIMPLE_ARRAY => Types\SimpleArrayType::class,
+            Type::JSON => Types\JsonType::class,
+            Type::OBJECT => Types\ObjectType::class,
+            Type::BOOLEAN => Types\BooleanType::class,
+            Type::INTEGER => Types\IntegerType::class,
+            Type::SMALLINT => Types\SmallIntType::class,
+            Type::BIGINT => Types\BigIntType::class,
+            Type::STRING => Types\StringType::class,
+            Type::TEXT => Types\TextType::class,
+            Type::DATETIME => Types\DateTimeType::class,
+            Type::DATETIME_IMMUTABLE => Types\DateTimeImmutableType::class,
+            Type::DATETIMETZ => Types\DateTimeTzType::class,
+            Type::DATETIMETZ_IMMUTABLE => Types\DateTimeTzImmutableType::class,
+            Type::DATE => Types\DateType::class,
+            Type::DATE_IMMUTABLE => Types\DateImmutableType::class,
+            Type::TIME => Types\TimeType::class,
+            Type::TIME_IMMUTABLE => Types\TimeImmutableType::class,
+            Type::DECIMAL => Types\DecimalType::class,
+            Type::FLOAT => Types\FloatType::class,
+            Type::BINARY => Types\BinaryType::class,
+            Type::BLOB => Types\BlobType::class,
+            Type::GUID => Types\GuidType::class,
+            Type::DATEINTERVAL => Types\DateIntervalType::class,
+        );
+
+        $platform = $this->getDatabasePlatform();
+        foreach ($builtins as $builtinClass) {
+            $this->addType(new $builtinClass($platform));
+        }
+    }
+
+    /**
      * Converts a given value to its database representation according to the conversion
      * rules of a specific DBAL mapping type.
      *
@@ -1473,7 +1584,7 @@ class Connection implements DriverConnection
      */
     public function convertToDatabaseValue($value, $type)
     {
-        return Type::getType($type)->convertToDatabaseValue($value, $this->getDatabasePlatform());
+        return $this->getType($type)->convertToDatabaseValue($value);
     }
 
     /**
@@ -1487,7 +1598,7 @@ class Connection implements DriverConnection
      */
     public function convertToPHPValue($value, $type)
     {
-        return Type::getType($type)->convertToPHPValue($value, $this->getDatabasePlatform());
+        return $this->getType($type)->convertToPHPValue($value);
     }
 
     /**
@@ -1546,7 +1657,7 @@ class Connection implements DriverConnection
     private function getBindingInfo($value, $type)
     {
         if (is_string($type)) {
-            $type = Type::getType($type);
+            $type = $this->getType($type);
         }
         if ($type instanceof Type) {
             $value = $type->convertToDatabaseValue($value, $this->getDatabasePlatform());

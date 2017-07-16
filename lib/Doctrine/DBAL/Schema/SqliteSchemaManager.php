@@ -256,7 +256,7 @@ class SqliteSchemaManager extends AbstractSchemaManager
         $createSql = isset($createSql[0]['sql']) ? $createSql[0]['sql'] : '';
 
         foreach ($list as $columnName => $column) {
-            $type = $column->getType();
+            $type = $this->_conn->getType($column->getType());
 
             if ($type instanceof StringType || $type instanceof TextType) {
                 $column->setPlatformOption('collation', $this->parseColumnCollationFromSQL($columnName, $createSql) ?: 'BINARY');
@@ -268,7 +268,7 @@ class SqliteSchemaManager extends AbstractSchemaManager
                 $type = $this->extractDoctrineTypeFromComment($comment, null);
 
                 if (null !== $type) {
-                    $column->setType(Type::getType($type));
+                    $column->setType($type->getName());
 
                     $comment = $this->removeDoctrineTypeFromComment($comment, $type);
                 }
@@ -350,7 +350,7 @@ class SqliteSchemaManager extends AbstractSchemaManager
             'autoincrement' => false,
         );
 
-        return new Column($tableColumn['name'], \Doctrine\DBAL\Types\Type::getType($type), $options);
+        return new Column($tableColumn['name'], $type, $options);
     }
 
     /**

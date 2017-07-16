@@ -265,7 +265,7 @@ class SQLAzureFederationsSynchronizer extends AbstractSchemaSynchronizer
      */
     private function getFederationTypeDefaultValue()
     {
-        $federationType = Type::getType($this->shardManager->getDistributionType());
+        $federationType = $this->conn->getType($this->shardManager->getDistributionType());
 
         switch ($federationType->getName()) {
             case Type::GUID:
@@ -289,7 +289,7 @@ class SQLAzureFederationsSynchronizer extends AbstractSchemaSynchronizer
      */
     private function getCreateFederationStatement()
     {
-        $federationType = Type::getType($this->shardManager->getDistributionType());
+        $federationType = $this->conn->getType($this->shardManager->getDistributionType());
         $federationTypeSql = $federationType->getSQLDeclaration(array(), $this->conn->getDatabasePlatform());
 
         return "--Create Federation\n" .

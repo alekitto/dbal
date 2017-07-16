@@ -197,7 +197,7 @@ class MySqlSchemaManager extends AbstractSchemaManager
             $options['precision'] = $precision;
         }
 
-        $column = new Column($tableColumn['field'], Type::getType($type), $options);
+        $column = new Column($tableColumn['field'], $type, $options);
 
         if (isset($tableColumn['collation'])) {
             $column->setPlatformOption('collation', $tableColumn['collation']);

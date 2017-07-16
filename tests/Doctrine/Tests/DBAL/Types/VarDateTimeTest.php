@@ -3,6 +3,7 @@
 namespace Doctrine\Tests\DBAL\Types;
 
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\VarDateTimeType;
 use Doctrine\Tests\DBAL\Mocks\MockPlatform;
 
 class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
@@ -14,10 +15,7 @@ class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
     protected function setUp()
     {
         $this->_platform = new MockPlatform();
-        if (!Type::hasType('vardatetime')) {
-            Type::addType('vardatetime', 'Doctrine\DBAL\Types\VarDateTimeType');
-        }
-        $this->_type = Type::getType('vardatetime');
+        $this->_type = new VarDateTimeType($this->_platform);
     }
 
     public function testDateTimeConvertsToDatabaseValue()
@@ -25,7 +23,7 @@ class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
         $date = new \DateTime('1985-09-01 10:10:10');
 
         $expected = $date->format($this->_platform->getDateTimeTzFormatString());
-        $actual = $this->_type->convertToDatabaseValue($date, $this->_platform);
+        $actual = $this->_type->convertToDatabaseValue($date);
 
         $this->assertEquals($expected, $actual);
     }
@@ -33,7 +31,7 @@ class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
     public function testDateTimeConvertsToPHPValue()
     {
         // Birthday of jwage and also birthday of Doctrine. Send him a present ;)
-        $date = $this->_type->convertToPHPValue('1985-09-01 00:00:00', $this->_platform);
+        $date = $this->_type->convertToPHPValue('1985-09-01 00:00:00');
         $this->assertInstanceOf('DateTime', $date);
         $this->assertEquals('1985-09-01 00:00:00', $date->format('Y-m-d H:i:s'));
         $this->assertEquals('000000', $date->format('u'));
@@ -42,12 +40,12 @@ class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
     public function testInvalidDateTimeFormatConversion()
     {
         $this->setExpectedException('Doctrine\DBAL\Types\ConversionException');
-        $this->_type->convertToPHPValue('abcdefg', $this->_platform);
+        $this->_type->convertToPHPValue('abcdefg');
     }
 
     public function testConversionWithMicroseconds()
     {
-        $date = $this->_type->convertToPHPValue('1985-09-01 00:00:00.123456', $this->_platform);
+        $date = $this->_type->convertToPHPValue('1985-09-01 00:00:00.123456');
         $this->assertInstanceOf('DateTime', $date);
         $this->assertEquals('1985-09-01 00:00:00', $date->format('Y-m-d H:i:s'));
         $this->assertEquals('123456', $date->format('u'));
@@ -55,12 +53,12 @@ class VarDateTimeTest extends \Doctrine\Tests\DbalTestCase
 
     public function testNullConversion()
     {
-        $this->assertNull($this->_type->convertToPHPValue(null, $this->_platform));
+        $this->assertNull($this->_type->convertToPHPValue(null));
     }
 
     public function testConvertDateTimeToPHPValue()
     {
         $date = new \DateTime("now");
-        $this->assertSame($date, $this->_type->convertToPHPValue($date, $this->_platform));
+        $this->assertSame($date, $this->_type->convertToPHPValue($date));
     }
 }

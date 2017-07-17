@@ -58,6 +58,33 @@ abstract class Type
     const FLOAT = 'float';
     const GUID = 'guid';
     const DATEINTERVAL = 'dateinterval';
+    
+    const BUILTIN_TYPES = array(
+        Type::TARRAY => ArrayType::class,
+        Type::SIMPLE_ARRAY => SimpleArrayType::class,
+        Type::JSON => JsonType::class,
+        Type::OBJECT => ObjectType::class,
+        Type::BOOLEAN => BooleanType::class,
+        Type::INTEGER => IntegerType::class,
+        Type::SMALLINT => SmallIntType::class,
+        Type::BIGINT => BigIntType::class,
+        Type::STRING => StringType::class,
+        Type::TEXT => TextType::class,
+        Type::DATETIME => DateTimeType::class,
+        Type::DATETIME_IMMUTABLE => DateTimeImmutableType::class,
+        Type::DATETIMETZ => DateTimeTzType::class,
+        Type::DATETIMETZ_IMMUTABLE => DateTimeTzImmutableType::class,
+        Type::DATE => DateType::class,
+        Type::DATE_IMMUTABLE => DateImmutableType::class,
+        Type::TIME => TimeType::class,
+        Type::TIME_IMMUTABLE => TimeImmutableType::class,
+        Type::DECIMAL => DecimalType::class,
+        Type::FLOAT => FloatType::class,
+        Type::BINARY => BinaryType::class,
+        Type::BLOB => BlobType::class,
+        Type::GUID => GuidType::class,
+        Type::DATEINTERVAL => DateIntervalType::class,
+    );
 
     /**
      * @var AbstractPlatform

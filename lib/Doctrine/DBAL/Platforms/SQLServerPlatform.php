@@ -27,6 +27,7 @@ use Doctrine\DBAL\Schema\TableDiff;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Type;
 
 /**
  * The SQLServerPlatform provides the behavior, features and SQL dialect of the
@@ -1542,15 +1543,15 @@ class SQLServerPlatform extends AbstractPlatform
             return " DEFAULT '" . $field['default'] . "'";
         }
 
-        if (in_array((string) $field['type'], array('Integer', 'BigInt', 'SmallInt'))) {
+        if (in_array($field['type'], array(Type::INTEGER, Type::BIGINT, Type::SMALLINT))) {
             return " DEFAULT " . $field['default'];
         }
 
-        if (in_array((string) $field['type'], array('DateTime', 'DateTimeTz')) && $field['default'] == $this->getCurrentTimestampSQL()) {
+        if (in_array($field['type'], array(Type::DATETIME, Type::DATETIMETZ)) && $field['default'] == $this->getCurrentTimestampSQL()) {
             return " DEFAULT " . $this->getCurrentTimestampSQL();
         }
 
-        if ((string) $field['type'] == 'Boolean') {
+        if ($field['type'] === Type::BOOLEAN) {
             return " DEFAULT '" . $this->convertBooleans($field['default']) . "'";
         }
 
@@ -1578,7 +1579,7 @@ class SQLServerPlatform extends AbstractPlatform
             $check = (isset($field['check']) && $field['check']) ?
                 ' ' . $field['check'] : '';
 
-            $typeDecl = $field['type']->getSQLDeclaration($field, $this);
+            $typeDecl = $this->_connection->getType($field['type'])->getSQLDeclaration($field);
             $columnDef = $typeDecl . $collation . $notnull . $unique . $check;
         }
 

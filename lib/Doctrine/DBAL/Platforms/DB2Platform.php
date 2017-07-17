@@ -655,7 +655,7 @@ class DB2Platform extends AbstractPlatform
             $columnDiff->hasChanged('scale') ||
             $columnDiff->hasChanged('fixed')
         ) {
-            $clauses[] = $alterClause . ' SET DATA TYPE ' . $column['type']->getSQLDeclaration($column, $this);
+            $clauses[] = $alterClause . ' SET DATA TYPE ' . $this->_connection->getType($column['type'])->getSQLDeclaration($column);
         }
 
         if ($columnDiff->hasChanged('notnull')) {
@@ -734,7 +734,7 @@ class DB2Platform extends AbstractPlatform
         }
 
         if (isset($field['version']) && $field['version']) {
-            if ((string) $field['type'] != "DateTime") {
+            if ($field['type'] != Type::DATETIME) {
                 $field['default'] = "1";
             }
         }

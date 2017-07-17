@@ -444,8 +444,8 @@ class Comparator
             $changedProperties[] = 'default';
         }
 
-        if (($properties1['type'] instanceof Types\StringType && ! $properties1['type'] instanceof Types\GuidType) ||
-            $properties1['type'] instanceof Types\BinaryType
+        if ((Types\Type::STRING === $properties1['type'] && Types\Type::GUID !== $properties1['type']) ||
+            Types\Type::BINARY === $properties1['type']
         ) {
             // check if value of length is set at all, default value assumed otherwise.
             $length1 = $properties1['length'] ?: 255;
@@ -457,7 +457,7 @@ class Comparator
             if ($properties1['fixed'] != $properties2['fixed']) {
                 $changedProperties[] = 'fixed';
             }
-        } elseif ($properties1['type'] instanceof Types\DecimalType) {
+        } elseif (Types\Type::DECIMAL === $properties1['type']) {
             if (($properties1['precision'] ?: 10) != ($properties2['precision'] ?: 10)) {
                 $changedProperties[] = 'precision';
             }

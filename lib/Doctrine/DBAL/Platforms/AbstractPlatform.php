@@ -2301,15 +2301,15 @@ abstract class AbstractPlatform
         if (isset($field['default'])) {
             $default = " DEFAULT '".$field['default']."'";
             if (isset($field['type'])) {
-                if (in_array((string) $field['type'], array("Integer", "BigInt", "SmallInt"))) {
+                if (in_array($field['type'], array(Type::INTEGER, Type::BIGINT, Type::SMALLINT))) {
                     $default = " DEFAULT ".$field['default'];
-                } elseif (in_array((string) $field['type'], array('DateTime', 'DateTimeTz')) && $field['default'] == $this->getCurrentTimestampSQL()) {
+                } elseif (in_array($field['type'], array(Type::DATETIME, Type::DATETIMETZ)) && $field['default'] == $this->getCurrentTimestampSQL()) {
                     $default = " DEFAULT ".$this->getCurrentTimestampSQL();
-                } elseif ((string) $field['type'] == 'Time' && $field['default'] == $this->getCurrentTimeSQL()) {
+                } elseif ($field['type'] == Type::TIME && $field['default'] == $this->getCurrentTimeSQL()) {
                     $default = " DEFAULT ".$this->getCurrentTimeSQL();
-                } elseif ((string) $field['type'] == 'Date' && $field['default'] == $this->getCurrentDateSQL()) {
+                } elseif ($field['type'] == Type::DATE && $field['default'] == $this->getCurrentDateSQL()) {
                     $default = " DEFAULT ".$this->getCurrentDateSQL();
-                } elseif ((string) $field['type'] == 'Boolean') {
+                } elseif ($field['type'] == Type::BOOLEAN) {
                     $default = " DEFAULT '" . $this->convertBooleans($field['default']) . "'";
                 }
             }

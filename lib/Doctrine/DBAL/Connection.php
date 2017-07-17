@@ -1537,38 +1537,11 @@ class Connection implements DriverConnection
     {
         return $this->types;
     }
-    
+
     private function initTypes()
     {
-        static $builtins = array(
-            Type::TARRAY => Types\ArrayType::class,
-            Type::SIMPLE_ARRAY => Types\SimpleArrayType::class,
-            Type::JSON => Types\JsonType::class,
-            Type::OBJECT => Types\ObjectType::class,
-            Type::BOOLEAN => Types\BooleanType::class,
-            Type::INTEGER => Types\IntegerType::class,
-            Type::SMALLINT => Types\SmallIntType::class,
-            Type::BIGINT => Types\BigIntType::class,
-            Type::STRING => Types\StringType::class,
-            Type::TEXT => Types\TextType::class,
-            Type::DATETIME => Types\DateTimeType::class,
-            Type::DATETIME_IMMUTABLE => Types\DateTimeImmutableType::class,
-            Type::DATETIMETZ => Types\DateTimeTzType::class,
-            Type::DATETIMETZ_IMMUTABLE => Types\DateTimeTzImmutableType::class,
-            Type::DATE => Types\DateType::class,
-            Type::DATE_IMMUTABLE => Types\DateImmutableType::class,
-            Type::TIME => Types\TimeType::class,
-            Type::TIME_IMMUTABLE => Types\TimeImmutableType::class,
-            Type::DECIMAL => Types\DecimalType::class,
-            Type::FLOAT => Types\FloatType::class,
-            Type::BINARY => Types\BinaryType::class,
-            Type::BLOB => Types\BlobType::class,
-            Type::GUID => Types\GuidType::class,
-            Type::DATEINTERVAL => Types\DateIntervalType::class,
-        );
-
         $platform = $this->getDatabasePlatform();
-        foreach ($builtins as $builtinClass) {
+        foreach (Type::BUILTIN_TYPES as $builtinClass) {
             $this->addType(new $builtinClass($platform));
         }
     }

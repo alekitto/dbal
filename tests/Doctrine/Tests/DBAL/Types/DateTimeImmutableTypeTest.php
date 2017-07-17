@@ -22,7 +22,7 @@ class DateTimeImmutableTypeTest extends \PHPUnit_Framework_TestCase
     protected function setUp()
     {
         $this->platform = $this->prophesize(AbstractPlatform::class);
-        $this->type = new DateTimeImmutableType($this->platform);
+        $this->type = new DateTimeImmutableType($this->platform->reveal());
     }
 
     public function testFactoryCreatesCorrectType()

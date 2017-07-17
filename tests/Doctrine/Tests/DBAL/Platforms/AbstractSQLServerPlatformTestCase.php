@@ -969,16 +969,16 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
         $tableDiff->fromTable = $table;
         $tableDiff->changedColumns['col_int'] = new ColumnDiff(
             'col_int',
-            new Column('col_int', Type::getType('integer'), array('default' => 666)),
+            new Column('col_int', 'integer', array('default' => 666)),
             array('type'),
-            new Column('col_int', Type::getType('smallint'), array('default' => 666))
+            new Column('col_int', 'smallint', array('default' => 666))
         );
 
         $tableDiff->changedColumns['col_string'] = new ColumnDiff(
             'col_string',
-            new Column('col_string', Type::getType('string'), array('default' => 666, 'fixed' => true)),
+            new Column('col_string', 'string', array('default' => 666, 'fixed' => true)),
             array('fixed'),
-            new Column('col_string', Type::getType('string'), array('default' => 666))
+            new Column('col_string', 'string', array('default' => 666))
         );
 
         $expected = $this->_platform->getAlterTableSQL($tableDiff);
@@ -1090,7 +1090,7 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
         return array(
             // Unquoted identifiers non-reserved keywords.
             array(
-                new Table('mytable', array(new Column('mycolumn', Type::getType('string'), array('default' => 'foo')))),
+                new Table('mytable', array(new Column('mycolumn', 'string', array('default' => 'foo')))),
                 array(
                     'CREATE TABLE mytable (mycolumn NVARCHAR(255) NOT NULL)',
                     "ALTER TABLE mytable ADD CONSTRAINT DF_6B2BD609_9BADD926 DEFAULT 'foo' FOR mycolumn"
@@ -1098,7 +1098,7 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             ),
             // Quoted identifiers reserved keywords.
             array(
-                new Table('`mytable`', array(new Column('`mycolumn`', Type::getType('string'), array('default' => 'foo')))),
+                new Table('`mytable`', array(new Column('`mycolumn`', 'string', array('default' => 'foo')))),
                 array(
                     'CREATE TABLE [mytable] ([mycolumn] NVARCHAR(255) NOT NULL)',
                     "ALTER TABLE [mytable] ADD CONSTRAINT DF_6B2BD609_9BADD926 DEFAULT 'foo' FOR [mycolumn]"
@@ -1106,7 +1106,7 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             ),
             // Unquoted identifiers reserved keywords.
             array(
-                new Table('table', array(new Column('select', Type::getType('string'), array('default' => 'foo')))),
+                new Table('table', array(new Column('select', 'string', array('default' => 'foo')))),
                 array(
                     'CREATE TABLE [table] ([select] NVARCHAR(255) NOT NULL)',
                     "ALTER TABLE [table] ADD CONSTRAINT DF_F6298F46_4BF2EAC0 DEFAULT 'foo' FOR [select]"
@@ -1114,7 +1114,7 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             ),
             // Quoted identifiers reserved keywords.
             array(
-                new Table('`table`', array(new Column('`select`', Type::getType('string'), array('default' => 'foo')))),
+                new Table('`table`', array(new Column('`select`', 'string', array('default' => 'foo')))),
                 array(
                     'CREATE TABLE [table] ([select] NVARCHAR(255) NOT NULL)',
                     "ALTER TABLE [table] ADD CONSTRAINT DF_F6298F46_4BF2EAC0 DEFAULT 'foo' FOR [select]"
@@ -1139,16 +1139,16 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             array(
                 new TableDiff(
                     'mytable',
-                    array(new Column('addcolumn', Type::getType('string'), array('default' => 'foo'))),
+                    array(new Column('addcolumn', 'string', array('default' => 'foo'))),
                     array(
                         'mycolumn' => new ColumnDiff(
                             'mycolumn',
-                            new Column('mycolumn', Type::getType('string'), array('default' => 'bar')),
+                            new Column('mycolumn', 'string', array('default' => 'bar')),
                             array('default'),
-                            new Column('mycolumn', Type::getType('string'), array('default' => 'foo'))
+                            new Column('mycolumn', 'string', array('default' => 'foo'))
                         )
                     ),
-                    array(new Column('removecolumn', Type::getType('string'), array('default' => 'foo')))
+                    array(new Column('removecolumn', 'string', array('default' => 'foo')))
                 ),
                 array(
                     'ALTER TABLE mytable ADD addcolumn NVARCHAR(255) NOT NULL',
@@ -1163,16 +1163,16 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             array(
                 new TableDiff(
                     '`mytable`',
-                    array(new Column('`addcolumn`', Type::getType('string'), array('default' => 'foo'))),
+                    array(new Column('`addcolumn`', 'string', array('default' => 'foo'))),
                     array(
                         'mycolumn' => new ColumnDiff(
                             '`mycolumn`',
-                            new Column('`mycolumn`', Type::getType('string'), array('default' => 'bar')),
+                            new Column('`mycolumn`', 'string', array('default' => 'bar')),
                             array('default'),
-                            new Column('`mycolumn`', Type::getType('string'), array('default' => 'foo'))
+                            new Column('`mycolumn`', 'string', array('default' => 'foo'))
                         )
                     ),
-                    array(new Column('`removecolumn`', Type::getType('string'), array('default' => 'foo')))
+                    array(new Column('`removecolumn`', 'string', array('default' => 'foo')))
                 ),
                 array(
                     'ALTER TABLE [mytable] ADD [addcolumn] NVARCHAR(255) NOT NULL',
@@ -1187,16 +1187,16 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             array(
                 new TableDiff(
                     'table',
-                    array(new Column('add', Type::getType('string'), array('default' => 'foo'))),
+                    array(new Column('add', 'string', array('default' => 'foo'))),
                     array(
                         'select' => new ColumnDiff(
                             'select',
-                            new Column('select', Type::getType('string'), array('default' => 'bar')),
+                            new Column('select', 'string', array('default' => 'bar')),
                             array('default'),
-                            new Column('select', Type::getType('string'), array('default' => 'foo'))
+                            new Column('select', 'string', array('default' => 'foo'))
                         )
                     ),
-                    array(new Column('drop', Type::getType('string'), array('default' => 'foo')))
+                    array(new Column('drop', 'string', array('default' => 'foo')))
                 ),
                 array(
                     'ALTER TABLE [table] ADD [add] NVARCHAR(255) NOT NULL',
@@ -1211,16 +1211,16 @@ abstract class AbstractSQLServerPlatformTestCase extends AbstractPlatformTestCas
             array(
                 new TableDiff(
                     '`table`',
-                    array(new Column('`add`', Type::getType('string'), array('default' => 'foo'))),
+                    array(new Column('`add`', 'string', array('default' => 'foo'))),
                     array(
                         'select' => new ColumnDiff(
                             '`select`',
-                            new Column('`select`', Type::getType('string'), array('default' => 'bar')),
+                            new Column('`select`', 'string', array('default' => 'bar')),
                             array('default'),
-                            new Column('`select`', Type::getType('string'), array('default' => 'foo'))
+                            new Column('`select`', 'string', array('default' => 'foo'))
                         )
                     ),
-                    array(new Column('`drop`', Type::getType('string'), array('default' => 'foo')))
+                    array(new Column('`drop`', 'string', array('default' => 'foo')))
                 ),
                 array(
                     'ALTER TABLE [table] ADD [add] NVARCHAR(255) NOT NULL',

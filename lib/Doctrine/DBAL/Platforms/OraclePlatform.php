@@ -902,7 +902,7 @@ END;';
             $check = (isset($field['check']) && $field['check']) ?
                 ' ' . $field['check'] : '';
 
-            $typeDecl = $field['type']->getSQLDeclaration($field, $this);
+            $typeDecl = $this->_connection->getType($field['type'])->getSQLDeclaration($field);
             $columnDef = $typeDecl . $default . $notnull . $unique . $check;
         }
 

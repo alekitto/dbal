@@ -26,6 +26,7 @@ use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\BlobType;
 use Doctrine\DBAL\Types\TextType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Types\Type;
 
 /**
  * The MySqlPlatform provides the behavior, features and SQL dialect of the
@@ -465,7 +466,7 @@ class MySqlPlatform extends AbstractPlatform
     public function getDefaultValueDeclarationSQL($field)
     {
         // Unset the default value if the given field definition does not allow default values.
-        if ($field['type'] instanceof TextType || $field['type'] instanceof BlobType) {
+        if (Type::TEXT === $field['type'] || Type::BLOB === $field['type']) {
             $field['default'] = null;
         }
 

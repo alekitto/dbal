@@ -3,8 +3,13 @@
 namespace Doctrine\Tests\DBAL\Schema;
 
 use Doctrine\DBAL\Configuration;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver;
+use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
 use Doctrine\DBAL\Schema\PostgreSqlSchemaManager;
 use Doctrine\DBAL\Schema\Sequence;
+use Prophecy\Argument;
+use Prophecy\Prophecy\ObjectProphecy;
 
 class PostgreSQLSchemaManagerTest extends \PHPUnit_Framework_TestCase
 {
@@ -14,18 +19,16 @@ class PostgreSQLSchemaManagerTest extends \PHPUnit_Framework_TestCase
     private $schemaManager;
 
     /**
-     * @var \Doctrine\DBAL\Connection|\PHPUnit_Framework_MockObject_MockObject
+     * @var \Doctrine\DBAL\Connection|ObjectProphecy
      */
     private $connection;
 
     protected function setUp()
     {
-        $driverMock = $this->createMock('Doctrine\DBAL\Driver');
-        $platform = $this->createMock('Doctrine\DBAL\Platforms\PostgreSqlPlatform');
-        $this->connection = $this->getMockBuilder('Doctrine\DBAL\Connection')
-            ->setConstructorArgs(array(array('platform' => $platform), $driverMock))
-            ->getMock();
-        $this->schemaManager = new PostgreSqlSchemaManager($this->connection, $platform);
+        $platform = $this->prophesize(PostgreSqlPlatform::class);
+
+        $this->connection = $this->prophesize(Connection::class);
+        $this->schemaManager = new PostgreSqlSchemaManager($this->connection->reveal(), $platform->reveal());
     }
 
     /**
@@ -43,24 +46,14 @@ class PostgreSQLSchemaManagerTest extends \PHPUnit_Framework_TestCase
             array('relname' => 'bloo', 'schemaname' => 'bloo_schema'),
         );
 
-        $this->connection->expects($this->any())
-            ->method('getConfiguration')
-            ->will($this->returnValue($configuration));
-
-        $this->connection->expects($this->at(0))
-            ->method('fetchAll')
-            ->will($this->returnValue($sequences));
-
-        $this->connection->expects($this->at(1))
-            ->method('fetchAll')
-            ->will($this->returnValue(array(array('min_value' => 1, 'increment_by' => 1))));
-
-        $this->connection->expects($this->at(2))
-            ->method('fetchAll')
-            ->will($this->returnValue(array(array('min_value' => 2, 'increment_by' => 2))));
-
-        $this->connection->expects($this->exactly(3))
-            ->method('fetchAll');
+        $this->connection->getConfiguration()->willReturn($configuration);
+        $this->connection->fetchAll(Argument::cetera())
+            ->willReturn(
+                $sequences,
+                array(array('min_value' => 1, 'increment_by' => 1)),
+                array(array('min_value' => 2, 'increment_by' => 2))
+            )
+            ->shouldBeCalledTimes(3);
 
         $this->assertEquals(
             array(

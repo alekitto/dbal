@@ -2,6 +2,8 @@
 
 namespace Doctrine\Tests\DBAL\Schema\Visitor;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Platforms\MySqlPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaConfig;
@@ -47,7 +49,16 @@ class RemoveNamespacedAssetsTest extends \PHPUnit_Framework_TestCase
 
         $schema->visit(new RemoveNamespacedAssets());
 
-        $sql = $schema->toSql(new MySqlPlatform());
+        $platform = new MySqlPlatform();
+        $connection = new Connection(
+            array(
+                'platform' => $platform,
+            ),
+            $this->prophesize(Driver::class)->reveal()
+        );
+        $platform->setConnection($connection);
+
+        $sql = $schema->toSql($platform);
         $this->assertEquals(1, count($sql), "Just one CREATE TABLE statement, no foreign key and table to foo.bar");
     }
 
@@ -70,7 +81,16 @@ class RemoveNamespacedAssetsTest extends \PHPUnit_Framework_TestCase
 
         $schema->visit(new RemoveNamespacedAssets());
 
-        $sql = $schema->toSql(new MySqlPlatform());
+        $platform = new MySqlPlatform();
+        $connection = new Connection(
+            array(
+                'platform' => $platform,
+            ),
+            $this->prophesize(Driver::class)->reveal()
+        );
+        $platform->setConnection($connection);
+
+        $sql = $schema->toSql($platform);
         $this->assertEquals(1, count($sql), "Just one CREATE TABLE statement, no foreign key and table to foo.bar");
     }
 }

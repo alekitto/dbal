@@ -44,6 +44,7 @@ class StatementTest extends \Doctrine\Tests\DbalTestCase
         );
         $this->conn = $this->getMockBuilder('\Doctrine\DBAL\Connection')
             ->setConstructorArgs($constructorArgs)
+            ->setMethods(['getWrappedConnection', 'getConfiguration', 'getDriver'])
             ->getMock();
         $this->conn->expects($this->atLeastOnce())
                 ->method('getWrappedConnection')

@@ -2,7 +2,11 @@
 
 namespace Doctrine\Tests\DBAL\Platforms;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\Tests\DbalTestCase;
+use Prophecy\Argument;
 
 /**
  * @group DBAL-222
@@ -14,6 +18,13 @@ class SQLAzurePlatformTest extends DbalTestCase
     protected function setUp()
     {
         $this->platform = new \Doctrine\DBAL\Platforms\SQLAzurePlatform();
+
+        $connection = new Connection(
+            array('platform' => $this->platform),
+            $this->prophesize(Driver::class)->reveal()
+        );
+
+        $this->platform->setConnection($connection);
     }
 
     public function testCreateFederatedOnTable()

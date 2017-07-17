@@ -946,17 +946,17 @@ class SqlitePlatform extends AbstractPlatform
             }
 
             $field = array_merge(array('unique' => null, 'autoincrement' => null, 'default' => null), $column->toArray());
-            $type = (string) $field['type'];
+            $type = $field['type'];
             switch (true) {
                 case isset($field['columnDefinition']) || $field['autoincrement'] || $field['unique']:
-                case $type == 'DateTime' && $field['default'] == $this->getCurrentTimestampSQL():
-                case $type == 'Date' && $field['default'] == $this->getCurrentDateSQL():
-                case $type == 'Time' && $field['default'] == $this->getCurrentTimeSQL():
+                case $type === Type::DATETIME && $field['default'] == $this->getCurrentTimestampSQL():
+                case $type === Type::DATE && $field['default'] == $this->getCurrentDateSQL():
+                case $type === Type::TIME && $field['default'] == $this->getCurrentTimeSQL():
                     return false;
             }
 
             $field['name'] = $column->getQuotedName($this);
-            if (strtolower($field['type']) == 'string' && $field['length'] === null) {
+            if ($field['type'] === Type::STRING && $field['length'] === null) {
                 $field['length'] = 255;
             }
 

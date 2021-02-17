@@ -249,7 +249,37 @@ mod tests {
 
         let mut statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result = statement.execute(params![]);
-        assert_eq!(result.is_ok(), false);
+        assert_eq!(result.is_ok(), true);
+    }
+
+    #[test]
+    fn can_fetch_statements() {
+        let connection = Driver::new("sqlite://:memory:").expect("Must be connected");
+
+        let mut statement = connection.prepare("SELECT 1").expect("Prepare failed");
+        statement.execute(params![]).expect("Execution succeeds");
+
+        let rows = statement.fetch_all();
+        assert_eq!(rows.is_ok(), true);
+        let rows = rows.unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
+            *rows.get(0).unwrap(),
+        );
+
+        // Re-execute
+        statement.execute(params![]).expect("Execution succeeds");
+
+        let row = statement.fetch_one().expect("Fetch one succeeds");
+        assert_eq!(
+            Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
+            row.unwrap(),
+        );
+
+        let row = statement.fetch_one().expect("Fetch one succeeds");
+        assert_eq!(row.is_none(), true);
     }
 
     #[test]

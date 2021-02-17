@@ -29,7 +29,7 @@ pub trait Statement<'s> {
 
     /// Returns the *NEXT* row of the statement if any.
     /// If the iterator has been consumed fully, [None] is returned.
-    // fn fetch_one(&'s mut self) -> Result<Option<Row>>;
+    fn fetch_one(&'s mut self) -> Result<Option<Row>>;
 
     /// Returns all the *REMAINING* rows of the statement if any.
     /// Builds and return a vector of Row objects which can be queried to get the data.

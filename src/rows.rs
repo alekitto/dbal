@@ -31,7 +31,6 @@ impl Row {
     /// Private outside dbal crate.
     pub(crate) fn new(columns: Vec<String>, values: Vec<Value>) -> Self {
         let columns = columns.clone();
-        let values = values.clone();
 
         Self { columns, values }
     }

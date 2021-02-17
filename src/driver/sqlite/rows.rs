@@ -1,35 +1,55 @@
 use super::statement::Statement;
-use crate::{Row, Value};
+use crate::{Result, Row, Value};
 use fallible_iterator::FallibleIterator;
 use rusqlite::types::ValueRef;
 use rusqlite::Column;
 
-pub struct Rows<'r> {
+pub struct Rows {
     columns: Vec<String>,
     column_count: usize,
-    rusqlite_rows: rusqlite::Rows<'r>,
+    rows: Vec<Row>,
+
+    position: usize,
 }
 
-impl<'r> Rows<'r> {
-    pub fn new<'conn>(statement: &'r mut Statement<'conn>) -> Rows<'r> {
-        let rows = statement.statement.raw_query();
+impl Rows {
+    pub fn new(statement: &mut Statement) -> Result<Rows> {
+        let mut rows = statement.statement.raw_query();
+        let column_count = rows.column_count().unwrap_or(0);
         let columns: Vec<String> = rows
             .columns()
             .unwrap_or(vec![])
             .into_iter()
             .map(|x: Column| x.name().to_string())
             .collect();
-        let column_count = rows.column_count().unwrap_or(0);
 
-        Rows {
+        let mut result = Vec::new();
+        while let Some(row) = rows.next()? {
+            let mut data_vector: Vec<Value> = Vec::new();
+            for i in 0..column_count {
+                let value = row.get_raw(i);
+                data_vector.push(match value {
+                    ValueRef::Null => Value::NULL,
+                    ValueRef::Integer(v) => Value::Int(v),
+                    ValueRef::Real(v) => Value::Float(v),
+                    ValueRef::Text(v) => Value::String(String::from_utf8(v.to_vec())?),
+                    ValueRef::Blob(v) => Value::Bytes(v.to_vec()),
+                });
+            }
+
+            result.push(Row::new(columns.clone(), data_vector));
+        }
+
+        Ok(Rows {
             columns,
             column_count,
-            rusqlite_rows: rows,
-        }
+            rows: result,
+            position: 0,
+        })
     }
 }
 
-impl<'r> FallibleIterator for Rows<'r> {
+impl FallibleIterator for Rows {
     type Item = Row;
     type Error = crate::error::Error;
 
@@ -39,25 +59,18 @@ impl<'r> FallibleIterator for Rows<'r> {
     /// implementations may choose to resume iteration, and so calling `next()`
     /// again may or may not eventually start returning [`Some(&Row)`] again at some
     /// point.
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let result = self.rusqlite_rows.next()?;
+    fn next(&mut self) -> std::result::Result<Option<Self::Item>, Self::Error> {
+        if self.position >= self.rows.len() {
+            return Ok(None);
+        }
+
+        let result = self.rows.get(self.position);
+        self.position += 1;
+
         if result.is_none() {
             return Ok(None);
         }
 
-        let row = result.unwrap();
-        let mut data_vector: Vec<Value> = Vec::new();
-        for i in 0..self.column_count {
-            let value = row.get_raw(i);
-            data_vector.push(match value {
-                ValueRef::Null => Value::NULL,
-                ValueRef::Integer(v) => Value::Int(v),
-                ValueRef::Real(v) => Value::Float(v),
-                ValueRef::Text(v) => Value::String(String::from_utf8(v.to_vec())?),
-                ValueRef::Blob(v) => Value::Bytes(v.to_vec()),
-            });
-        }
-
-        Ok(Some(Row::new(self.columns.clone(), data_vector)))
+        Ok(Some(result.unwrap().clone()))
     }
 }

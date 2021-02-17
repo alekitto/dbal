@@ -2,11 +2,13 @@ use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
 use crate::{Parameter, ParameterIndex, Result, Row, Parameters};
 use fallible_iterator::FallibleIterator;
+use crate::error::NotReadyError;
 
 pub struct Statement<'conn> {
     pub(in crate::driver::sqlite) statement: rusqlite::Statement<'conn>,
     column_count: Option<usize>,
     row_count: Option<usize>,
+    rows: Option<Rows>,
 }
 
 impl<'conn> Statement<'conn> {
@@ -17,6 +19,7 @@ impl<'conn> Statement<'conn> {
             statement: prepared,
             column_count: None,
             row_count: None,
+            rows: None,
         })
     }
 
@@ -51,12 +54,15 @@ impl<'conn, 's> crate::driver::statement::Statement<'s> for Statement<'conn> {
     fn execute(&mut self, params: Parameters) -> Result<()> {
         let params = Vec::from(params);
         self._bind_params(params)?;
+
+        self.column_count = Some(self.statement.column_count());
         self.row_count = match self.statement.raw_execute() {
             Ok(value) => Ok(Some(value)),
             Err(rusqlite::Error::ExecuteReturnedResults) => Ok(Some(0)),
             Err(err) => Err(err),
         }?;
-        self.column_count = Some(self.statement.column_count());
+
+        self.rows = Some(Rows::new(self)?);
 
         Ok(())
     }
@@ -68,9 +74,23 @@ impl<'conn, 's> crate::driver::statement::Statement<'s> for Statement<'conn> {
         }
     }
 
+    fn fetch_one(&mut self) -> Result<Option<Row>> {
+        if self.rows.is_none() {
+            return Err(crate::error::Error::from(NotReadyError {}));
+        }
+
+        let rows = self.rows.as_mut().unwrap();
+        Ok(rows.next()?)
+    }
+
     fn fetch_all(&mut self) -> Result<Vec<Row>> {
+        if self.rows.is_none() {
+            return Err(crate::error::Error::from(NotReadyError {}));
+        }
+
         let mut result = Vec::new();
-        let mut rows = Rows::new(self);
+        let rows = self.rows.as_mut().unwrap();
+
         while let Some(row) = rows.next()? {
             result.push(row);
         }

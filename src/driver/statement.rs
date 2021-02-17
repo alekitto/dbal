@@ -1,4 +1,4 @@
-use crate::{Parameter, ParameterIndex, Result, Row};
+use crate::{Parameter, ParameterIndex, Result, Row, Parameters};
 
 pub trait Statement<'s> {
     /// Binds a value to a corresponding named or positional placeholder in the SQL statement
@@ -14,7 +14,7 @@ pub trait Statement<'s> {
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn execute(&mut self, params: Vec<(ParameterIndex, Parameter)>) -> Result<()>
+    fn execute(&mut self, params: Parameters) -> Result<()>
     where
         Self: Sized;
 
@@ -27,6 +27,10 @@ pub trait Statement<'s> {
     /// relied on for portable applications.
     fn row_count(&self) -> usize;
 
+    /// Returns the *NEXT* row of the statement if any.
+    /// If the iterator has been consumed fully, [None] is returned.
+    // fn fetch_one(&'s mut self) -> Result<Option<Row>>;
+
     /// Returns all the *REMAINING* rows of the statement if any.
     /// Builds and return a vector of Row objects which can be queried to get the data.
     ///
@@ -34,4 +38,8 @@ pub trait Statement<'s> {
     /// and returned into the vector.
     /// Consequently, if the statement has been fetched fully, an empty vector is returned.
     fn fetch_all(&'s mut self) -> Result<Vec<Row>>;
+
+    /// Returns the number of columns in the result set
+    /// If there is no result set, 0 is returned
+    fn column_count(&self) -> usize;
 }

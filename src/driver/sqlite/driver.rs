@@ -92,12 +92,12 @@ impl ConnectionOptions {
         );
 
         hashmap.insert(
-            "mod",
+            "locate",
             (
                 -1,
                 Box::new(|context: &Context| {
-                    let mut str = context.get::<String>(0)?;
-                    let substr = context.get::<String>(1)?;
+                    let substr = context.get::<String>(0)?;
+                    let mut str = context.get::<String>(1)?;
                     let mut offset = if context.len() > 2 {
                         context.get::<i32>(2)? as usize
                     } else {
@@ -124,7 +124,9 @@ impl ConnectionOptions {
         hashmap
     }
 
-    pub fn add_user_defined_function(&self) -> () {}
+    pub fn add_user_defined_function(&mut self, name: &'static str, num_arguments: isize, func: Box<Udf>) -> () {
+        self.user_defined_functions.insert(name, (num_arguments, func));
+    }
 }
 
 pub struct Driver {
@@ -167,12 +169,12 @@ impl<'a> DbalConnection<'a, sqlite::statement::Statement<'a>> for Driver {
     }
 
     fn query<S: Into<String>>(
-        &'a mut self,
+        &'a self,
         sql: S,
         params: Parameters,
     ) -> Result<sqlite::statement::Statement<'a>> {
         let mut statement = self.prepare(sql)?;
-        statement.execute(Vec::from(params))?;
+        statement.execute(params)?;
 
         Ok(statement)
     }
@@ -212,6 +214,7 @@ mod tests {
     use crate::driver::statement::Statement;
     use std::fs::remove_file;
     use crate::{Row, Value};
+    use crate::params;
 
     #[test]
     fn can_connect() {
@@ -241,24 +244,51 @@ mod tests {
     }
 
     #[test]
+    fn can_execute_statements() {
+        let connection = Driver::new("sqlite://:memory:").expect("Must be connected");
+
+        let mut statement = connection.prepare("SELECT 1").expect("Prepare failed");
+        let result = statement.execute(params![]);
+        assert_eq!(result.is_ok(), false);
+    }
+
+    #[test]
     fn builtin_udf_should_be_added() {
-        use crate::params;
+        let connection = &mut Driver::new("sqlite://:memory:").expect("Must be connected");
 
-        let mut connection = Driver::new("sqlite://:memory:").expect("Must be connected");
         let mut statement = connection.query("SELECT sqrt(2)", params![]).expect("Query must succeed");
-
         let rows = statement.fetch_all().expect("Fetch must succeed");
-        assert_eq!(rows.len(), 1);
         assert_eq!(
             *rows.get(0).unwrap(),
             Row::new(vec!["sqrt(2)".to_string()], vec![Value::Float(std::f64::consts::SQRT_2)])
         );
 
-        panic!("{:#?}", rows);
+        let mut statement = connection.query("SELECT mod(17, 3)", params![]).expect("Query must succeed");
+        let rows = statement.fetch_all().expect("Fetch must succeed");
+        assert_eq!(
+            *rows.get(0).unwrap(),
+            Row::new(vec!["mod(17, 3)".to_string()], vec![Value::Int(2)])
+        );
 
-        // statement.unwrap();
-        // assert_eq!(statement.is_ok(), true);
-        // let statement = connection.prepare("SELECT mod(17, 3)");
-        // assert_eq!(statement.is_ok(), false);
+        let mut statement = connection.query("SELECT LOCATE('3', 'W3Schools.com') AS MatchPosition", params![]).expect("Query must succeed");
+        let rows = statement.fetch_all().expect("Fetch must succeed");
+        assert_eq!(
+            *rows.get(0).unwrap(),
+            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(2)])
+        );
+
+        let mut statement = connection.query("SELECT LOCATE('o', 'W3Schools.com', 3) AS MatchPosition", params![]).expect("Query must succeed");
+        let rows = statement.fetch_all().expect("Fetch must succeed");
+        assert_eq!(
+            *rows.get(0).unwrap(),
+            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(4)])
+        );
+
+        let mut statement = connection.query("SELECT LOCATE('3', 'W3Schools.com', 3) AS MatchPosition", params![]).expect("Query must succeed");
+        let rows = statement.fetch_all().expect("Fetch must succeed");
+        assert_eq!(
+            *rows.get(0).unwrap(),
+            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(0)])
+        );
     }
 }

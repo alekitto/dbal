@@ -1,10 +1,11 @@
 use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
-use crate::{Parameter, ParameterIndex, Result, Row};
+use crate::{Parameter, ParameterIndex, Result, Row, Parameters};
 use fallible_iterator::FallibleIterator;
 
 pub struct Statement<'conn> {
     pub(in crate::driver::sqlite) statement: rusqlite::Statement<'conn>,
+    column_count: Option<usize>,
     row_count: Option<usize>,
 }
 
@@ -14,6 +15,7 @@ impl<'conn> Statement<'conn> {
 
         Ok(Statement {
             statement: prepared,
+            column_count: None,
             row_count: None,
         })
     }
@@ -46,13 +48,15 @@ impl<'conn, 's> crate::driver::statement::Statement<'s> for Statement<'conn> {
         Ok(())
     }
 
-    fn execute(&mut self, params: Vec<(ParameterIndex, Parameter)>) -> Result<()> {
+    fn execute(&mut self, params: Parameters) -> Result<()> {
+        let params = Vec::from(params);
         self._bind_params(params)?;
         self.row_count = match self.statement.raw_execute() {
             Ok(value) => Ok(Some(value)),
             Err(rusqlite::Error::ExecuteReturnedResults) => Ok(Some(0)),
             Err(err) => Err(err),
         }?;
+        self.column_count = Some(self.statement.column_count());
 
         Ok(())
     }
@@ -72,5 +76,12 @@ impl<'conn, 's> crate::driver::statement::Statement<'s> for Statement<'conn> {
         }
 
         Ok(result)
+    }
+
+    fn column_count(&self) -> usize {
+        match &self.column_count {
+            None => 0,
+            Some(rows) => rows.clone(),
+        }
     }
 }

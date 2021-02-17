@@ -6,14 +6,6 @@ pub struct Error {
     message: String,
 }
 
-impl Error {
-    pub(crate) fn new<T: Into<String>>(message: T) -> Self {
-        Error {
-            message: message.into(),
-        }
-    }
-}
-
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)

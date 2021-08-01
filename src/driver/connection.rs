@@ -1,9 +1,11 @@
 use crate::driver::statement::StatementExecuteResult;
 use crate::{Parameters, Result};
 
-pub(in crate::driver) trait DriverConnection<T, S> {
+pub(in crate::driver) trait DriverConnection<T> {
     /// Creates a new driver connection
-    fn create(params: T) -> Result<S>;
+    fn create(params: T) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 pub trait Connection<'conn>

@@ -10,7 +10,7 @@ pub struct StatementResult {
 }
 
 impl StatementResult {
-    pub fn new(column_count: usize, rows: Rows) -> Self {
+    pub(super) fn new(column_count: usize, rows: Rows) -> Self {
         Self {
             column_count,
             rows: Arc::new(RefCell::new(rows)),

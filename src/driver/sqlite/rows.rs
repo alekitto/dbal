@@ -13,7 +13,7 @@ pub struct Rows {
 }
 
 impl Rows {
-    pub fn new(statement: &Statement) -> Result<Rows> {
+    pub(super) fn new(statement: &Statement) -> Result<Rows> {
         let mut statement = statement.statement.borrow_mut();
         let mut rows = statement.raw_query();
 
@@ -48,6 +48,14 @@ impl Rows {
             rows: result,
             position: 0,
         })
+    }
+
+    pub fn columns(&self) -> Vec<&str> {
+        self.columns.iter().map(|n| n.as_str()).collect()
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.column_count
     }
 }
 

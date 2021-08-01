@@ -4,11 +4,11 @@ use crate::driver::sqlite::statement_result::StatementResult;
 use crate::driver::statement::StatementExecuteResult;
 use crate::{Parameter, ParameterIndex, Parameters, Result};
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct Statement<'conn> {
     pub(super) statement: RefCell<rusqlite::Statement<'conn>>,
-    row_count: AtomicIsize,
+    row_count: AtomicUsize,
 }
 
 impl<'conn> Statement<'conn> {
@@ -17,7 +17,7 @@ impl<'conn> Statement<'conn> {
 
         Ok(Statement {
             statement: RefCell::new(prepared),
-            row_count: AtomicIsize::new(-1),
+            row_count: AtomicUsize::new(usize::MAX),
         })
     }
 
@@ -38,7 +38,7 @@ impl<'conn> Statement<'conn> {
             (row_count, column_count)
         };
 
-        self.row_count.store(row_count as isize, Ordering::Relaxed);
+        self.row_count.store(row_count, Ordering::Relaxed);
         let rows = Rows::new(self)?;
 
         Ok((rows, column_count))
@@ -87,6 +87,6 @@ impl<'conn> crate::driver::statement::Statement for Statement<'conn> {
     }
 
     fn row_count(&self) -> usize {
-        self.row_count.load(Ordering::Relaxed) as usize
+        self.row_count.load(Ordering::Relaxed)
     }
 }

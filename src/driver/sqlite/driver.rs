@@ -113,11 +113,7 @@ impl ConnectionOptions {
                     }
 
                     let pos = str.find(&substr);
-                    Ok(Box::new(if let Some(p) = pos {
-                        p as i32 + 1
-                    } else {
-                        0
-                    }))
+                    Ok(Box::new(if let Some(p) = pos { p as i32 + 1 } else { 0 }))
                 }),
             ),
         );
@@ -140,7 +136,7 @@ pub struct Driver {
     pub(in crate::driver::sqlite) connection: rusqlite::Connection,
 }
 
-impl DriverConnection<ConnectionOptions, Driver> for Driver {
+impl DriverConnection<ConnectionOptions> for Driver {
     fn create(params: ConnectionOptions) -> Result<Driver> {
         let connection = if params.memory {
             rusqlite::Connection::open_in_memory()
@@ -161,7 +157,7 @@ impl DriverConnection<ConnectionOptions, Driver> for Driver {
     }
 }
 
-impl<T> DriverConnection<T, Driver> for Driver
+impl<T> DriverConnection<T> for Driver
 where
     T: Into<String>,
 {

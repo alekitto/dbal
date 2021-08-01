@@ -1,14 +1,14 @@
 use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
-use crate::{Parameter, ParameterIndex, Result, Row, Parameters};
-use fallible_iterator::FallibleIterator;
-use crate::error::NotReadyError;
+use crate::driver::sqlite::statement_result::StatementResult;
+use crate::driver::statement::StatementExecuteResult;
+use crate::{Parameter, ParameterIndex, Parameters, Result};
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicIsize, Ordering};
 
 pub struct Statement<'conn> {
-    pub(in crate::driver::sqlite) statement: rusqlite::Statement<'conn>,
-    column_count: Option<usize>,
-    row_count: Option<usize>,
-    rows: Option<Rows>,
+    pub(super) statement: RefCell<rusqlite::Statement<'conn>>,
+    row_count: AtomicIsize,
 }
 
 impl<'conn> Statement<'conn> {
@@ -16,14 +16,35 @@ impl<'conn> Statement<'conn> {
         let prepared = connection.connection.prepare(sql)?;
 
         Ok(Statement {
-            statement: prepared,
-            column_count: None,
-            row_count: None,
-            rows: None,
+            statement: RefCell::new(prepared),
+            row_count: AtomicIsize::new(-1),
         })
     }
 
-    fn _bind_params(&mut self, params: Vec<(ParameterIndex, Parameter)>) -> Result<()> {
+    fn internal_execute(&self, params: Parameters<'_>) -> Result<(Rows, usize)> {
+        let params = Vec::from(params);
+        self._bind_params(params)?;
+
+        let (row_count, column_count) = {
+            let mut statement = self.statement.borrow_mut();
+            let row_count = match statement.raw_execute() {
+                Ok(value) => Ok(value),
+                Err(rusqlite::Error::ExecuteReturnedResults) => Ok(0),
+                Err(err) => Err(err),
+            }?;
+
+            let column_count = statement.column_count();
+
+            (row_count, column_count)
+        };
+
+        self.row_count.store(row_count as isize, Ordering::Relaxed);
+        let rows = Rows::new(self)?;
+
+        Ok((rows, column_count))
+    }
+
+    fn _bind_params(&self, params: Vec<(ParameterIndex, Parameter)>) -> Result<()> {
         use crate::driver::statement::Statement;
         for (idx, param) in params.into_iter() {
             let result = self.bind_value(idx, param);
@@ -36,72 +57,36 @@ impl<'conn> Statement<'conn> {
     }
 }
 
-impl<'conn, 's> crate::driver::statement::Statement<'s> for Statement<'conn> {
-    fn bind_value(&mut self, idx: ParameterIndex, value: Parameter) -> Result<()> {
+impl<'conn> crate::driver::statement::Statement for Statement<'conn> {
+    type StatementResult = super::statement_result::StatementResult;
+
+    fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
         let idx = match idx {
             ParameterIndex::Positional(i) => i as usize,
             ParameterIndex::Named(name) => self
                 .statement
+                .borrow()
                 .parameter_index(name.as_str())
                 .unwrap()
                 .unwrap(),
         };
 
-        self.statement.raw_bind_parameter(idx + 1, value)?;
+        self.statement
+            .borrow_mut()
+            .raw_bind_parameter(idx + 1, value)?;
         Ok(())
     }
 
-    fn execute(&mut self, params: Parameters) -> Result<()> {
-        let params = Vec::from(params);
-        self._bind_params(params)?;
+    fn execute(&self, params: Parameters) -> StatementExecuteResult<StatementResult> {
+        let result = self.internal_execute(params);
+        Box::pin(async move {
+            let (rows, column_count) = result?;
 
-        self.column_count = Some(self.statement.column_count());
-        self.row_count = match self.statement.raw_execute() {
-            Ok(value) => Ok(Some(value)),
-            Err(rusqlite::Error::ExecuteReturnedResults) => Ok(Some(0)),
-            Err(err) => Err(err),
-        }?;
-
-        self.rows = Some(Rows::new(self)?);
-
-        Ok(())
+            Ok(StatementResult::new(column_count, rows))
+        })
     }
 
     fn row_count(&self) -> usize {
-        match &self.row_count {
-            None => 0,
-            Some(rows) => rows.clone(),
-        }
-    }
-
-    fn fetch_one(&mut self) -> Result<Option<Row>> {
-        if self.rows.is_none() {
-            return Err(crate::error::Error::from(NotReadyError {}));
-        }
-
-        let rows = self.rows.as_mut().unwrap();
-        Ok(rows.next()?)
-    }
-
-    fn fetch_all(&mut self) -> Result<Vec<Row>> {
-        if self.rows.is_none() {
-            return Err(crate::error::Error::from(NotReadyError {}));
-        }
-
-        let mut result = Vec::new();
-        let rows = self.rows.as_mut().unwrap();
-
-        while let Some(row) = rows.next()? {
-            result.push(row);
-        }
-
-        Ok(result)
-    }
-
-    fn column_count(&self) -> usize {
-        match &self.column_count {
-            None => 0,
-            Some(rows) => rows.clone(),
-        }
+        self.row_count.load(Ordering::Relaxed) as usize
     }
 }

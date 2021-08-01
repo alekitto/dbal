@@ -9,7 +9,7 @@ pub enum ParameterIndex {
 
 impl From<String> for ParameterIndex {
     fn from(value: String) -> Self {
-        ParameterIndex::Named(value.clone())
+        ParameterIndex::Named(value)
     }
 }
 

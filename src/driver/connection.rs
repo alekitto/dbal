@@ -1,14 +1,26 @@
+use crate::driver::statement::StatementExecuteResult;
 use crate::{Parameters, Result};
 
 pub(in crate::driver) trait DriverConnection<T, S> {
     /// Creates a new driver connection
-    fn new(params: T) -> Result<S>;
+    fn create(params: T) -> Result<S>;
 }
 
-pub trait Connection<'conn, M> {
+pub trait Connection<'conn>
+where
+    <Self as Connection<'conn>>::Statement: super::statement::Statement,
+{
+    type Statement;
+    type StatementResult =
+        <<Self as Connection<'conn>>::Statement as super::statement::Statement>::StatementResult;
+
     /// Prepares a statement for execution and returns a Statement object.
-    fn prepare<S: Into<String>>(&'conn self, sql: S) -> Result<M>;
+    fn prepare<St: Into<String>>(&'conn self, sql: St) -> Result<Self::Statement>;
 
     /// Executes an SQL statement, returning a result set as a Statement object.
-    fn query<S: Into<String>>(&'conn self, sql: S, params: Parameters) -> Result<M>;
+    fn query<St: Into<String>>(
+        &'conn self,
+        sql: St,
+        params: Parameters,
+    ) -> StatementExecuteResult<Self::StatementResult>;
 }

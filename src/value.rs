@@ -1,4 +1,4 @@
-use chrono::{DateTime, TimeZone, Local};
+use chrono::{DateTime, Local, TimeZone};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
@@ -23,13 +23,10 @@ pub enum Value {
 
 impl Value {
     fn is_null(&self) -> bool {
-        match self {
-            Value::NULL => true,
-            _ => false
-        }
+        matches!(self, Value::NULL)
     }
 
-    fn is_string_eq(&self, str: &String) -> bool {
+    fn is_string_eq(&self, str: &str) -> bool {
         match self {
             Value::String(cur) => cur == str,
             _ => false,
@@ -57,9 +54,9 @@ impl Value {
         }
     }
 
-    fn is_bytes_eq(&self, val: &Vec<u8>) -> bool {
+    fn is_bytes_eq(&self, val: &[u8]) -> bool {
         match self {
-            Value::Bytes(cur) => cur.cmp(val) == Ordering::Equal,
+            Value::Bytes(cur) => cur.as_slice().cmp(val) == Ordering::Equal,
             _ => false,
         }
     }
@@ -107,10 +104,6 @@ impl PartialEq for Value {
             Value::Json(value) => other.is_json_eq(value),
             Value::Uuid(value) => other.is_uuid_eq(value),
         }
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        ! self.eq(other)
     }
 }
 
@@ -335,6 +328,6 @@ impl From<uuid::Uuid> for Value {
 impl From<&uuid::Uuid> for Value {
     #[inline]
     fn from(value: &uuid::Uuid) -> Self {
-        Value::Uuid(value.clone())
+        Value::Uuid(*value)
     }
 }

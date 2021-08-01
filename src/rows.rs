@@ -1,4 +1,4 @@
-use crate::error::OutOfBoundsError;
+use crate::error::Error;
 use crate::{Result, Value};
 use fallible_iterator::FallibleIterator;
 use std::cmp::Ordering;
@@ -16,13 +16,15 @@ pub struct Row {
 
 impl PartialEq for Row {
     fn eq(&self, other: &Self) -> bool {
-        self.columns.len() == other.columns.len() &&
-            (&self.columns).into_iter().enumerate().all(|(index, name)| name == other.columns.get(index).unwrap()) &&
-            (&self.values).into_iter().enumerate().all(|(index, value)| value == other.values.get(index).unwrap())
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        ! self.eq(other)
+        self.columns.len() == other.columns.len()
+            && (&self.columns)
+                .iter()
+                .enumerate()
+                .all(|(index, name)| name == other.columns.get(index).unwrap())
+            && (&self.values)
+                .iter()
+                .enumerate()
+                .all(|(index, value)| value == other.values.get(index).unwrap())
     }
 }
 
@@ -30,8 +32,6 @@ impl Row {
     /// Creates a new row.
     /// Private outside dbal crate.
     pub(crate) fn new(columns: Vec<String>, values: Vec<Value>) -> Self {
-        let columns = columns.clone();
-
         Self { columns, values }
     }
 
@@ -42,8 +42,8 @@ impl Row {
     pub fn get(&self, i: ColumnIndex) -> Result<&Value> {
         let i = match i {
             ColumnIndex::Name(name) => {
-                let mut result = Err(OutOfBoundsError::from(name.clone()));
-                for (i, column_name) in (&self.columns).into_iter().enumerate() {
+                let mut result = Err(Error::out_of_bounds(name.clone()));
+                for (i, column_name) in (&self.columns).iter().enumerate() {
                     if Ordering::Equal == name.cmp(column_name) {
                         result = Ok(i);
                     }
@@ -55,10 +55,10 @@ impl Row {
         }?;
 
         let result = self.values.get(i);
-        if result.is_none() {
-            Err(OutOfBoundsError::from(i).into())
+        if let Some(res) = result {
+            Ok(res)
         } else {
-            Ok(result.unwrap())
+            Err(Error::out_of_bounds(i))
         }
     }
 }
@@ -66,5 +66,4 @@ impl Row {
 /// Represents a row collection, collected from an executed statements
 /// It contains all the raw data from the executed query, being countable
 /// and iterable safely
-pub trait Rows: FallibleIterator {
-}
+pub trait Rows: FallibleIterator {}

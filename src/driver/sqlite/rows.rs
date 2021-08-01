@@ -13,12 +13,14 @@ pub struct Rows {
 }
 
 impl Rows {
-    pub fn new(statement: &mut Statement) -> Result<Rows> {
-        let mut rows = statement.statement.raw_query();
+    pub fn new(statement: &Statement) -> Result<Rows> {
+        let mut statement = statement.statement.borrow_mut();
+        let mut rows = statement.raw_query();
+
         let column_count = rows.column_count().unwrap_or(0);
         let columns: Vec<String> = rows
             .columns()
-            .unwrap_or(vec![])
+            .unwrap_or_default()
             .into_iter()
             .map(|x: Column| x.name().to_string())
             .collect();

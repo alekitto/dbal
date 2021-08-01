@@ -1,3 +1,5 @@
+#![feature(associated_type_defaults)]
+
 pub mod driver;
 pub mod error;
 mod parameter;

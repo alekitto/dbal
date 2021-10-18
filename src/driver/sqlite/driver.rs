@@ -263,8 +263,7 @@ mod tests {
             tokio_test::block_on(Driver::create("sqlite://:memory:")).expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
-        let result =
-            tokio_test::block_on(statement.execute(params![])).expect("Execution succeeds");
+        let result = tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
 
         let rows = result.fetch_all();
         assert_eq!(rows.is_ok(), true);
@@ -277,8 +276,7 @@ mod tests {
         );
 
         // Re-execute
-        let result =
-            tokio_test::block_on(statement.execute(params![])).expect("Execution succeeds");
+        let result = tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
 
         let row = result.fetch_one().expect("Fetch one succeeds");
         assert_eq!(

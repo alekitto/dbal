@@ -19,7 +19,7 @@ sqlite = ["rusqlite"]
 
 [dependencies.tokio]
 version = "1.9"
-features = ["default", "rt"]
+features = ["default", "macros", "rt"]
 optional = true
 
 [dependencies.tokio-postgres]

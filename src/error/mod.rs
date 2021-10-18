@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug)]
@@ -11,22 +12,35 @@ pub enum ErrorKind {
     UnknownError = -1,
 }
 
-#[derive(Debug)]
 pub struct Error {
     kind: ErrorKind,
     inner: Box<dyn std::error::Error + Send + Sync>,
+    backtrace: Backtrace,
 }
 
-#[derive(Debug)]
 pub struct StdError(Error);
 
 impl Display for StdError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
+        std::fmt::Display::fmt(&self.0.to_string(), f)
     }
 }
 
-impl std::error::Error for StdError {}
+impl Debug for StdError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0.to_string(), f)
+    }
+}
+
+impl std::error::Error for StdError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.inner.as_ref())
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        Some(&self.0.backtrace)
+    }
+}
 
 impl From<Error> for StdError {
     fn from(e: Error) -> Self {
@@ -42,6 +56,7 @@ impl Error {
         Error {
             kind,
             inner: error.into(),
+            backtrace: Backtrace::capture(),
         }
     }
 
@@ -76,6 +91,17 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.inner.to_string())
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}\nBacktrace:\n{}",
+            self.inner.to_string(),
+            self.backtrace.to_string()
+        )
     }
 }
 

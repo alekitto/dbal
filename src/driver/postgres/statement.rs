@@ -107,10 +107,10 @@ impl<'conn> Statement<'conn> {
         })
     }
 
-    async fn internal_execute(
+    async fn prepare_statement(
         &'conn self,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> Result<(Rows, usize)> {
+    ) -> Result<(tokio_postgres::Statement, Vec<Parameter>)> {
         let mut types = Vec::with_capacity(params.len());
         let mut raw_params = Vec::with_capacity(params.len());
         for (i, p) in params {
@@ -127,6 +127,15 @@ impl<'conn> Statement<'conn> {
             .client
             .prepare_typed(&self.sql, types.as_slice())
             .await?;
+
+        Ok((statement, raw_params))
+    }
+
+    async fn internal_query(
+        &'conn self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> Result<(Rows, usize)> {
+        let (statement, raw_params) = self.prepare_statement(params).await?;
         let row_stream = self
             .connection
             .client
@@ -135,9 +144,25 @@ impl<'conn> Statement<'conn> {
 
         let rows = Rows::new(row_stream).await?;
         let column_count = rows.column_count();
-        self.row_count.store(rows.column_count(), Ordering::SeqCst);
+        self.row_count.store(rows.len(), Ordering::SeqCst);
 
         Ok((rows, column_count))
+    }
+
+    async fn internal_execute(
+        &'conn self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> Result<usize> {
+        let (statement, raw_params) = self.prepare_statement(params).await?;
+        let affected_rows = self
+            .connection
+            .client
+            .execute_raw(&statement, raw_params)
+            .await? as usize;
+
+        self.row_count.store(affected_rows, Ordering::SeqCst);
+
+        Ok(affected_rows)
     }
 }
 
@@ -151,27 +176,37 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn execute(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
+    fn query(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
         let params = Vec::from(params);
 
         Box::pin(async move {
-            let result = self.internal_execute(params).await;
+            let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
             Ok(StatementResult::new(column_count, rows))
         })
     }
 
-    fn execute_owned(
+    fn query_owned(
         self,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> AsyncResult<'conn, Self::StatementResult> {
         Box::pin(async move {
-            let result = self.internal_execute(params).await;
+            let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
             Ok(StatementResult::new(column_count, rows))
         })
+    }
+
+    fn execute(&self, params: Parameters) -> AsyncResult<usize> {
+        let params = Vec::from(params);
+
+        Box::pin(async move { self.internal_execute(params).await })
+    }
+
+    fn execute_owned(self, params: Vec<(ParameterIndex, Parameter)>) -> AsyncResult<'conn, usize> {
+        Box::pin(async move { self.internal_execute(params).await })
     }
 
     fn row_count(&self) -> usize {

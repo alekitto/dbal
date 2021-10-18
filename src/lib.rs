@@ -1,6 +1,7 @@
 #![feature(associated_type_defaults)]
-#![feature(type_alias_impl_trait)]
+#![feature(backtrace)]
 #![feature(in_band_lifetimes)]
+#![feature(type_alias_impl_trait)]
 
 pub mod driver;
 pub mod error;

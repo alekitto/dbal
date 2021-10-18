@@ -20,11 +20,29 @@ impl<'conn> Statement<'conn> {
         })
     }
 
-    fn internal_execute(&self, params: Parameters<'_>) -> Result<(Rows, usize)> {
+    fn internal_execute(&self, params: Parameters<'_>) -> Result<usize> {
+        let params = Vec::from(params);
+        self._bind_params(params)?;
+
+        let mut statement = self.statement.borrow_mut();
+        match statement.raw_execute() {
+            Ok(size) => {
+                self.row_count.store(size, Ordering::SeqCst);
+                Ok(size)
+            }
+            Err(e) => match e {
+                rusqlite::Error::ExecuteReturnedResults => Ok(0),
+                _ => Err(e.into()),
+            },
+        }
+    }
+
+    fn internal_query(&self, params: Parameters<'_>) -> Result<(Rows, usize)> {
         let params = Vec::from(params);
         self._bind_params(params)?;
 
         let rows = Rows::new(self)?;
+        self.row_count.store(rows.len(), Ordering::SeqCst);
         let column_count = rows.column_count();
 
         Ok((rows, column_count))
@@ -63,8 +81,8 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn execute(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
-        let result = self.internal_execute(params);
+    fn query(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
+        let result = self.internal_query(params);
         Box::pin(async move {
             let (rows, column_count) = result?;
 
@@ -72,16 +90,26 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         })
     }
 
-    fn execute_owned(
+    fn query_owned(
         self,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> AsyncResult<'conn, Self::StatementResult> {
-        let result = self.internal_execute(Parameters::Vec(params));
+        let result = self.internal_query(Parameters::Vec(params));
         Box::pin(async move {
             let (rows, column_count) = result?;
 
             Ok(StatementResult::new(column_count, rows))
         })
+    }
+
+    fn execute(&self, params: Parameters) -> AsyncResult<usize> {
+        let result = self.internal_execute(params);
+        Box::pin(async move { result })
+    }
+
+    fn execute_owned(self, params: Vec<(ParameterIndex, Parameter)>) -> AsyncResult<'conn, usize> {
+        let result = self.internal_execute(Parameters::Vec(params));
+        Box::pin(async move { result })
     }
 
     fn row_count(&self) -> usize {

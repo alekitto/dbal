@@ -32,6 +32,6 @@ where
         }
 
         let statement = statement.unwrap();
-        statement.execute_owned(Vec::from(params))
+        statement.query_owned(Vec::from(params))
     }
 }

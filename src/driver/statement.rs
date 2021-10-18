@@ -12,11 +12,31 @@ pub trait Statement<'conn> {
     /// * `value` The value to bind to the parameter.
     fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()>;
 
+    /// Executes a prepared statement and returns the resulting rows.
+    ///
+    /// * `params` A vector of values with as many elements as there are bound parameters in the
+    ///            SQL statement being executed.
+    fn query(&self, params: Parameters) -> AsyncResult<Self::StatementResult>
+    where
+        Self: Sized;
+
+    /// Executes a prepared statement and returns the resulting rows.
+    /// This method consumes the statement.
+    ///
+    /// * `params` A vector of values with as many elements as there are bound parameters in the
+    ///            SQL statement being executed.
+    fn query_owned(
+        self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> AsyncResult<'conn, Self::StatementResult>
+    where
+        Self: Sized;
+
     /// Executes a prepared statement
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn execute(&self, params: Parameters) -> AsyncResult<Self::StatementResult>
+    fn execute(&self, params: Parameters) -> AsyncResult<usize>
     where
         Self: Sized;
 
@@ -25,10 +45,7 @@ pub trait Statement<'conn> {
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn execute_owned(
-        self,
-        params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Self::StatementResult>
+    fn execute_owned(self, params: Vec<(ParameterIndex, Parameter)>) -> AsyncResult<'conn, usize>
     where
         Self: Sized;
 

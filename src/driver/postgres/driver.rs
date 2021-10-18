@@ -1,23 +1,27 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::Result;
 use std::future::Future;
+use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
 use tokio_postgres::{Client, NoTls, Socket};
 
-enum SslMode {
+pub enum SslMode {
     None,
 }
 
 pub struct ConnectionOptions {
-    host: Option<String>,
-    port: Option<u16>,
-    db_name: Option<String>,
-    ssl_mode: SslMode,
-    application_name: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub user: String,
+    pub password: Option<String>,
+    pub db_name: Option<String>,
+    pub ssl_mode: SslMode,
+    pub application_name: Option<String>,
 }
 
 pub struct Driver {
     pub(super) client: Client,
+    handle: JoinHandle<()>,
 }
 
 impl Driver {
@@ -27,29 +31,34 @@ impl Driver {
         String,
         impl MakeTlsConnect<Socket, Stream = impl TlsStream + Unpin + Send>,
     ) {
-        let mut dsn = "pgsql:".to_string();
+        let mut dsn = String::new();
         if let Some(host) = options.host {
             if !host.is_empty() {
-                dsn += &format!("host={};", host);
+                dsn += &format!("host={} ", host);
             }
         }
 
         if let Some(port) = options.port {
-            dsn += &format!("port={};", port);
+            dsn += &format!("port={} ", port);
+        }
+
+        dsn += &format!("user={} ", options.user);
+        if let Some(password) = options.password {
+            dsn += &format!("password={} ", password);
         }
 
         let db_name = options.db_name.unwrap_or_else(|| "postgres".to_string());
-        dsn += &format!("dbname={};", db_name);
+        dsn += &format!("dbname={} ", db_name);
 
         // TODO ssl
 
         if let Some(application_name) = options.application_name {
             if !application_name.is_empty() {
-                dsn += &format!("application_name={};", application_name);
+                dsn += &format!("application_name={} ", application_name);
             }
         }
 
-        (dsn, NoTls)
+        (dsn.trim().to_string(), NoTls)
     }
 }
 
@@ -62,14 +71,20 @@ impl DriverConnection<ConnectionOptions> for Driver {
         async move {
             // Connect to the database.
             let (client, connection) = tokio_postgres::connect(&config, tls).await?;
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 if let Err(e) = connection.await {
                     eprintln!("connection error: {}", e);
                 }
             });
 
-            Ok(Self { client })
+            Ok(Self { client, handle })
         }
+    }
+}
+
+impl Drop for Driver {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 

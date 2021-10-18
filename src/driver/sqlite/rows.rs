@@ -50,6 +50,14 @@ impl Rows {
         })
     }
 
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn columns(&self) -> Vec<&str> {
         self.columns.iter().map(|n| n.as_str()).collect()
     }

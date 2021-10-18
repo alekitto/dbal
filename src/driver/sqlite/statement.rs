@@ -1,8 +1,7 @@
 use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
 use crate::driver::sqlite::statement_result::StatementResult;
-use crate::driver::statement::StatementExecuteResult;
-use crate::{Parameter, ParameterIndex, Parameters, Result};
+use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -25,21 +24,8 @@ impl<'conn> Statement<'conn> {
         let params = Vec::from(params);
         self._bind_params(params)?;
 
-        let (row_count, column_count) = {
-            let mut statement = self.statement.borrow_mut();
-            let row_count = match statement.raw_execute() {
-                Ok(value) => Ok(value),
-                Err(rusqlite::Error::ExecuteReturnedResults) => Ok(0),
-                Err(err) => Err(err),
-            }?;
-
-            let column_count = statement.column_count();
-
-            (row_count, column_count)
-        };
-
-        self.row_count.store(row_count, Ordering::Relaxed);
         let rows = Rows::new(self)?;
+        let column_count = rows.column_count();
 
         Ok((rows, column_count))
     }
@@ -57,7 +43,7 @@ impl<'conn> Statement<'conn> {
     }
 }
 
-impl<'conn> crate::driver::statement::Statement for Statement<'conn> {
+impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     type StatementResult = super::statement_result::StatementResult;
 
     fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
@@ -77,7 +63,7 @@ impl<'conn> crate::driver::statement::Statement for Statement<'conn> {
         Ok(())
     }
 
-    fn execute(&self, params: Parameters) -> StatementExecuteResult<StatementResult> {
+    fn execute(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
         let result = self.internal_execute(params);
         Box::pin(async move {
             let (rows, column_count) = result?;
@@ -86,7 +72,19 @@ impl<'conn> crate::driver::statement::Statement for Statement<'conn> {
         })
     }
 
+    fn execute_owned(
+        self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> AsyncResult<'conn, Self::StatementResult> {
+        let result = self.internal_execute(Parameters::Vec(params));
+        Box::pin(async move {
+            let (rows, column_count) = result?;
+
+            Ok(StatementResult::new(column_count, rows))
+        })
+    }
+
     fn row_count(&self) -> usize {
-        self.row_count.load(Ordering::Relaxed)
+        self.row_count.load(Ordering::SeqCst)
     }
 }

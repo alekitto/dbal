@@ -2,17 +2,37 @@
 name = "dbal"
 version = "0.1.0"
 authors = ["Alessandro Chitolina <alekitto@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 chrono = "0.4"
 fallible-iterator = "0.2"
+futures = "0.3"
 serde_json = "1.0"
 url = "1.6"
 uuid = "0.8"
 
+[features]
+default = ["postgres", "sqlite"]
+postgres = ["postgres-native-tls", "tokio", "tokio-postgres"]
+sqlite = ["rusqlite"]
+
+[dependencies.tokio]
+version = "1.9"
+features = ["default", "rt"]
+optional = true
+
+[dependencies.tokio-postgres]
+version = "0.7.2"
+optional = true
+
+[dependencies.postgres-native-tls]
+version = "0.5.0"
+optional = true
+
 [dependencies.rusqlite]
 version = "0.24"
+optional = true
 features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"]
 
 [dev-dependencies.tokio-test]

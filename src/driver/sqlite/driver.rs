@@ -1,12 +1,11 @@
 use crate::driver::connection::{Connection as DbalConnection, DriverConnection};
 use crate::driver::sqlite;
-use crate::driver::sqlite::statement_result::StatementResult;
-use crate::driver::statement::{Statement, StatementExecuteResult};
-use crate::{Parameter, Parameters, Result, Value};
+use crate::{Parameter, Result, Value};
 use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::types::ToSqlOutput;
 use rusqlite::ToSql;
 use std::collections::HashMap;
+use std::future::Future;
 use url::Url;
 
 type Udf = dyn FnMut(&Context) -> rusqlite::Result<Box<dyn ToSql>>
@@ -133,27 +132,31 @@ impl ConnectionOptions {
 }
 
 pub struct Driver {
-    pub(in crate::driver::sqlite) connection: rusqlite::Connection,
+    pub(super) connection: rusqlite::Connection,
 }
 
 impl DriverConnection<ConnectionOptions> for Driver {
-    fn create(params: ConnectionOptions) -> Result<Driver> {
-        let connection = if params.memory {
-            rusqlite::Connection::open_in_memory()
-        } else {
-            rusqlite::Connection::open(params.path.unwrap())
-        }?;
+    type Output = impl Future<Output = Result<Self>>;
 
-        for (name, (num_args, cb)) in params.user_defined_functions.into_iter() {
-            connection.create_scalar_function(
-                name,
-                num_args as i32,
-                FunctionFlags::default(),
-                cb,
-            )?;
+    fn create(params: ConnectionOptions) -> Self::Output {
+        async move {
+            let connection = if params.memory {
+                rusqlite::Connection::open_in_memory()
+            } else {
+                rusqlite::Connection::open(params.path.unwrap())
+            }?;
+
+            for (name, (num_args, cb)) in params.user_defined_functions.into_iter() {
+                connection.create_scalar_function(
+                    name,
+                    num_args as i32,
+                    FunctionFlags::default(),
+                    cb,
+                )?;
+            }
+
+            Ok(Driver { connection })
         }
-
-        Ok(Driver { connection })
     }
 }
 
@@ -161,29 +164,18 @@ impl<T> DriverConnection<T> for Driver
 where
     T: Into<String>,
 {
-    fn create(params: T) -> Result<Driver> {
-        Self::create(ConnectionOptions::create(params)?)
+    type Output = impl Future<Output = Result<Self>>;
+
+    fn create(params: T) -> Self::Output {
+        async { Self::create(ConnectionOptions::create(params)?).await }
     }
 }
 
 impl<'a> DbalConnection<'a> for Driver {
     type Statement = sqlite::statement::Statement<'a>;
 
-    fn prepare<S: Into<String>>(&'a self, sql: S) -> Result<sqlite::statement::Statement<'a>> {
+    fn prepare<S: Into<String>>(&'a self, sql: S) -> Result<Self::Statement> {
         sqlite::statement::Statement::new(self, sql.into().as_str())
-    }
-
-    fn query<S: Into<String>>(
-        &'a self,
-        sql: S,
-        params: Parameters,
-    ) -> StatementExecuteResult<StatementResult> {
-        let statement = self.prepare(sql);
-        if let Err(e) = statement {
-            return Box::pin(async move { Err(e) });
-        }
-
-        statement.unwrap().execute(params)
     }
 }
 
@@ -226,13 +218,16 @@ mod tests {
 
     #[test]
     fn can_connect() {
-        let result = Driver::create("sqlite://:memory:");
+        let result = tokio_test::block_on(Driver::create("sqlite://:memory:"));
         assert_eq!(true, result.is_ok());
 
         let mut file = std::env::temp_dir();
         file.push("test_temp_db.sqlite");
 
-        let result = Driver::create(format!("sqlite://{}", file.to_str().unwrap()));
+        let result = tokio_test::block_on(Driver::create(format!(
+            "sqlite://{}",
+            file.to_str().unwrap()
+        )));
         assert_eq!(true, result.is_ok());
 
         #[allow(unused_must_use)]
@@ -243,7 +238,8 @@ mod tests {
 
     #[test]
     fn can_prepare_statements() {
-        let connection = Driver::create("sqlite://:memory:").expect("Must be connected");
+        let connection =
+            tokio_test::block_on(Driver::create("sqlite://:memory:")).expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1");
         assert_eq!(statement.is_ok(), true);
@@ -253,7 +249,8 @@ mod tests {
 
     #[test]
     fn can_execute_statements() {
-        let connection = Driver::create("sqlite://:memory:").expect("Must be connected");
+        let connection =
+            tokio_test::block_on(Driver::create("sqlite://:memory:")).expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result = tokio_test::block_on(statement.execute(params![]));
@@ -262,7 +259,8 @@ mod tests {
 
     #[test]
     fn can_fetch_statements() {
-        let connection = Driver::create("sqlite://:memory:").expect("Must be connected");
+        let connection =
+            tokio_test::block_on(Driver::create("sqlite://:memory:")).expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result =
@@ -294,7 +292,8 @@ mod tests {
 
     #[test]
     fn builtin_udf_should_be_added() {
-        let connection = &mut Driver::create("sqlite://:memory:").expect("Must be connected");
+        let connection =
+            tokio_test::block_on(Driver::create("sqlite://:memory:")).expect("Must be connected");
 
         let statement = tokio_test::block_on(connection.query("SELECT sqrt(2)", params![]))
             .expect("Query must succeed");

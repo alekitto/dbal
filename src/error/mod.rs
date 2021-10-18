@@ -1,9 +1,12 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 #[derive(Debug)]
 pub enum ErrorKind {
     NotReadyError = 1,
     OutOfBoundsError = 2,
+    UnsupportedNamedParameters = 3,
+
+    PostgresTypeMismatch = 1001,
 
     UnknownError = -1,
 }
@@ -12,6 +15,23 @@ pub enum ErrorKind {
 pub struct Error {
     kind: ErrorKind,
     inner: Box<dyn std::error::Error + Send + Sync>,
+}
+
+#[derive(Debug)]
+pub struct StdError(Error);
+
+impl Display for StdError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl std::error::Error for StdError {}
+
+impl From<Error> for StdError {
+    fn from(e: Error) -> Self {
+        StdError(e)
+    }
 }
 
 impl Error {
@@ -28,6 +48,12 @@ impl Error {
     pub fn not_ready() -> Self {
         Self::new(ErrorKind::NotReadyError, "Statement not ready")
     }
+    pub fn unsupported_named_parameters() -> Self {
+        Self::new(
+            ErrorKind::UnsupportedNamedParameters,
+            "This driver does not support named parameters",
+        )
+    }
 
     pub fn out_of_bounds<T>(index: T) -> Self
     where
@@ -36,6 +62,13 @@ impl Error {
         Self::new(
             ErrorKind::OutOfBoundsError,
             format!("Unable to read {} index", index.to_string()),
+        )
+    }
+
+    pub fn postgres_type_mismatch() -> Self {
+        Self::new(
+            ErrorKind::PostgresTypeMismatch,
+            "Type mismatch when converting parameters to postgres values.",
         )
     }
 }

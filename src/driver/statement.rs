@@ -1,9 +1,6 @@
-use crate::{Parameter, ParameterIndex, Parameters, Result};
-use std::future::Future;
-use std::pin::Pin;
+use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 
-pub type StatementExecuteResult<R> = Pin<Box<dyn Future<Output = Result<R>>>>;
-pub trait Statement {
+pub trait Statement<'conn> {
     type StatementResult;
 
     /// Binds a value to a corresponding named or positional placeholder in the SQL statement
@@ -19,7 +16,19 @@ pub trait Statement {
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn execute(&self, params: Parameters) -> StatementExecuteResult<Self::StatementResult>
+    fn execute(&self, params: Parameters) -> AsyncResult<Self::StatementResult>
+    where
+        Self: Sized;
+
+    /// Executes a prepared statement.
+    /// This method consumes the statement.
+    ///
+    /// * `params` A vector of values with as many elements as there are bound parameters in the
+    ///            SQL statement being executed.
+    fn execute_owned(
+        self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> AsyncResult<'conn, Self::StatementResult>
     where
         Self: Sized;
 

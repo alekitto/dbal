@@ -1,20 +1,19 @@
-use crate::driver::statement::StatementExecuteResult;
-use crate::{Parameters, Result};
+use crate::driver::statement::Statement;
+use crate::{AsyncResult, Parameters, Result};
+use std::future::Future;
 
-pub(in crate::driver) trait DriverConnection<T> {
+pub(in crate::driver) trait DriverConnection<T>: Sized {
+    type Output: Future<Output = Result<Self>>;
+
     /// Creates a new driver connection
-    fn create(params: T) -> Result<Self>
-    where
-        Self: Sized;
+    fn create(params: T) -> Self::Output;
 }
 
-pub trait Connection<'conn>
+pub trait Connection<'conn>: 'conn
 where
-    <Self as Connection<'conn>>::Statement: super::statement::Statement,
+    <Self as Connection<'conn>>::Statement: super::statement::Statement<'conn>,
 {
     type Statement;
-    type StatementResult =
-        <<Self as Connection<'conn>>::Statement as super::statement::Statement>::StatementResult;
 
     /// Prepares a statement for execution and returns a Statement object.
     fn prepare<St: Into<String>>(&'conn self, sql: St) -> Result<Self::Statement>;
@@ -24,5 +23,15 @@ where
         &'conn self,
         sql: St,
         params: Parameters,
-    ) -> StatementExecuteResult<Self::StatementResult>;
+    ) -> AsyncResult<
+        <<Self as Connection<'conn>>::Statement as super::statement::Statement>::StatementResult,
+    > {
+        let statement = self.prepare(sql);
+        if let Err(e) = statement {
+            return Box::pin(async move { Err(e) });
+        }
+
+        let statement = statement.unwrap();
+        statement.execute_owned(Vec::from(params))
+    }
 }

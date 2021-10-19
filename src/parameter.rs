@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::parameter_type::ParameterType;
 use crate::Value;
 
@@ -58,6 +59,15 @@ pub enum Parameters<'a> {
     Array(&'a [(ParameterIndex, Parameter)]),
 }
 
+impl<'a> Parameters<'a> {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Parameters::Vec(vec) => vec.is_empty(),
+            Parameters::Array(arr) => arr.is_empty(),
+        }
+    }
+}
+
 impl From<Parameters<'_>> for Vec<(ParameterIndex, Parameter)> {
     fn from(value: Parameters) -> Self {
         match value {
@@ -70,6 +80,58 @@ impl From<Parameters<'_>> for Vec<(ParameterIndex, Parameter)> {
 impl From<i64> for Parameter {
     fn from(value: i64) -> Self {
         Parameter::new(Value::from(value), ParameterType::Integer)
+    }
+}
+
+impl TryFrom<Parameter> for i64 {
+    type Error = Error;
+
+    fn try_from(value: Parameter) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Int(i) => Ok(i),
+            Value::UInt(i) => i64::try_from(i).map_err(|e| e.into()),
+            Value::Boolean(b) => Ok(if b { 1_i64 } else { 0_i64 }),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
+}
+
+impl TryFrom<Parameter> for u64 {
+    type Error = Error;
+
+    fn try_from(value: Parameter) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Int(i) => u64::try_from(i).map_err(|e| e.into()),
+            Value::UInt(i) => Ok(i),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
+}
+
+impl TryFrom<Parameter> for f64 {
+    type Error = Error;
+
+    fn try_from(value: Parameter) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Float(i) => Ok(i),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
+}
+
+impl TryFrom<Parameter> for Vec<u8> {
+    type Error = Error;
+
+    fn try_from(value: Parameter) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Int(i) => Ok(i.to_be_bytes().to_vec()),
+            Value::UInt(i) => Ok(i.to_be_bytes().to_vec()),
+            Value::String(s) => Ok(s.into_bytes()),
+            Value::Float(f) => Ok(f.to_be_bytes().to_vec()),
+            Value::Bytes(v) => Ok(v),
+            Value::Boolean(b) => Ok(if b { vec![1_u8] } else { vec![0_u8] }),
+            _ => Err(Error::type_mismatch()),
+        }
     }
 }
 

@@ -13,9 +13,14 @@ url = "1.6"
 uuid = "0.8"
 
 [features]
-default = ["postgres", "sqlite"]
+default = ["mysql", "postgres", "sqlite"]
+mysql = ["mysql_async"]
 postgres = ["postgres-native-tls", "tokio", "tokio-postgres"]
 sqlite = ["rusqlite"]
+
+[dependencies.mysql_async]
+version = "0.28"
+optional = true
 
 [dependencies.tokio]
 version = "1.9"

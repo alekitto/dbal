@@ -6,6 +6,8 @@ pub enum ErrorKind {
     NotReadyError = 1,
     OutOfBoundsError = 2,
     UnsupportedNamedParameters = 3,
+    MixedParametersTypes = 4,
+    TypeMismatch = 5,
 
     PostgresTypeMismatch = 1001,
 
@@ -63,10 +65,19 @@ impl Error {
     pub fn not_ready() -> Self {
         Self::new(ErrorKind::NotReadyError, "Statement not ready")
     }
+    pub fn type_mismatch() -> Self {
+        Self::new(ErrorKind::TypeMismatch, "Type mismatch")
+    }
     pub fn unsupported_named_parameters() -> Self {
         Self::new(
             ErrorKind::UnsupportedNamedParameters,
             "This driver does not support named parameters",
+        )
+    }
+    pub fn mixed_parameters_types() -> Self {
+        Self::new(
+            ErrorKind::MixedParametersTypes,
+            "Cannot mix named and positional parameters",
         )
     }
 

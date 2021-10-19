@@ -7,6 +7,9 @@ pub mod connection;
 pub mod statement;
 pub mod statement_result;
 
+#[cfg(feature = "mysql")]
+pub mod mysql;
+
 #[cfg(feature = "postgres")]
 pub mod postgres;
 

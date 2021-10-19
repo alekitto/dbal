@@ -1,5 +1,5 @@
-#![feature(associated_type_defaults)]
 #![feature(backtrace)]
+#![feature(decl_macro)]
 #![feature(in_band_lifetimes)]
 #![feature(type_alias_impl_trait)]
 

@@ -1,0 +1,271 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      # this is cheaper than requesting the non-minimal profile
+      - run: rustup component add rustfmt
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  check:
+    name: Check
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-check-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: >
+            --no-default-features
+            --features sqlite,postgres,mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+
+  test:
+    name: Unit Test
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: >
+            --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+
+  sqlite:
+    name: SQLite
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    needs: check
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-sqlite-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: >
+            --no-default-features
+            --features sqlite,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+            --
+            --test-threads=1
+        env:
+          DATABASE_DSN: 'sqlite://:memory:'
+
+  postgres:
+    name: Postgres
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        postgres: [13, 9_6]
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    needs: check
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-postgres-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: >
+            --no-default-features
+            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+
+      - run: |
+          docker-compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
+          docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: >
+            --no-default-features
+            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        env:
+          DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal
+
+#      - uses: actions-rs/cargo@v1
+#        with:
+#          command: test
+#          args: >
+#            --no-default-features
+#            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+#        env:
+#          DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal?sslmode=verify-ca&sslrootcert=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
+
+  mysql:
+    name: MySQL
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        mysql: [8, 5_6]
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    needs: check
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: >
+            --no-default-features
+            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+
+      - run: docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
+      - run: sleep 60
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: >
+            --no-default-features
+            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        env:
+          DATABASE_DSN: mysql://root:password@localhost:3306/dbal
+
+  mariadb:
+    name: MariaDB
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        mariadb: [10_6, 10_2]
+        runtime: [tokio]
+        tls: [native-tls, rustls]
+    needs: check
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      # same Cargo features as MySQL so the same cache can be used
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: >
+            --no-default-features
+            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+
+      - run: docker-compose run -d -p 3306:3306 mariadb_${{ matrix.mariadb }}
+      - run: sleep 30
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: >
+            --no-default-features
+            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        env:
+          DATABASE_DSN: mysql://root:password@localhost:3306/dbal

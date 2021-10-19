@@ -1,6 +1,7 @@
 use crate::driver::statement::Statement;
 use crate::{AsyncResult, Parameters, Result};
 use connection::{Connection, DriverConnection};
+use std::marker::PhantomData;
 use url::Url;
 
 pub mod connection;
@@ -17,6 +18,8 @@ pub mod postgres;
 pub mod sqlite;
 
 pub enum Driver {
+    #[cfg(feature = "mysql")]
+    MySQL(mysql::driver::Driver),
     #[cfg(feature = "postgres")]
     Postgres(postgres::driver::Driver),
     #[cfg(feature = "sqlite")]
@@ -24,35 +27,52 @@ pub enum Driver {
 }
 
 pub enum DriverStatement<'conn> {
+    #[cfg(feature = "mysql")]
+    MySQL(mysql::statement::Statement<'conn>),
     #[cfg(feature = "postgres")]
     Postgres(postgres::statement::Statement<'conn>),
     #[cfg(feature = "sqlite")]
     Sqlite(sqlite::statement::Statement<'conn>),
+    Null(PhantomData<&'conn Self>),
 }
 
 impl DriverStatement<'conn> {
     /// Executes an SQL statement, returning a result set as a Statement object.
     pub async fn query(&self, params: Parameters<'conn>) -> Result<DriverStatementResult> {
         Ok(match self {
+            #[cfg(feature = "mysql")]
+            DriverStatement::MySQL(statement) => {
+                DriverStatementResult::MySQL(statement.query(params).await?)
+            }
+            #[cfg(feature = "postgres")]
             DriverStatement::Postgres(statement) => {
                 DriverStatementResult::Postgres(statement.query(params).await?)
             }
+            #[cfg(feature = "sqlite")]
             DriverStatement::Sqlite(statement) => {
                 DriverStatementResult::Sqlite(statement.query(params).await?)
             }
+            DriverStatement::Null(_) => unreachable!(),
         })
     }
 
     /// Executes an SQL statement, returning the number of affected rows.
     pub async fn execute(&self, params: Parameters<'conn>) -> Result<usize> {
         Ok(match self {
+            #[cfg(feature = "mysql")]
+            DriverStatement::MySQL(statement) => statement.execute(params).await?,
+            #[cfg(feature = "postgres")]
             DriverStatement::Postgres(statement) => statement.execute(params).await?,
+            #[cfg(feature = "sqlite")]
             DriverStatement::Sqlite(statement) => statement.execute(params).await?,
+            DriverStatement::Null(_) => unreachable!(),
         })
     }
 }
 
 pub enum DriverStatementResult {
+    #[cfg(feature = "mysql")]
+    MySQL(mysql::statement_result::StatementResult),
     #[cfg(feature = "postgres")]
     Postgres(postgres::statement_result::StatementResult),
     #[cfg(feature = "sqlite")]
@@ -74,42 +94,13 @@ impl Driver {
 
         let url = Url::parse(dsn.as_str())?;
         let driver = match url.scheme() {
+            #[cfg(feature = "mysql")]
+            "mysql" | "mariadb" => {
+                Driver::MySQL(mysql::driver::Driver::create(&url.to_string()).await?)
+            }
             #[cfg(feature = "postgres")]
             "pg" | "psql" | "postgres" | "postgresql" => {
-                let mut username = url.username().to_string();
-                if username.is_empty() {
-                    username = String::from("postgres");
-                }
-
-                let password = url.password().map(String::from);
-
-                let connection_options = postgres::ConnectionOptions {
-                    host: url.host().map(|h| h.to_string()),
-                    port: url.port(),
-                    user: username,
-                    password,
-                    db_name: {
-                        let path = url.path().trim_start_matches('/').to_string();
-                        if path.is_empty() {
-                            Some(String::from("postgres"))
-                        } else {
-                            Some(path)
-                        }
-                    },
-                    ssl_mode: postgres::SslMode::None,
-                    application_name: {
-                        let mut ret = None;
-                        for (name, value) in url.query_pairs() {
-                            if name == "application_name" {
-                                ret = Some(value.to_string());
-                                break;
-                            }
-                        }
-
-                        ret
-                    },
-                };
-
+                let connection_options = postgres::driver::ConnectionOptions::build_from_url(&url);
                 Driver::Postgres(postgres::driver::Driver::create(connection_options).await?)
             }
             #[cfg(feature = "sqlite")]
@@ -122,10 +113,13 @@ impl Driver {
 
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<DriverStatement<'_>> {
         let statement = match self {
+            #[cfg(feature = "mysql")]
+            Self::MySQL(driver) => DriverStatement::MySQL(driver.prepare(sql)?),
             #[cfg(feature = "postgres")]
             Self::Postgres(driver) => DriverStatement::Postgres(driver.prepare(sql)?),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(driver) => DriverStatement::Sqlite(driver.prepare(sql)?),
+            _ => unreachable!(),
         };
 
         Ok(statement)
@@ -161,25 +155,10 @@ mod tests {
     use crate::driver::Driver;
     use crate::params;
 
-    #[cfg(feature = "sqlite")]
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
-    async fn can_create_sqlite_connection() {
-        let connection = Driver::create("sqlite://:memory:")
-            .await
-            .expect("Must be connected");
-
-        let statement = connection.prepare("SELECT 1").expect("Prepare failed");
-        let result = statement.execute(params![]).await;
-        assert_eq!(result.is_ok(), true);
-    }
-
-    #[cfg(feature = "postgres")]
-    #[tokio::test]
-    async fn can_create_postgres_connection() {
-        let postgres_dsn = std::env::var("POSTGRES_DSN")
-            .unwrap_or_else(|_| "postgres://localhost/postgres".to_string());
-
-        let connection = Driver::create(postgres_dsn)
+    async fn can_create_connection() {
+        let connection = Driver::create(std::env::var("DATABASE_DSN").unwrap())
             .await
             .expect("Must be connected");
 

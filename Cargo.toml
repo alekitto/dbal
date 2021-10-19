@@ -14,9 +14,11 @@ uuid = "0.8"
 
 [features]
 default = ["mysql", "postgres", "sqlite"]
-mysql = ["mysql_async"]
+mysql = ["mysql_async", "tokio"]
 postgres = ["postgres-native-tls", "tokio", "tokio-postgres"]
 sqlite = ["rusqlite"]
+runtime-tokio-native-tls = []
+runtime-tokio-rustls = []
 
 [dependencies.mysql_async]
 version = "0.28"
@@ -26,6 +28,11 @@ optional = true
 version = "1.9"
 features = ["default", "macros", "rt"]
 optional = true
+
+[dev-dependencies.tokio]
+version = "1.9"
+features = ["default", "macros", "rt"]
+optional = false
 
 [dependencies.tokio-postgres]
 version = "0.7.2"

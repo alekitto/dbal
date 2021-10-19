@@ -4,6 +4,7 @@ use std::future::Future;
 use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
 use tokio_postgres::{Client, NoTls, Socket};
+use url::Url;
 
 pub enum SslMode {
     None,
@@ -17,6 +18,44 @@ pub struct ConnectionOptions {
     pub db_name: Option<String>,
     pub ssl_mode: SslMode,
     pub application_name: Option<String>,
+}
+
+impl ConnectionOptions {
+    pub(crate) fn build_from_url(url: &Url) -> Self {
+        let mut username = url.username().to_string();
+        if username.is_empty() {
+            username = String::from("postgres");
+        }
+
+        let password = url.password().map(String::from);
+
+        Self {
+            host: url.host().map(|h| h.to_string()),
+            port: url.port(),
+            user: username,
+            password,
+            db_name: {
+                let path = url.path().trim_start_matches('/').to_string();
+                if path.is_empty() {
+                    Some(String::from("postgres"))
+                } else {
+                    Some(path)
+                }
+            },
+            ssl_mode: SslMode::None,
+            application_name: {
+                let mut ret = None;
+                for (name, value) in url.query_pairs() {
+                    if name == "application_name" {
+                        ret = Some(value.to_string());
+                        break;
+                    }
+                }
+
+                ret
+            },
+        }
+    }
 }
 
 pub struct Driver {
@@ -95,5 +134,55 @@ impl<'conn> Connection<'conn> for Driver {
         let statement = super::statement::Statement::new(self, sql.into().as_str())?;
 
         Ok(statement)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::connection::{Connection, DriverConnection};
+    use crate::driver::postgres::driver::Driver;
+    use crate::driver::postgres::ConnectionOptions;
+    use crate::driver::statement_result::StatementResult;
+    use crate::rows::ColumnIndex;
+    use crate::{params, Row, Value};
+    use url::Url;
+
+    #[tokio::test]
+    async fn can_connect() {
+        let result = Driver::create(ConnectionOptions::build_from_url(
+            &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
+        ))
+        .await;
+        assert_eq!(true, result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn can_prepare_statements() {
+        let connection = Driver::create(ConnectionOptions::build_from_url(
+            &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
+        ))
+        .await
+        .expect("Must be connected");
+
+        let statement = connection.prepare("SELECT 1");
+        assert_eq!(statement.is_ok(), true);
+        let statement = connection.prepare("NOT_A_COMMAND 1");
+        assert_eq!(statement.is_ok(), true);
+    }
+
+    #[tokio::test]
+    async fn can_fetch_rows() {
+        let connection = Driver::create(ConnectionOptions::build_from_url(
+            &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
+        ))
+        .await
+        .expect("Must be connected");
+
+        let statement = connection.query("SELECT 1 + 1", params![]).await;
+        assert_eq!(statement.is_ok(), true);
+        let statement = statement.unwrap();
+        let row: Row = statement.fetch_one().unwrap().unwrap();
+
+        assert_eq!(row.get(ColumnIndex::Position(0)).unwrap(), &Value::Int(2));
     }
 }

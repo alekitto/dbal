@@ -1,17 +1,17 @@
 use super::statement::Statement;
-use crate::{Result, Row, Value};
-use fallible_iterator::FallibleIterator;
+use crate::{rows::rows_impl, Result, Row, Value};
 use rusqlite::types::ValueRef;
 use rusqlite::Column;
 
 pub struct Rows {
     columns: Vec<String>,
     column_count: usize,
-    rows: Vec<Row>,
 
-    position: usize,
+    pub(crate) rows: Vec<Row>,
+    pub(crate) position: usize,
 }
 
+rows_impl!(Rows);
 impl Rows {
     pub(super) fn new(statement: &Statement) -> Result<Rows> {
         let mut statement = statement.statement.borrow_mut();
@@ -64,31 +64,5 @@ impl Rows {
 
     pub fn column_count(&self) -> usize {
         self.column_count
-    }
-}
-
-impl FallibleIterator for Rows {
-    type Item = Row;
-    type Error = crate::error::Error;
-
-    /// Advances the iterator and returns the next value.
-    ///
-    /// Returns [`None`] when iteration is finished. Individual iterator
-    /// implementations may choose to resume iteration, and so calling `next()`
-    /// again may or may not eventually start returning [`Some(&Row)`] again at some
-    /// point.
-    fn next(&mut self) -> std::result::Result<Option<Self::Item>, Self::Error> {
-        if self.position >= self.rows.len() {
-            return Ok(None);
-        }
-
-        let result = self.rows.get(self.position);
-        self.position += 1;
-
-        if result.is_none() {
-            return Ok(None);
-        }
-
-        Ok(Some(result.unwrap().clone()))
     }
 }

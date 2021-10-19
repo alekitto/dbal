@@ -67,3 +67,32 @@ impl Row {
 /// It contains all the raw data from the executed query, being countable
 /// and iterable safely
 pub trait Rows: FallibleIterator {}
+
+pub(crate) macro rows_impl($t:ty) {
+    impl $crate::rows::Rows for $t {}
+    impl fallible_iterator::FallibleIterator for $t {
+        type Item = Row;
+        type Error = crate::error::Error;
+
+        /// Advances the iterator and returns the next value.
+        ///
+        /// Returns [`None`] when iteration is finished. Individual iterator
+        /// implementations may choose to resume iteration, and so calling `next()`
+        /// again may or may not eventually start returning [`Some(&Row)`] again at some
+        /// point.
+        fn next(&mut self) -> std::result::Result<Option<Self::Item>, Self::Error> {
+            if self.position >= self.rows.len() {
+                return Ok(None);
+            }
+
+            let result = self.rows.get(self.position);
+            self.position += 1;
+
+            if result.is_none() {
+                return Ok(None);
+            }
+
+            Ok(Some(result.unwrap().clone()))
+        }
+    }
+}

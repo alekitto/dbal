@@ -93,7 +93,7 @@ impl<'conn> Statement<'conn> {
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> Result<(Rows, usize)> {
         let params = Params::try_from(Parameters::Vec(params));
-        let mut connection = self.connection.connection.borrow_mut();
+        let mut connection = self.connection.connection.lock().await;
 
         let result = self
             .sql
@@ -114,7 +114,7 @@ impl<'conn> Statement<'conn> {
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> Result<usize> {
         let params = Params::try_from(Parameters::Vec(params));
-        let mut connection = self.connection.connection.borrow_mut();
+        let mut connection = self.connection.connection.lock().await;
 
         self.sql
             .clone()

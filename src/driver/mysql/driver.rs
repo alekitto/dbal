@@ -1,11 +1,12 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::Result;
 use mysql_async::{Conn, Opts};
-use std::cell::RefCell;
 use std::future::Future;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct Driver {
-    pub(super) connection: RefCell<Conn>,
+    pub(super) connection: Arc<Mutex<Conn>>,
 }
 
 impl DriverConnection<&str> for Driver {
@@ -18,7 +19,7 @@ impl DriverConnection<&str> for Driver {
             let connection = Conn::new(opts?).await?;
 
             Ok(Self {
-                connection: RefCell::new(connection),
+                connection: Arc::new(Mutex::new(connection)),
             })
         }
     }

@@ -1,9 +1,11 @@
 use crate::driver::connection::{Connection, DriverConnection};
-use crate::Result;
+use crate::driver::server_info_aware_connection::ServerInfoAwareConnection;
+use crate::{Async, Result};
+use regex::Regex;
 use std::future::Future;
 use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
-use tokio_postgres::{Client, NoTls, Socket};
+use tokio_postgres::{Client, GenericClient, NoTls, Socket};
 use url::Url;
 
 pub enum SslMode {
@@ -134,6 +136,33 @@ impl<'conn> Connection<'conn> for Driver {
         let statement = super::statement::Statement::new(self, sql.into().as_str())?;
 
         Ok(statement)
+    }
+}
+
+impl<'conn> ServerInfoAwareConnection<'conn> for Driver {
+    fn server_version(&self) -> Async<Option<String>> {
+        Box::pin(async move {
+            let row = self
+                .client
+                .client()
+                .query_one("SELECT version()", &[])
+                .await;
+            if row.is_err() {
+                return None;
+            }
+
+            let row = row.unwrap();
+            let version_string: String = row.get(0);
+
+            let pattern = Regex::new(r"\w+ (\d+)\.(\d+)").unwrap();
+            pattern.captures(&version_string).map(|captures| {
+                format!(
+                    "{}.{}",
+                    captures.get(0).unwrap().as_str(),
+                    captures.get(1).unwrap().as_str()
+                )
+            })
+        })
     }
 }
 

@@ -14,7 +14,7 @@ mod value;
 pub use parameter::Parameter;
 pub use parameter::ParameterIndex;
 pub use parameter::Parameters;
-pub use result::{AsyncResult, Result};
+pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use value::Value;
 

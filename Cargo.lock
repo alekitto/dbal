@@ -319,6 +319,7 @@ dependencies = [
  "futures",
  "mysql_async",
  "postgres-native-tls",
+ "regex",
  "rusqlite",
  "serde_json",
  "tokio",

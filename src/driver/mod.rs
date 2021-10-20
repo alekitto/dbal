@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use url::Url;
 
 pub mod connection;
+pub mod server_info_aware_connection;
 pub mod statement;
 pub mod statement_result;
 
@@ -95,9 +96,12 @@ impl Driver {
         let url = Url::parse(dsn.as_str())?;
         let driver = match url.scheme() {
             #[cfg(feature = "mysql")]
-            "mysql" | "mariadb" => {
-                Driver::MySQL(mysql::driver::Driver::create(&url.to_string()).await?)
-            }
+            "mysql" | "mariadb" => Driver::MySQL(
+                mysql::driver::Driver::create(mysql::driver::ConnectionOptions::build_from_url(
+                    &url,
+                ))
+                .await?,
+            ),
             #[cfg(feature = "postgres")]
             "pg" | "psql" | "postgres" | "postgresql" => {
                 let connection_options = postgres::driver::ConnectionOptions::build_from_url(&url);

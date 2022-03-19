@@ -1,5 +1,5 @@
 use crate::driver::statement::Statement;
-use crate::{AsyncResult, Parameters, Result};
+use crate::{Async, AsyncResult, Parameters, Result};
 use std::future::Future;
 
 pub(in crate::driver) trait DriverConnection<T>: Sized {
@@ -14,6 +14,9 @@ where
     <Self as Connection<'conn>>::Statement: super::statement::Statement<'conn>,
 {
     type Statement;
+
+    /// Retrieves the server version (if any).
+    fn server_version(&self) -> Async<Option<String>>;
 
     /// Prepares a statement for execution and returns a Statement object.
     fn prepare<St: Into<String>>(&'conn self, sql: St) -> Result<Self::Statement>;

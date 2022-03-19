@@ -3,6 +3,7 @@
 #![feature(in_band_lifetimes)]
 #![feature(type_alias_impl_trait)]
 
+mod connection_factory;
 pub mod driver;
 pub mod error;
 mod parameter;

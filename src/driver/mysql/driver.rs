@@ -1,5 +1,4 @@
 use crate::driver::connection::{Connection, DriverConnection};
-use crate::driver::server_info_aware_connection::ServerInfoAwareConnection;
 use crate::{Async, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
 use std::future::Future;
@@ -75,9 +74,7 @@ impl<'conn> Connection<'conn> for Driver {
 
         Ok(statement)
     }
-}
 
-impl<'conn> ServerInfoAwareConnection<'conn> for Driver {
     fn server_version(&self) -> Async<Option<String>> {
         Box::pin(async move {
             let connection = self.connection.lock().await;

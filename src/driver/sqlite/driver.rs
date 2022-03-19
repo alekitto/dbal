@@ -1,6 +1,6 @@
 use crate::driver::connection::{Connection as DbalConnection, DriverConnection};
 use crate::driver::sqlite;
-use crate::{Parameter, Result, Value};
+use crate::{Async, Parameter, Result, Value};
 use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::types::ToSqlOutput;
 use rusqlite::ToSql;
@@ -173,6 +173,12 @@ where
 
 impl<'a> DbalConnection<'a> for Driver {
     type Statement = sqlite::statement::Statement<'a>;
+
+    fn server_version(&self) -> Async<Option<String>> {
+        Box::pin(async move {
+            None
+        })
+    }
 
     fn prepare<S: Into<String>>(&'a self, sql: S) -> Result<Self::Statement> {
         sqlite::statement::Statement::new(self, sql.into().as_str())

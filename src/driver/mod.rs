@@ -5,7 +5,6 @@ use std::marker::PhantomData;
 use url::Url;
 
 pub mod connection;
-pub mod server_info_aware_connection;
 pub mod statement;
 pub mod statement_result;
 

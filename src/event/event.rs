@@ -4,7 +4,7 @@ pub trait Event: Send + Sized + 'static {
 }
 
 pub struct ConnectionEvent<C: Connection<'static>> {
-    pub connection: Box<&'static C>,
+    pub connection: &'static C,
 }
 
 impl<C: Connection<'static>> Event for ConnectionEvent<C> {

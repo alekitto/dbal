@@ -101,7 +101,7 @@ impl Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner.to_string())
+        write!(f, "{}", self.inner)
     }
 }
 
@@ -110,8 +110,8 @@ impl Debug for Error {
         write!(
             f,
             "{}\nBacktrace:\n{}",
-            self.inner.to_string(),
-            self.backtrace.to_string()
+            self.inner,
+            self.backtrace
         )
     }
 }

@@ -73,7 +73,7 @@ impl Rows {
             result.push(Row::new(columns.as_ref().unwrap().clone(), data_vector));
         }
 
-        let columns = columns.unwrap_or_else(Vec::new);
+        let columns = columns.unwrap_or_default();
         let column_count = columns.len();
 
         Ok(Self {

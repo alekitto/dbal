@@ -13,7 +13,7 @@ def start_database(driver, database):
         return f"sqlite://{database}"
 
     res = subprocess.run(
-        ["docker-compose", "up", "-d", driver],
+        ["docker", "compose", "up", "-d", driver],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=dir_workspace,
@@ -41,7 +41,7 @@ def start_database(driver, database):
     # find port
     res = subprocess.run(
         ["docker", "inspect", f"-f='{{{{(index (index .NetworkSettings.Ports \"{port}/tcp\") 0).HostPort}}}}'",
-         f"dbal_{driver}_1"],
+         f"dbal-{driver}-1"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=dir_workspace,

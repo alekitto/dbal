@@ -131,8 +131,11 @@ impl ConnectionOptions {
     }
 }
 
+pub(crate) struct ConnectionWrapper(pub(crate) rusqlite::Connection);
+unsafe impl Sync for ConnectionWrapper {}
+
 pub struct Driver {
-    pub(super) connection: rusqlite::Connection,
+    pub(crate) connection: ConnectionWrapper,
 }
 
 impl DriverConnection<ConnectionOptions> for Driver {
@@ -155,7 +158,7 @@ impl DriverConnection<ConnectionOptions> for Driver {
                 )?;
             }
 
-            Ok(Driver { connection })
+            Ok(Driver { connection: ConnectionWrapper(connection) })
         }
     }
 }

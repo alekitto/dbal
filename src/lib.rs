@@ -6,15 +6,19 @@
 mod connection_factory;
 pub mod driver;
 pub mod error;
+mod event;
 mod parameter;
-pub mod parameter_type;
+mod parameter_type;
 mod result;
 mod rows;
 mod value;
 
+pub use error::Error;
+pub use event::*;
 pub use parameter::Parameter;
 pub use parameter::ParameterIndex;
 pub use parameter::Parameters;
+pub use parameter_type::ParameterType;
 pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use value::Value;

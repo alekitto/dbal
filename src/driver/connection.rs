@@ -9,7 +9,7 @@ pub(in crate::driver) trait DriverConnection<T>: Sized {
     fn create(params: T) -> Self::Output;
 }
 
-pub trait Connection<'conn>: 'conn
+pub trait Connection<'conn>: Send + Sync + 'conn
 where
     <Self as Connection<'conn>>::Statement: super::statement::Statement<'conn>,
 {

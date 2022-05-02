@@ -12,7 +12,7 @@ pub struct Statement<'conn> {
 
 impl<'conn> Statement<'conn> {
     pub fn new(connection: &'conn Driver, sql: &str) -> Result<Self> {
-        let prepared = connection.connection.prepare(sql)?;
+        let prepared = connection.connection.0.prepare(sql)?;
 
         Ok(Statement {
             statement: RefCell::new(prepared),

@@ -2,6 +2,7 @@ use crate::driver::{Driver, DriverStatement, DriverStatementResult};
 use crate::{ConnectionEvent, Error, EventDispatcher, Parameters, Result};
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct Connection {
     dsn: String,
     driver: Option<Arc<Driver>>,
@@ -27,14 +28,15 @@ impl Connection {
         }
 
         let driver = Arc::new(Driver::create(&self.dsn).await?);
-        if let Some(ref ev) = self.event_manager {
-            let mut event = ConnectionEvent::new(driver.clone());
+        let _ = self.driver.insert(driver);
+
+        let this = Arc::new(self);
+        if let Some(ref ev) = this.event_manager {
+            let mut event = ConnectionEvent::new(this.clone());
             ev.dispatch(&mut event).await;
         }
 
-        let _ = self.driver.insert(driver);
-
-        Ok(self)
+        Ok(Arc::try_unwrap(this).unwrap())
     }
 
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<DriverStatement<'_>> {

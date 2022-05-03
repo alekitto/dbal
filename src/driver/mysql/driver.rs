@@ -1,6 +1,7 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::{Async, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -8,6 +9,12 @@ use url::Url;
 
 pub struct Driver {
     pub(super) connection: Arc<Mutex<Conn>>,
+}
+
+impl Debug for Driver {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt("Driver (MySQL) {}", f)
+    }
 }
 
 pub struct ConnectionOptions {

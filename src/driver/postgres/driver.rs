@@ -1,6 +1,7 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::{Async, Result};
 use regex::Regex;
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
@@ -62,6 +63,12 @@ impl ConnectionOptions {
 pub struct Driver {
     pub(super) client: Client,
     handle: JoinHandle<()>,
+}
+
+impl Debug for Driver {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt("Driver (PostgreSQL) {}", f)
+    }
 }
 
 impl Driver {

@@ -3,16 +3,23 @@ use futures::executor::block_on;
 use futures::future::BoxFuture;
 use std::any::*;
 use std::default::Default;
+use std::fmt::{Debug, Formatter};
 use tokio::sync::Mutex;
 
 struct Listener {
     event: TypeId,
-    handler: Box<dyn FnMut(&mut dyn Any) -> BoxFuture<()>>,
+    handler: Box<dyn (FnMut(&mut dyn Any) -> BoxFuture<()>) + Send>,
 }
 
 #[derive(Default)]
 pub struct EventDispatcher {
     subs: Mutex<Vec<Listener>>,
+}
+
+impl Debug for EventDispatcher {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt("EventDispatcher {}", f)
+    }
 }
 
 impl EventDispatcher {
@@ -22,8 +29,10 @@ impl EventDispatcher {
         }
     }
 
-    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) -> BoxFuture<()> + 'static)
-    where
+    pub fn add_listener<Ev>(
+        &self,
+        mut action: impl FnMut(&mut Ev) -> BoxFuture<()> + 'static + Send,
+    ) where
         Ev: Event + 'static,
     {
         block_on(async {

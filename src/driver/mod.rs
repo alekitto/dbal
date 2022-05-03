@@ -18,6 +18,7 @@ pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+#[derive(Debug)]
 pub enum Driver {
     #[cfg(feature = "mysql")]
     MySQL(mysql::driver::Driver),

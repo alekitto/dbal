@@ -5,6 +5,7 @@ use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::types::ToSqlOutput;
 use rusqlite::ToSql;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use url::Url;
 
@@ -136,6 +137,12 @@ unsafe impl Sync for ConnectionWrapper {}
 
 pub struct Driver {
     pub(crate) connection: ConnectionWrapper,
+}
+
+impl Debug for Driver {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt("Driver (SQLite) {}", f)
+    }
 }
 
 impl DriverConnection<ConnectionOptions> for Driver {

@@ -22,7 +22,7 @@ def start_database(driver, database):
     if res.returncode != 0:
         print(res.stderr, file=sys.stderr)
 
-    if b"done" in res.stderr:
+    if b"Started" in res.stderr:
         time.sleep(30)
 
     # determine appropriate port for driver

@@ -210,7 +210,7 @@ impl ToSql for Value {
             Value::Json(value) => {
                 ToSqlOutput::Owned(rusqlite::types::Value::Text(value.to_string()))
             }
-            Value::Uuid(value) => ToSqlOutput::from(*value),
+            Value::Uuid(value) => ToSqlOutput::from(value.to_string()),
         })
     }
 }

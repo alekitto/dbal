@@ -1,9 +1,9 @@
 #![feature(backtrace)]
 #![feature(decl_macro)]
-#![feature(in_band_lifetimes)]
 #![feature(type_alias_impl_trait)]
 
 mod connection_factory;
+pub mod connection;
 pub mod driver;
 pub mod error;
 mod event;

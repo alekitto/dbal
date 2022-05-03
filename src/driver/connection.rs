@@ -1,4 +1,4 @@
-use crate::driver::statement::Statement;
+use super::statement::Statement;
 use crate::{Async, AsyncResult, Parameters, Result};
 use std::future::Future;
 
@@ -11,7 +11,7 @@ pub(in crate::driver) trait DriverConnection<T>: Sized {
 
 pub trait Connection<'conn>: Send + Sync + 'conn
 where
-    <Self as Connection<'conn>>::Statement: super::statement::Statement<'conn>,
+    <Self as Connection<'conn>>::Statement: Statement<'conn>,
 {
     type Statement;
 

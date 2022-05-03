@@ -15,16 +15,15 @@ rows_impl!(Rows);
 impl Rows {
     pub(super) fn new(statement: &Statement) -> Result<Rows> {
         let mut statement = statement.statement.borrow_mut();
-        let mut rows = statement.raw_query();
 
-        let column_count = rows.column_count().unwrap_or(0);
-        let columns: Vec<String> = rows
+        let column_count = statement.column_count();
+        let columns: Vec<String> = statement
             .columns()
-            .unwrap_or_default()
             .into_iter()
             .map(|x: Column| x.name().to_string())
             .collect();
 
+        let mut rows = statement.raw_query();
         let mut result = Vec::new();
         while let Some(row) = rows.next()? {
             let mut data_vector: Vec<Value> = Vec::new();

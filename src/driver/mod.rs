@@ -36,7 +36,7 @@ pub enum DriverStatement<'conn> {
     Null(PhantomData<&'conn Self>),
 }
 
-impl DriverStatement<'conn> {
+impl<'conn> DriverStatement<'conn> {
     /// Executes an SQL statement, returning a result set as a Statement object.
     pub async fn query(&self, params: Parameters<'conn>) -> Result<DriverStatementResult> {
         Ok(match self {

@@ -107,12 +107,7 @@ impl Display for Error {
 
 impl Debug for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}\nBacktrace:\n{}",
-            self.inner,
-            self.backtrace
-        )
+        write!(f, "{}\nBacktrace:\n{}", self.inner, self.backtrace)
     }
 }
 
@@ -121,6 +116,6 @@ where
     T: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     fn from(err: T) -> Self {
-        crate::error::Error::new(ErrorKind::UnknownError, err)
+        Error::new(ErrorKind::UnknownError, err)
     }
 }

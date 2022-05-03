@@ -2,8 +2,8 @@
 #![feature(decl_macro)]
 #![feature(type_alias_impl_trait)]
 
-mod connection_factory;
 pub mod connection;
+mod connection_factory;
 pub mod driver;
 pub mod error;
 mod event;

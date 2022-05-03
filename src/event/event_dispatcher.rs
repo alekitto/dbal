@@ -1,9 +1,10 @@
+use crate::Event;
+use futures::executor::block_on;
+use futures::future::BoxFuture;
 use std::any::*;
 use std::default::Default;
 use std::future::Future;
-use std::sync::Mutex;
-use futures::future::BoxFuture;
-use crate::Event;
+use tokio::sync::Mutex;
 
 struct Listener {
     event: TypeId,
@@ -27,19 +28,21 @@ impl EventDispatcher {
         Ev: Event,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        self.subs.lock().unwrap().push(Listener {
-            event: TypeId::of::<Ev>(),
-            handler: Box::new(move |ev: &mut dyn Any| {
-                Box::pin((action)(ev.downcast_mut().expect("Wrong Event!")))
-            }),
+        block_on(async {
+            self.subs.lock().await.push(Listener {
+                event: TypeId::of::<Ev>(),
+                handler: Box::new(move |ev: &mut dyn Any| {
+                    Box::pin((action)(ev.downcast_mut().expect("Wrong Event!")))
+                }),
+            });
         });
     }
 
     pub async fn dispatch<Ev>(&self, ev: &mut Ev)
     where
-        Ev: Event
+        Ev: Event,
     {
-        for l in self.subs.lock().unwrap().iter_mut() {
+        for l in self.subs.lock().await.iter_mut() {
             if TypeId::of::<Ev>() == l.event {
                 (l.handler)(ev).await;
             }

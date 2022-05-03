@@ -28,7 +28,7 @@ impl Rows {
         while let Some(row) = rows.next()? {
             let mut data_vector: Vec<Value> = Vec::new();
             for i in 0..column_count {
-                let value = row.get_raw(i);
+                let value = row.get_ref_unwrap(i);
                 data_vector.push(match value {
                     ValueRef::Null => Value::NULL,
                     ValueRef::Integer(v) => Value::Int(v),

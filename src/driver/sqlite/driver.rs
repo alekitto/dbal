@@ -158,7 +158,9 @@ impl DriverConnection<ConnectionOptions> for Driver {
                 )?;
             }
 
-            Ok(Driver { connection: ConnectionWrapper(connection) })
+            Ok(Driver {
+                connection: ConnectionWrapper(connection),
+            })
         }
     }
 }
@@ -178,9 +180,7 @@ impl<'a> DbalConnection<'a> for Driver {
     type Statement = sqlite::statement::Statement<'a>;
 
     fn server_version(&self) -> Async<Option<String>> {
-        Box::pin(async move {
-            None
-        })
+        Box::pin(async move { None })
     }
 
     fn prepare<S: Into<String>>(&'a self, sql: S) -> Result<Self::Statement> {

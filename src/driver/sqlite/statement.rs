@@ -2,11 +2,15 @@ use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
 use crate::driver::sqlite::statement_result::StatementResult;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
-use std::cell::RefCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+pub struct StatementWrapper<'conn>(pub(crate) rusqlite::Statement<'conn>);
+unsafe impl<'conn> Sync for StatementWrapper<'conn> {}
+unsafe impl<'conn> Send for StatementWrapper<'conn> {}
 
 pub struct Statement<'conn> {
-    pub(super) statement: RefCell<rusqlite::Statement<'conn>>,
+    pub(super) statement: Arc<Mutex<StatementWrapper<'conn>>>,
     row_count: AtomicUsize,
 }
 
@@ -15,7 +19,7 @@ impl<'conn> Statement<'conn> {
         let prepared = connection.connection.0.prepare(sql)?;
 
         Ok(Statement {
-            statement: RefCell::new(prepared),
+            statement: Arc::new(Mutex::new(StatementWrapper(prepared))),
             row_count: AtomicUsize::new(usize::MAX),
         })
     }
@@ -24,8 +28,8 @@ impl<'conn> Statement<'conn> {
         let params = Vec::from(params);
         self._bind_params(params)?;
 
-        let mut statement = self.statement.borrow_mut();
-        match statement.raw_execute() {
+        let mut statement = self.statement.lock().unwrap();
+        match statement.0.raw_execute() {
             Ok(size) => {
                 self.row_count.store(size, Ordering::SeqCst);
                 Ok(size)
@@ -69,14 +73,18 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
             ParameterIndex::Positional(i) => i as usize,
             ParameterIndex::Named(name) => self
                 .statement
-                .borrow()
+                .lock()
+                .unwrap()
+                .0
                 .parameter_index(name.as_str())
                 .unwrap()
                 .unwrap(),
         };
 
         self.statement
-            .borrow_mut()
+            .lock()
+            .unwrap()
+            .0
             .raw_bind_parameter(idx + 1, value)?;
         Ok(())
     }

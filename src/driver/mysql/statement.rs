@@ -6,16 +6,16 @@ use crate::parameter_type::ParameterType;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 use mysql_async::prelude::*;
 use mysql_async::{Params, Value};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 pub struct Statement<'conn> {
     pub(super) connection: &'conn Driver,
     pub(super) sql: String,
-    parameters: RefCell<HashMap<ParameterIndex, Parameter>>,
+    parameters: Arc<Mutex<HashMap<ParameterIndex, Parameter>>>,
     row_count: AtomicUsize,
     phantom_data: PhantomData<&'conn Self>,
 }
@@ -78,11 +78,11 @@ impl TryFrom<Parameters<'_>> for Params {
 }
 
 impl<'conn> Statement<'conn> {
-    pub fn new(connection: &'conn Driver, sql: &str) -> Result<super::statement::Statement<'conn>> {
+    pub fn new(connection: &'conn Driver, sql: &str) -> Result<Statement<'conn>> {
         Ok(Statement {
             connection,
             sql: sql.to_string(),
-            parameters: RefCell::new(HashMap::new()),
+            parameters: Arc::new(Mutex::new(HashMap::new())),
             row_count: AtomicUsize::new(usize::MAX),
             phantom_data: PhantomData::default(),
         })
@@ -130,10 +130,10 @@ impl<'conn> Statement<'conn> {
 }
 
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
-    type StatementResult = super::statement_result::StatementResult;
+    type StatementResult = StatementResult;
 
     fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()> {
-        let mut parameters = self.parameters.borrow_mut();
+        let mut parameters = self.parameters.lock().unwrap();
         parameters.insert(param, value);
 
         Ok(())

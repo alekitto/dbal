@@ -1,9 +1,16 @@
-use crate::driver::connection::Connection;
+use crate::driver::Driver;
+use std::sync::Arc;
 
-pub trait Event: Send + Sized + 'static {}
+pub trait Event: Send + Sized {}
 
-pub struct ConnectionEvent<C: Connection<'static>> {
-    pub connection: &'static C,
+pub struct ConnectionEvent {
+    pub connection: Arc<Driver>,
 }
 
-impl<C: Connection<'static>> Event for ConnectionEvent<C> {}
+impl ConnectionEvent {
+    pub fn new(connection: Arc<Driver>) -> Self {
+        Self { connection }
+    }
+}
+
+impl Event for ConnectionEvent {}

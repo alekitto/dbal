@@ -1,9 +1,9 @@
+#![feature(async_closure)]
 #![feature(backtrace)]
 #![feature(decl_macro)]
 #![feature(type_alias_impl_trait)]
 
-pub mod connection;
-mod connection_factory;
+mod connection;
 pub mod driver;
 pub mod error;
 mod event;
@@ -13,6 +13,7 @@ mod result;
 mod rows;
 mod value;
 
+pub use connection::Connection;
 pub use error::Error;
 pub use event::*;
 pub use parameter::Parameter;

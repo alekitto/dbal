@@ -1,5 +1,6 @@
 use crate::driver::statement::Statement;
-use crate::{AsyncResult, Parameters, Result};
+use crate::driver::statement_result::StatementResult;
+use crate::{AsyncResult, Parameters, Result, Row};
 use connection::{Connection, DriverConnection};
 use std::marker::PhantomData;
 use url::Url;
@@ -150,6 +151,44 @@ impl Driver {
 
             Ok(query_result.unwrap())
         })
+    }
+}
+
+impl DriverStatementResult {
+    pub fn fetch_one(&self) -> Result<Option<Row>> {
+        match self {
+            #[cfg(feature = "mysql")]
+            Self::MySQL(driver) => driver.fetch_one(),
+            #[cfg(feature = "postgres")]
+            Self::Postgres(driver) => driver.fetch_one(),
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite(driver) => driver.fetch_one(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn fetch_all(&self) -> Result<Vec<Row>> {
+        match self {
+            #[cfg(feature = "mysql")]
+            Self::MySQL(driver) => driver.fetch_all(),
+            #[cfg(feature = "postgres")]
+            Self::Postgres(driver) => driver.fetch_all(),
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite(driver) => driver.fetch_all(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn column_count(&self) -> usize {
+        match self {
+            #[cfg(feature = "mysql")]
+            Self::MySQL(driver) => driver.column_count(),
+            #[cfg(feature = "postgres")]
+            Self::Postgres(driver) => driver.column_count(),
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite(driver) => driver.column_count(),
+            _ => unreachable!(),
+        }
     }
 }
 

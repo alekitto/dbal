@@ -3,7 +3,6 @@ use futures::executor::block_on;
 use futures::future::BoxFuture;
 use std::any::*;
 use std::default::Default;
-use std::future::Future;
 use tokio::sync::Mutex;
 
 struct Listener {
@@ -23,10 +22,9 @@ impl EventDispatcher {
         }
     }
 
-    pub fn add_listener<Ev, Fut>(&self, mut action: impl FnMut(&mut Ev) -> Fut + Send + 'static)
+    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) -> BoxFuture<()> + 'static)
     where
-        Ev: Event,
-        Fut: Future<Output = ()> + Send + 'static,
+        Ev: Event + 'static,
     {
         block_on(async {
             self.subs.lock().await.push(Listener {
@@ -40,7 +38,7 @@ impl EventDispatcher {
 
     pub async fn dispatch<Ev>(&self, ev: &mut Ev)
     where
-        Ev: Event,
+        Ev: Event + 'static,
     {
         for l in self.subs.lock().await.iter_mut() {
             if TypeId::of::<Ev>() == l.event {

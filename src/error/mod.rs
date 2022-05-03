@@ -10,6 +10,7 @@ pub enum ErrorKind {
     TypeMismatch = 5,
 
     PostgresTypeMismatch = 1001,
+    NotConnected = 5000,
 
     UnknownError = -1,
 }
@@ -62,6 +63,9 @@ impl Error {
         }
     }
 
+    pub fn not_connected() -> Self {
+        Self::new(ErrorKind::NotConnected, "Not connected")
+    }
     pub fn not_ready() -> Self {
         Self::new(ErrorKind::NotReadyError, "Statement not ready")
     }

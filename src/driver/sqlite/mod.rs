@@ -4,5 +4,6 @@ pub(in crate::driver) mod statement;
 pub(in crate::driver) mod statement_result;
 
 pub use driver::ConnectionOptions;
+pub use driver::Udf;
 pub use rows::Rows;
 pub use statement::Statement;

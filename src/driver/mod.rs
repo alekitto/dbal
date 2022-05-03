@@ -1,9 +1,8 @@
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
-use crate::{AsyncResult, Parameters, Result, Row};
+use crate::{AsyncResult, ConnectionOptions, Parameters, Result, Row};
 use connection::{Connection, DriverConnection};
 use std::marker::PhantomData;
-use url::Url;
 
 pub mod connection;
 pub mod statement;
@@ -82,34 +81,20 @@ pub enum DriverStatementResult {
 }
 
 impl Driver {
-    pub async fn create<'a, T>(dsn: T) -> Result<Self>
-    where
-        T: Into<String>,
-    {
-        let dsn = dsn.into();
-
-        #[cfg(feature = "sqlite")]
-        if dsn.starts_with("sqlite:") {
-            let driver = sqlite::driver::Driver::create(dsn).await?;
-            return Ok(Self::Sqlite(driver));
-        }
-
-        let url = Url::parse(dsn.as_str())?;
-        let driver = match url.scheme() {
+    pub async fn create(connection_options: &ConnectionOptions) -> Result<Self> {
+        let driver = match connection_options.scheme.as_ref().unwrap().as_str() {
             #[cfg(feature = "mysql")]
-            "mysql" | "mariadb" => Driver::MySQL(
-                mysql::driver::Driver::create(mysql::driver::ConnectionOptions::build_from_url(
-                    &url,
-                ))
-                .await?,
-            ),
+            "mysql" => {
+                Driver::MySQL(mysql::driver::Driver::create(connection_options.into()).await?)
+            }
             #[cfg(feature = "postgres")]
-            "pg" | "psql" | "postgres" | "postgresql" => {
-                let connection_options = postgres::driver::ConnectionOptions::build_from_url(&url);
-                Driver::Postgres(postgres::driver::Driver::create(connection_options).await?)
+            "psql" => {
+                Driver::Postgres(postgres::driver::Driver::create(connection_options.into()).await?)
             }
             #[cfg(feature = "sqlite")]
-            "sqlite" => Driver::Sqlite(sqlite::driver::Driver::create(url.to_string()).await?),
+            "sqlite" => {
+                Driver::Sqlite(sqlite::driver::Driver::create(connection_options.into()).await?)
+            }
             _ => unimplemented!(),
         };
 
@@ -196,14 +181,14 @@ impl DriverStatementResult {
 #[cfg(test)]
 mod tests {
     use crate::driver::Driver;
-    use crate::params;
+    use crate::{params, ConnectionOptions};
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     async fn can_create_connection() {
-        let connection = Driver::create(std::env::var("DATABASE_DSN").unwrap())
-            .await
-            .expect("Must be connected");
+        let options =
+            ConnectionOptions::try_from(std::env::var("DATABASE_DSN").unwrap().as_ref()).unwrap();
+        let connection = Driver::create(&options).await.expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result = statement.execute(params![]).await;

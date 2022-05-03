@@ -1,21 +1,31 @@
 use crate::driver::{Driver, DriverStatement, DriverStatementResult};
-use crate::{ConnectionEvent, Error, EventDispatcher, Parameters, Result};
+use crate::{ConnectionEvent, ConnectionOptions, Error, EventDispatcher, Parameters, Result};
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Connection {
-    dsn: String,
+    connection_options: ConnectionOptions,
     driver: Option<Arc<Driver>>,
     event_manager: Option<EventDispatcher>,
 }
 
 impl Connection {
-    pub fn create(dsn: &str, event_manager: Option<EventDispatcher>) -> Self {
+    pub fn create(
+        connection_options: ConnectionOptions,
+        event_manager: Option<EventDispatcher>,
+    ) -> Self {
         Self {
-            dsn: dsn.to_string(),
+            connection_options,
             driver: None,
             event_manager,
         }
+    }
+
+    pub fn create_from_dsn(dsn: &str, event_manager: Option<EventDispatcher>) -> Result<Self> {
+        Ok(Self::create(
+            ConnectionOptions::try_from(dsn)?,
+            event_manager,
+        ))
     }
 
     pub fn is_connected(&self) -> bool {
@@ -27,7 +37,7 @@ impl Connection {
             return Ok(self);
         }
 
-        let driver = Arc::new(Driver::create(&self.dsn).await?);
+        let driver = Arc::new(Driver::create(&self.connection_options).await?);
         let _ = self.driver.insert(driver);
 
         let this = Arc::new(self);
@@ -66,7 +76,8 @@ mod tests {
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     async fn can_create_connection() {
-        let connection = Connection::create(&std::env::var("DATABASE_DSN").unwrap(), None);
+        let connection =
+            Connection::create_from_dsn(&std::env::var("DATABASE_DSN").unwrap(), None).unwrap();
         assert_eq!(connection.is_connected(), false);
 
         let connection = connection.connect().await.expect("Connection failed");
@@ -101,7 +112,9 @@ mod tests {
             })
         });
 
-        let connection = Connection::create(&std::env::var("DATABASE_DSN").unwrap(), Some(events));
+        let connection =
+            Connection::create_from_dsn(&std::env::var("DATABASE_DSN").unwrap(), Some(events))
+                .unwrap();
         assert_eq!(connection.is_connected(), false);
 
         let connection = connection.connect().await.expect("Connection failed");

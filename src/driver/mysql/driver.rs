@@ -25,6 +25,22 @@ pub struct ConnectionOptions {
     pub db_name: Option<String>,
 }
 
+impl From<&crate::ConnectionOptions> for ConnectionOptions {
+    fn from(opts: &crate::ConnectionOptions) -> Self {
+        Self {
+            host: opts.host.as_ref().cloned(),
+            port: opts.port.as_ref().copied(),
+            user: opts
+                .username
+                .as_ref()
+                .cloned()
+                .unwrap_or("root".to_string()),
+            password: opts.password.as_ref().cloned(),
+            db_name: opts.database_name.as_ref().cloned(),
+        }
+    }
+}
+
 impl ConnectionOptions {
     pub(crate) fn build_from_url(url: &Url) -> Self {
         let mut username = url.username().to_string();

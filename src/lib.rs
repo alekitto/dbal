@@ -4,6 +4,7 @@
 #![feature(type_alias_impl_trait)]
 
 mod connection;
+mod connection_options;
 pub mod driver;
 pub mod error;
 mod event;
@@ -14,6 +15,7 @@ mod rows;
 mod value;
 
 pub use connection::Connection;
+pub use connection_options::ConnectionOptions;
 pub use error::Error;
 pub use event::*;
 pub use parameter::Parameter;

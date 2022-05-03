@@ -4,4 +4,3 @@ pub(in crate::driver) mod statement;
 pub(in crate::driver) mod statement_result;
 
 pub use driver::ConnectionOptions;
-pub use driver::SslMode;

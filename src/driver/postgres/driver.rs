@@ -1,3 +1,4 @@
+use crate::connection_options::SslMode;
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::{Async, Result};
 use regex::Regex;
@@ -8,10 +9,6 @@ use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
 use tokio_postgres::{Client, GenericClient, NoTls, Socket};
 use url::Url;
 
-pub enum SslMode {
-    None,
-}
-
 pub struct ConnectionOptions {
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -20,6 +17,24 @@ pub struct ConnectionOptions {
     pub db_name: Option<String>,
     pub ssl_mode: SslMode,
     pub application_name: Option<String>,
+}
+
+impl From<&crate::ConnectionOptions> for ConnectionOptions {
+    fn from(opts: &crate::ConnectionOptions) -> Self {
+        Self {
+            host: opts.host.as_ref().cloned(),
+            port: opts.port.as_ref().copied(),
+            user: opts
+                .username
+                .as_ref()
+                .cloned()
+                .unwrap_or("postgres".to_string()),
+            password: opts.password.as_ref().cloned(),
+            db_name: opts.database_name.as_ref().cloned(),
+            ssl_mode: opts.ssl_mode.clone(),
+            application_name: opts.application_name.as_ref().cloned(),
+        }
+    }
 }
 
 impl ConnectionOptions {

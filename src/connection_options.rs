@@ -32,42 +32,42 @@ pub struct ConnectionOptions {
 
 impl ConnectionOptions {
     pub fn with_scheme(mut self, schema: Option<String>) -> Self {
-        self.scheme = schema.into();
+        self.scheme = schema;
         self
     }
 
     pub fn with_username(mut self, username: Option<String>) -> Self {
-        self.username = username.into();
+        self.username = username;
         self
     }
 
     pub fn with_password(mut self, password: Option<String>) -> Self {
-        self.password = password.into();
+        self.password = password;
         self
     }
 
     pub fn with_host(mut self, host: Option<String>) -> Self {
-        self.host = host.into();
+        self.host = host;
         self
     }
 
     pub fn with_port(mut self, port: Option<u16>) -> Self {
-        self.port = port.into();
+        self.port = port;
         self
     }
 
     pub fn with_file_path(mut self, file_path: Option<String>) -> Self {
-        self.file_path = file_path.into();
+        self.file_path = file_path;
         self
     }
 
     pub fn with_database_name(mut self, database_name: Option<String>) -> Self {
-        self.database_name = database_name.into();
+        self.database_name = database_name;
         self
     }
 
     pub fn with_database_name_suffix(mut self, database_name_suffix: Option<String>) -> Self {
-        self.database_name_suffix = database_name_suffix.into();
+        self.database_name_suffix = database_name_suffix;
         self
     }
 
@@ -77,7 +77,7 @@ impl ConnectionOptions {
     }
 
     pub fn with_application_name(mut self, application_name: Option<String>) -> Self {
-        self.application_name = application_name.into();
+        self.application_name = application_name;
         self
     }
 }

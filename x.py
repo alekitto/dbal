@@ -4,7 +4,6 @@ import subprocess
 import os
 import sys
 import argparse
-import time
 from glob import glob
 from docker import start_database
 

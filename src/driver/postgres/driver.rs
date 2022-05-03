@@ -28,10 +28,10 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
                 .username
                 .as_ref()
                 .cloned()
-                .unwrap_or("postgres".to_string()),
+                .unwrap_or_else(|| "postgres".to_string()),
             password: opts.password.as_ref().cloned(),
             db_name: opts.database_name.as_ref().cloned(),
-            ssl_mode: opts.ssl_mode.clone(),
+            ssl_mode: opts.ssl_mode,
             application_name: opts.application_name.as_ref().cloned(),
         }
     }

@@ -34,7 +34,7 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
                 .username
                 .as_ref()
                 .cloned()
-                .unwrap_or("root".to_string()),
+                .unwrap_or_else(|| "root".to_string()),
             password: opts.password.as_ref().cloned(),
             db_name: opts.database_name.as_ref().cloned(),
         }

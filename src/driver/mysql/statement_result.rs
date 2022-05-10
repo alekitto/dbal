@@ -2,6 +2,7 @@ use super::rows::Rows;
 use crate::{Result, Row};
 use fallible_iterator::FallibleIterator;
 use std::cell::RefCell;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 pub struct StatementResult {
@@ -15,6 +16,18 @@ impl StatementResult {
             column_count,
             rows: Arc::new(RefCell::new(rows)),
         }
+    }
+}
+
+impl Debug for StatementResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MySQL StatementResult")
+            .field("column_count", &self.column_count)
+            .field(
+                "rows",
+                &format!("[ len: {} ]", self.rows.borrow().rows.len()),
+            )
+            .finish()
     }
 }
 

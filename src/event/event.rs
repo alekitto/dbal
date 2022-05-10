@@ -1,16 +1,13 @@
-use crate::Connection;
-use std::sync::Arc;
+use crate::platform::DatabasePlatform;
+use std::any::TypeId;
 
-pub trait Event: Send + Sized {}
+pub(crate) type PlatformBox<'a> = Box<&'a (dyn DatabasePlatform + Sync)>;
 
-pub struct ConnectionEvent {
-    pub connection: Arc<Connection>,
+pub trait Event: Send {
+    fn is_async() -> bool
+    where
+        Self: Sized;
+    fn event_type() -> TypeId
+    where
+        Self: Sized;
 }
-
-impl ConnectionEvent {
-    pub fn new(connection: Arc<Connection>) -> Self {
-        Self { connection }
-    }
-}
-
-impl Event for ConnectionEvent {}

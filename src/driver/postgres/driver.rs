@@ -1,9 +1,12 @@
 use crate::connection_options::SslMode;
 use crate::driver::connection::{Connection, DriverConnection};
-use crate::{Async, Result};
+use crate::driver::postgres::platform::PostgreSQLPlatform;
+use crate::platform::DatabasePlatform;
+use crate::{Async, EventDispatcher, Result};
 use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
 use tokio_postgres::{Client, GenericClient, NoTls, Socket};
@@ -153,10 +156,13 @@ impl Drop for Driver {
 impl<'conn> Connection<'conn> for Driver {
     type Statement = super::statement::Statement<'conn>;
 
-    fn prepare<St: Into<String>>(&'conn self, sql: St) -> Result<Self::Statement> {
-        let statement = super::statement::Statement::new(self, sql.into().as_str())?;
-
-        Ok(statement)
+    fn create_platform(
+        &self,
+        ev: Arc<EventDispatcher>,
+    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+        Box::pin(async move {
+            Box::new(PostgreSQLPlatform::new(ev)) as Box<(dyn DatabasePlatform + Send + Sync)>
+        })
     }
 
     fn server_version(&self) -> Async<Option<String>> {
@@ -182,6 +188,12 @@ impl<'conn> Connection<'conn> for Driver {
                 )
             })
         })
+    }
+
+    fn prepare(&'conn self, sql: &str) -> Result<Self::Statement> {
+        let statement = super::statement::Statement::new(self, sql)?;
+
+        Ok(statement)
     }
 }
 

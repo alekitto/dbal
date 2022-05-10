@@ -7,6 +7,7 @@ use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 use mysql_async::prelude::*;
 use mysql_async::{Params, Value};
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -129,6 +130,15 @@ impl<'conn> Statement<'conn> {
     }
 }
 
+impl<'conn> Debug for Statement<'conn> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MySQL Statement")
+            .field("sql", &self.sql)
+            .field("parameters", &self.parameters.lock().unwrap())
+            .finish()
+    }
+}
+
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     type StatementResult = StatementResult;
 
@@ -172,6 +182,6 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     }
 
     fn row_count(&self) -> usize {
-        todo!()
+        self.row_count.load(Ordering::SeqCst)
     }
 }

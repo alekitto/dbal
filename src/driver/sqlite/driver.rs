@@ -1,12 +1,16 @@
 use crate::driver::connection::{Connection as DbalConnection, DriverConnection};
 use crate::driver::sqlite;
-use crate::{Async, Parameter, Result, Value};
+use crate::driver::sqlite::platform::SQLitePlatform;
+use crate::platform::DatabasePlatform;
+use crate::{Async, EventDispatcher, Parameter, Result, Value};
+use itertools::Itertools;
 use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::types::ToSqlOutput;
 use rusqlite::ToSql;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::sync::Arc;
 use url::Url;
 
 pub type Udf = dyn FnMut(&Context) -> rusqlite::Result<Box<dyn ToSql>>
@@ -190,12 +194,21 @@ impl DriverConnection<ConnectionOptions> for Driver {
 impl<'a> DbalConnection<'a> for Driver {
     type Statement = sqlite::statement::Statement<'a>;
 
+    fn create_platform(
+        &self,
+        ev: Arc<EventDispatcher>,
+    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+        Box::pin(async move {
+            Box::new(SQLitePlatform::new(ev)) as Box<(dyn DatabasePlatform + Send + Sync)>
+        })
+    }
+
     fn server_version(&self) -> Async<Option<String>> {
         Box::pin(async move { None })
     }
 
-    fn prepare<S: Into<String>>(&'a self, sql: S) -> Result<Self::Statement> {
-        sqlite::statement::Statement::new(self, sql.into().as_str())
+    fn prepare(&'a self, sql: &str) -> Result<Self::Statement> {
+        sqlite::statement::Statement::new(self, sql)
     }
 }
 
@@ -215,6 +228,16 @@ impl ToSql for Value {
             Value::Bytes(value) => ToSqlOutput::from(value.clone()),
             Value::Float(value) => ToSqlOutput::from(*value),
             Value::Boolean(value) => ToSqlOutput::from(*value),
+            Value::VecString(value) => ToSqlOutput::from(value.join(",")),
+            Value::VecFloat(value) => {
+                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
+            }
+            Value::VecInt(value) => {
+                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
+            }
+            Value::VecUint(value) => {
+                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
+            }
             Value::DateTime(value) => ToSqlOutput::Owned(rusqlite::types::Value::Text(
                 value.clone().format("%+").to_string(),
             )),

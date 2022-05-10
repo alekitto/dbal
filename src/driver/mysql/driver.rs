@@ -1,11 +1,18 @@
 use crate::driver::connection::{Connection, DriverConnection};
-use crate::{Async, Result};
+use crate::driver::mysql::platform;
+use crate::driver::mysql::platform::MySQLPlatform;
+use crate::driver::statement::Statement;
+use crate::error::ErrorKind;
+use crate::platform::DatabasePlatform;
+use crate::{Async, Error, EventDispatcher, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
+use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use url::Url;
+use version_compare::{compare_to, Cmp};
 
 pub struct Driver {
     pub(super) connection: Arc<Mutex<Conn>>,
@@ -89,13 +96,78 @@ impl DriverConnection<ConnectionOptions> for Driver {
     }
 }
 
+/**
+ * Get a normalized 'version number' from the server string
+ * returned by Oracle MySQL servers.
+ *
+ * @param string $versionString Version string returned by the driver, i.e. '5.7.10'
+ *
+ * @throws Exception
+ */
+fn get_oracle_mysql_version_number(version_string: String) -> Result<String> {
+    let rx = Regex::new(r"^(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?)?")?;
+    let version_parts = rx.captures(&version_string).ok_or(Error::new(
+        ErrorKind::UnknownError,
+        "mysql: invalid version string",
+    ))?;
+
+    let major_version = version_parts.name("major").unwrap().as_str();
+    let minor_version = version_parts
+        .name("minor")
+        .map(|m| m.as_str())
+        .unwrap_or("0");
+    let patch_version = version_parts
+        .name("minor")
+        .map(|m| m.as_str())
+        .unwrap_or_else(|| {
+            if major_version == "5" && minor_version == "7" {
+                "9"
+            } else {
+                "0"
+            }
+        });
+
+    Ok(format!(
+        "{}.{}.{}",
+        major_version, minor_version, patch_version
+    ))
+}
+
 impl<'conn> Connection<'conn> for Driver {
     type Statement = super::statement::Statement<'conn>;
 
-    fn prepare<St: Into<String>>(&'conn self, sql: St) -> Result<Self::Statement> {
-        let statement = super::statement::Statement::new(self, sql.into().as_str())?;
-
-        Ok(statement)
+    fn create_platform(
+        &self,
+        ev: Arc<EventDispatcher>,
+    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+        Box::pin(async move {
+            let version = self
+                .server_version()
+                .await
+                .unwrap_or_else(|| "5.7.9".to_string());
+            if version.contains("mariadb")
+                && compare_to(version.clone(), "10.2.7", Cmp::Ge).unwrap_or(false)
+            {
+                Box::new(platform::MySQLPlatform::new(
+                    platform::MySQLVariant::MariaDB,
+                    ev,
+                )) as Box<dyn DatabasePlatform + Send + Sync>
+            } else {
+                let version = get_oracle_mysql_version_number(version)
+                    .unwrap_or_else(|_| "5.7.9".to_string());
+                if compare_to(version, "8", Cmp::Ge).unwrap_or(false) {
+                    Box::new(platform::MySQLPlatform::new(
+                        platform::MySQLVariant::MySQL80,
+                        ev,
+                    )) as Box<dyn DatabasePlatform + Send + Sync>
+                } else {
+                    Box::new(platform::MySQLPlatform::new(
+                        platform::MySQLVariant::MySQL,
+                        ev,
+                    )) as Box<dyn DatabasePlatform + Send + Sync>
+                }
+            }
+        })
     }
 
     fn server_version(&self) -> Async<Option<String>> {
@@ -105,5 +177,11 @@ impl<'conn> Connection<'conn> for Driver {
 
             Some(format!("{}.{}.{}", major, minor, patch))
         })
+    }
+
+    fn prepare(&'conn self, sql: &str) -> Result<Self::Statement> {
+        let statement = super::statement::Statement::new(self, sql)?;
+
+        Ok(statement)
     }
 }

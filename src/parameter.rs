@@ -135,7 +135,7 @@ impl TryFrom<Parameter> for Vec<u8> {
     }
 }
 
-pub const NO_PARAMS: Parameters = crate::Parameters::Array(&[]);
+pub const NO_PARAMS: Parameters = Parameters::Array(&[]);
 
 #[macro_export]
 macro_rules! params {

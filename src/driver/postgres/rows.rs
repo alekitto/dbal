@@ -17,7 +17,7 @@ impl<'a> FromSql<'a> for Value {
     fn from_sql(
         ty: &Type,
         raw: &'a [u8],
-    ) -> std::prelude::rust_2015::Result<Self, Box<dyn Error + Sync + Send>> {
+    ) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {
         Ok(match ty.clone() {
             Type::CHAR => Value::Int(<i8 as FromSql>::from_sql(ty, raw).unwrap() as i64),
             Type::INT2 => Value::Int(<i16 as FromSql>::from_sql(ty, raw).unwrap() as i64),
@@ -36,9 +36,7 @@ impl<'a> FromSql<'a> for Value {
         })
     }
 
-    fn from_sql_null(
-        _: &Type,
-    ) -> std::prelude::rust_2015::Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql_null(_: &Type) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {
         Ok(Value::NULL)
     }
 

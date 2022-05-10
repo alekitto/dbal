@@ -1,8 +1,11 @@
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
-use crate::{AsyncResult, ConnectionOptions, Parameters, Result, Row};
+use crate::platform::DatabasePlatform;
+use crate::{AsyncResult, ConnectionOptions, EventDispatcher, Parameters, Result, Row};
 use connection::{Connection, DriverConnection};
+use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub mod connection;
 pub mod statement;
@@ -101,15 +104,31 @@ impl Driver {
         Ok(driver)
     }
 
+    pub async fn create_platform(
+        &self,
+        ev: Arc<EventDispatcher>,
+    ) -> Box<dyn DatabasePlatform + Send + Sync> {
+        match self {
+            #[cfg(feature = "mysql")]
+            Self::MySQL(driver) => driver.create_platform(ev),
+            #[cfg(feature = "postgres")]
+            Self::Postgres(driver) => driver.create_platform(ev),
+            #[cfg(feature = "sqlite")]
+            Self::Sqlite(driver) => driver.create_platform(ev),
+        }
+        .await
+    }
+
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<DriverStatement<'_>> {
         let statement = match self {
             #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => DriverStatement::MySQL(driver.prepare(sql)?),
+            Self::MySQL(driver) => DriverStatement::MySQL(driver.prepare(sql.into().as_str())?),
             #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => DriverStatement::Postgres(driver.prepare(sql)?),
+            Self::Postgres(driver) => {
+                DriverStatement::Postgres(driver.prepare(sql.into().as_str())?)
+            }
             #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => DriverStatement::Sqlite(driver.prepare(sql)?),
-            _ => unreachable!(),
+            Self::Sqlite(driver) => DriverStatement::Sqlite(driver.prepare(sql.into().as_str())?),
         };
 
         Ok(statement)
@@ -149,6 +168,7 @@ impl DriverStatementResult {
             Self::Postgres(driver) => driver.fetch_one(),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(driver) => driver.fetch_one(),
+            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
             _ => unreachable!(),
         }
     }
@@ -161,6 +181,7 @@ impl DriverStatementResult {
             Self::Postgres(driver) => driver.fetch_all(),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(driver) => driver.fetch_all(),
+            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
             _ => unreachable!(),
         }
     }
@@ -173,6 +194,7 @@ impl DriverStatementResult {
             Self::Postgres(driver) => driver.column_count(),
             #[cfg(feature = "sqlite")]
             Self::Sqlite(driver) => driver.column_count(),
+            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
             _ => unreachable!(),
         }
     }

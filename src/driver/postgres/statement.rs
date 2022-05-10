@@ -5,6 +5,7 @@ use crate::error::{Error, StdError};
 use crate::parameter_type::ParameterType;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Value};
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -36,7 +37,7 @@ fn bytes_to_binary(
     value: &Value,
     ty: &Type,
     out: &mut BytesMut,
-) -> std::prelude::rust_2015::Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+) -> core::result::Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
     if matches!(*ty, Type::BYTEA) {
         match value {
             Value::Bytes(b) => {
@@ -55,10 +56,7 @@ impl ToSql for Parameter {
         &self,
         ty: &Type,
         out: &mut BytesMut,
-    ) -> std::prelude::rust_2015::Result<IsNull, Box<dyn std::error::Error + Sync + Send>>
-    where
-        Self: Sized,
-    {
+    ) -> core::result::Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
         match self.value_type {
             ParameterType::Null => Ok(IsNull::Yes),
             ParameterType::Integer => match &self.value {
@@ -86,10 +84,7 @@ impl ToSql for Parameter {
         }
     }
 
-    fn accepts(_: &Type) -> bool
-    where
-        Self: Sized,
-    {
+    fn accepts(_: &Type) -> bool {
         true
     }
 
@@ -166,10 +161,19 @@ impl<'conn> Statement<'conn> {
     }
 }
 
-impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
-    type StatementResult = super::statement_result::StatementResult;
+impl<'conn> Debug for Statement<'conn> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PostgreSQL Statement")
+            .field("sql", &self.sql)
+            .field("parameters", &self.parameters.lock().unwrap())
+            .finish()
+    }
+}
 
-    fn bind_value(&self, param: ParameterIndex, value: Parameter) -> crate::Result<()> {
+impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
+    type StatementResult = StatementResult;
+
+    fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()> {
         let mut parameters = self.parameters.lock().unwrap();
         parameters.insert(param, value);
 

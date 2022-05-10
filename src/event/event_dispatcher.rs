@@ -1,19 +1,24 @@
 use crate::Event;
-use futures::executor::block_on;
 use futures::future::BoxFuture;
 use std::any::*;
 use std::default::Default;
 use std::fmt::{Debug, Formatter};
 use tokio::sync::Mutex;
 
-struct Listener {
+struct AsyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Any) -> BoxFuture<()>) + Send>,
+    handler: Box<dyn (FnMut(&mut dyn Event) -> BoxFuture<()>) + Send>,
+}
+
+struct SyncListener {
+    event: TypeId,
+    handler: Box<dyn (FnMut(&mut dyn Event) -> ()) + Send>,
 }
 
 #[derive(Default)]
 pub struct EventDispatcher {
-    subs: Mutex<Vec<Listener>>,
+    sync_listeners: std::sync::Mutex<Vec<SyncListener>>,
+    async_listeners: Mutex<Vec<AsyncListener>>,
 }
 
 impl Debug for EventDispatcher {
@@ -25,33 +30,61 @@ impl Debug for EventDispatcher {
 impl EventDispatcher {
     pub fn new() -> Self {
         Self {
-            subs: Mutex::new(vec![]),
+            sync_listeners: std::sync::Mutex::new(vec![]),
+            async_listeners: Mutex::new(vec![]),
         }
     }
 
-    pub fn add_listener<Ev>(
+    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) -> () + Send + 'static)
+    where
+        Ev: Event + 'static,
+    {
+        self.sync_listeners.lock().unwrap().push(SyncListener {
+            event: Ev::event_type(),
+            handler: Box::new(move |ev: &mut dyn Event| {
+                (action)(unsafe { &mut *(ev as *mut dyn Event as *mut Ev) })
+            }),
+        });
+    }
+
+    pub async fn add_async_listener<Ev>(
         &self,
         mut action: impl FnMut(&mut Ev) -> BoxFuture<()> + 'static + Send,
     ) where
         Ev: Event + 'static,
     {
-        block_on(async {
-            self.subs.lock().await.push(Listener {
-                event: TypeId::of::<Ev>(),
-                handler: Box::new(move |ev: &mut dyn Any| {
-                    Box::pin((action)(ev.downcast_mut().expect("Wrong Event!")))
-                }),
-            });
+        if !Ev::is_async() {
+            panic!("Trying to add an async listener to a sync event. Aborting...");
+        }
+
+        self.async_listeners.lock().await.push(AsyncListener {
+            event: Ev::event_type(),
+            handler: Box::new(move |ev: &mut dyn Event| {
+                Box::pin((action)(unsafe { &mut *(ev as *mut dyn Event as *mut Ev) }))
+            }),
         });
     }
 
-    pub async fn dispatch<Ev>(&self, ev: &mut Ev)
+    pub fn dispatch_sync<Ev>(&self, ev: &mut Ev)
     where
-        Ev: Event + 'static,
+        Ev: Event,
     {
-        for l in self.subs.lock().await.iter_mut() {
-            if TypeId::of::<Ev>() == l.event {
-                (l.handler)(ev).await;
+        for l in self.sync_listeners.lock().unwrap().iter_mut() {
+            if Ev::event_type() == l.event {
+                (l.handler)(ev);
+            }
+        }
+    }
+
+    pub async fn dispatch_async<Ev>(&self, ev: &mut Ev)
+    where
+        Ev: Event,
+    {
+        self.dispatch_sync(ev);
+        for l in self.async_listeners.lock().await.iter_mut() {
+            if Ev::event_type() == l.event {
+                let promise = (l.handler)(ev);
+                promise.await;
             }
         }
     }

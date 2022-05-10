@@ -1,18 +1,23 @@
-#![feature(async_closure)]
-#![feature(backtrace)]
 #![feature(decl_macro)]
 #![feature(type_alias_impl_trait)]
 
 mod connection;
 mod connection_options;
-pub mod driver;
-pub mod error;
 mod event;
 mod parameter;
 mod parameter_type;
 mod result;
 mod rows;
+mod transaction_isolation_level;
 mod value;
+
+pub(crate) mod private;
+
+pub mod driver;
+pub mod error;
+pub mod platform;
+pub mod schema;
+pub mod r#type;
 
 pub use connection::Connection;
 pub use connection_options::ConnectionOptions;
@@ -24,6 +29,7 @@ pub use parameter::Parameters;
 pub use parameter_type::ParameterType;
 pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
+pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use value::Value;
 
 pub fn xxx() {

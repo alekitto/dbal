@@ -16,7 +16,7 @@ pub struct IrValue {
 }
 
 impl ConvIr<Value> for IrValue {
-    fn new(v: mysql_async::Value) -> std::prelude::rust_2015::Result<Self, FromValueError> {
+    fn new(v: mysql_async::Value) -> core::result::Result<Self, FromValueError> {
         let output = match &v {
             mysql_async::Value::NULL => Value::NULL,
             mysql_async::Value::Bytes(bytes) => Value::Bytes(bytes.clone()),

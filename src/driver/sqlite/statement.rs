@@ -2,6 +2,7 @@ use crate::driver::sqlite::driver::Driver;
 use crate::driver::sqlite::rows::Rows;
 use crate::driver::sqlite::statement_result::StatementResult;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
+use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -65,8 +66,25 @@ impl<'conn> Statement<'conn> {
     }
 }
 
+impl<'conn> Debug for Statement<'conn> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SQLite Statement")
+            .field(
+                "expanded_sql",
+                &self
+                    .statement
+                    .lock()
+                    .unwrap()
+                    .0
+                    .expanded_sql()
+                    .unwrap_or_else(|| "".to_string()),
+            )
+            .finish()
+    }
+}
+
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
-    type StatementResult = super::statement_result::StatementResult;
+    type StatementResult = StatementResult;
 
     fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
         let idx = match idx {

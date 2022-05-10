@@ -14,7 +14,7 @@ impl Default for SslMode {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ConnectionOptions {
     pub scheme: Option<String>,
     pub username: Option<String>,

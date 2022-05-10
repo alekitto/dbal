@@ -1,12 +1,16 @@
 use crate::driver::{Driver, DriverStatement, DriverStatementResult};
-use crate::{ConnectionEvent, ConnectionOptions, Error, EventDispatcher, Parameters, Result};
+use crate::event::ConnectionEvent;
+use crate::platform::DatabasePlatform;
+use crate::r#type::{IntoType, Type};
+use crate::{ConnectionOptions, Error, EventDispatcher, Parameters, Result, Value};
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Connection {
     connection_options: ConnectionOptions,
     driver: Option<Arc<Driver>>,
-    event_manager: Option<EventDispatcher>,
+    platform: Option<Arc<Box<dyn DatabasePlatform + Send + Sync>>>,
+    event_manager: Arc<EventDispatcher>,
 }
 
 impl Connection {
@@ -14,9 +18,13 @@ impl Connection {
         connection_options: ConnectionOptions,
         event_manager: Option<EventDispatcher>,
     ) -> Self {
+        let connection_options = Self::add_database_suffix(connection_options);
+        let event_manager = Arc::new(event_manager.unwrap_or_else(|| EventDispatcher::default()));
+
         Self {
             connection_options,
             driver: None,
+            platform: None,
             event_manager,
         }
     }
@@ -38,12 +46,16 @@ impl Connection {
         }
 
         let driver = Arc::new(Driver::create(&self.connection_options).await?);
+        let platform = Arc::new(driver.create_platform(self.event_manager.clone()).await);
+
         let _ = self.driver.insert(driver);
+        let _ = self.platform.insert(platform);
 
         let this = Arc::new(self);
-        if let Some(ref ev) = this.event_manager {
+
+        {
             let mut event = ConnectionEvent::new(this.clone());
-            ev.dispatch(&mut event).await;
+            this.event_manager.dispatch_async(&mut event).await;
         }
 
         Ok(Arc::try_unwrap(this).unwrap())
@@ -63,12 +75,53 @@ impl Connection {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         driver.query(sql, params).await
     }
+
+    pub fn convert_value<T: IntoType>(&self, value: Option<&str>, column_type: T) -> Result<Value> {
+        if let Some(platform) = self.platform.as_ref().cloned() {
+            let t = column_type.into_type()?;
+            t.convert_to_value(value, platform.as_ref().as_ref())
+        } else {
+            Err(Error::not_connected())
+        }
+    }
+
+    pub fn convert_database_value<T: IntoType>(
+        &self,
+        value: Value,
+        column_type: T,
+    ) -> Result<Value> {
+        if let Some(platform) = self.platform.as_ref().cloned() {
+            let t = column_type.into_type()?;
+            t.convert_to_database_value(value, platform.as_ref().as_ref())
+        } else {
+            Err(Error::not_connected())
+        }
+    }
+
+    fn add_database_suffix(connection_options: ConnectionOptions) -> ConnectionOptions {
+        let mut options = connection_options.clone();
+        if let Some(db_suffix) = connection_options.database_name_suffix {
+            let db_name = &options.database_name;
+            let db_name = format!(
+                "{}{}",
+                db_name.as_ref().cloned().unwrap_or("app".to_string()),
+                db_suffix
+            );
+
+            options = options.with_database_name(Some(db_name));
+
+            // TODO: primary/replica
+        }
+
+        options
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::event::ConnectionEvent;
     use crate::rows::ColumnIndex;
-    use crate::{params, Connection, ConnectionEvent, EventDispatcher, Row, Value};
+    use crate::{params, Connection, EventDispatcher, Row, Value};
     use lazy_static::lazy_static;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
@@ -97,20 +150,22 @@ mod tests {
     #[tokio::test]
     async fn can_create_connection_with_event_dispatcher() {
         let events = EventDispatcher::new();
-        events.add_listener(|ev: &mut ConnectionEvent| {
-            Box::pin(async move {
-                let result = ev
-                    .connection
-                    .as_ref()
-                    .query("SELECT 1", params![])
-                    .await
-                    .unwrap();
-                let rows = result.fetch_all();
+        events
+            .add_async_listener(|ev: &mut ConnectionEvent| {
+                Box::pin(async move {
+                    let result = ev
+                        .connection
+                        .as_ref()
+                        .query("SELECT 1", params![])
+                        .await
+                        .unwrap();
+                    let rows = result.fetch_all();
 
-                CALLED.store(true, Ordering::SeqCst);
-                let _ = M_RESULT.lock().unwrap().insert(rows.unwrap().clone());
+                    CALLED.store(true, Ordering::SeqCst);
+                    let _ = M_RESULT.lock().unwrap().insert(rows.unwrap().clone());
+                })
             })
-        });
+            .await;
 
         let connection =
             Connection::create_from_dsn(&std::env::var("DATABASE_DSN").unwrap(), Some(events))

@@ -1,3 +1,4 @@
+use crate::driver::statement_result::StatementResult;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 use delegate::delegate;
 use std::fmt::Debug;
@@ -26,7 +27,7 @@ pub trait Statement<'conn>: Debug {
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
     fn query_owned(
-        self,
+        self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> AsyncResult<'conn, Self::StatementResult>;
 
@@ -41,7 +42,10 @@ pub trait Statement<'conn>: Debug {
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn execute_owned(self, params: Vec<(ParameterIndex, Parameter)>) -> AsyncResult<'conn, usize>;
+    fn execute_owned(
+        self: Box<Self>,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> AsyncResult<'conn, usize>;
 
     /// Returns the number of rows affected by the last DELETE, INSERT, or UPDATE statement
     /// executed by the corresponding object.

@@ -117,7 +117,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     }
 
     fn query_owned(
-        self,
+        self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> AsyncResult<'conn, Self::StatementResult> {
         let result = self.internal_query(Parameters::Vec(params));
@@ -133,7 +133,10 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Box::pin(async move { result })
     }
 
-    fn execute_owned(self, params: Vec<(ParameterIndex, Parameter)>) -> AsyncResult<'conn, usize> {
+    fn execute_owned(
+        self: Box<Self>,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> AsyncResult<'conn, usize> {
         let result = self.internal_execute(Parameters::Vec(params));
         Box::pin(async move { result })
     }

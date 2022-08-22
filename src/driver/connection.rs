@@ -13,12 +13,7 @@ pub(in crate::driver) trait DriverConnection<T>: Sized {
     fn create(params: T) -> Self::Output;
 }
 
-pub trait Connection<'conn>: Debug + Send + Sync + 'conn
-where
-    <Self as Connection<'conn>>::Statement: Statement<'conn>,
-{
-    type Statement;
-
+pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
@@ -28,7 +23,7 @@ where
     fn server_version(&self) -> Async<Option<String>>;
 
     /// Prepares a statement for execution and returns a Statement object.
-    fn prepare(&'conn self, sql: &str) -> Result<Self::Statement>;
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>>;
 
     /// Executes an SQL statement, returning a result set as a Statement object.
     fn query(&'conn self, sql: &str, params: Parameters) -> AsyncResult<Box<dyn StatementResult>> {

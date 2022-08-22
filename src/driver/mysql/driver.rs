@@ -134,8 +134,6 @@ fn get_oracle_mysql_version_number(version_string: String) -> Result<String> {
 }
 
 impl<'conn> Connection<'conn> for Driver {
-    type Statement = super::statement::Statement<'conn>;
-
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
@@ -179,9 +177,9 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn prepare(&'conn self, sql: &str) -> Result<Self::Statement> {
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
         let statement = super::statement::Statement::new(self, sql)?;
 
-        Ok(statement)
+        Ok(Box::new(statement))
     }
 }

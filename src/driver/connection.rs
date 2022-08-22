@@ -41,6 +41,6 @@ where
         }
 
         let statement = statement.unwrap();
-        statement.query_owned(Vec::from(params))
+        Box::new(statement).query_owned(Vec::from(params))
     }
 }

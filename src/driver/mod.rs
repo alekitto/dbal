@@ -46,15 +46,15 @@ impl<'conn> DriverStatement<'conn> {
         Ok(match self {
             #[cfg(feature = "mysql")]
             DriverStatement::MySQL(statement) => {
-                DriverStatementResult::MySQL(statement.query(params).await?)
+                DriverStatementResult::MySQL(*statement.query(params).await?)
             }
             #[cfg(feature = "postgres")]
             DriverStatement::Postgres(statement) => {
-                DriverStatementResult::Postgres(statement.query(params).await?)
+                DriverStatementResult::Postgres(*statement.query(params).await?)
             }
             #[cfg(feature = "sqlite")]
             DriverStatement::Sqlite(statement) => {
-                DriverStatementResult::Sqlite(statement.query(params).await?)
+                DriverStatementResult::Sqlite(*statement.query(params).await?)
             }
             DriverStatement::Null(_) => unreachable!(),
         })

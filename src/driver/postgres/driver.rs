@@ -1,6 +1,7 @@
 use crate::connection_options::SslMode;
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::driver::postgres::platform::PostgreSQLPlatform;
+use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::{Async, EventDispatcher, Result};
 use regex::Regex;
@@ -154,8 +155,6 @@ impl Drop for Driver {
 }
 
 impl<'conn> Connection<'conn> for Driver {
-    type Statement = super::statement::Statement<'conn>;
-
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
@@ -190,10 +189,10 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn prepare(&'conn self, sql: &str) -> Result<Self::Statement> {
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
         let statement = super::statement::Statement::new(self, sql)?;
 
-        Ok(statement)
+        Ok(Box::new(statement))
     }
 }
 

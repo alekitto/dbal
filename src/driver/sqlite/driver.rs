@@ -1,6 +1,7 @@
 use crate::driver::connection::{Connection as DbalConnection, DriverConnection};
 use crate::driver::sqlite;
 use crate::driver::sqlite::platform::SQLitePlatform;
+use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::{Async, EventDispatcher, Parameter, Result, Value};
 use itertools::Itertools;
@@ -191,9 +192,7 @@ impl DriverConnection<ConnectionOptions> for Driver {
     }
 }
 
-impl<'a> DbalConnection<'a> for Driver {
-    type Statement = sqlite::statement::Statement<'a>;
-
+impl<'conn> DbalConnection<'conn> for Driver {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
@@ -207,8 +206,8 @@ impl<'a> DbalConnection<'a> for Driver {
         Box::pin(async move { None })
     }
 
-    fn prepare(&'a self, sql: &str) -> Result<Self::Statement> {
-        sqlite::statement::Statement::new(self, sql)
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
+        Ok(Box::new(sqlite::statement::Statement::new(self, sql)?))
     }
 }
 

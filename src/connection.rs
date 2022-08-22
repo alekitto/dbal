@@ -1,4 +1,5 @@
-use crate::driver::{Driver, DriverStatement, DriverStatementResult};
+use crate::driver::statement_result::StatementResult;
+use crate::driver::{Driver, DriverStatement};
 use crate::event::ConnectionEvent;
 use crate::platform::DatabasePlatform;
 use crate::r#type::{IntoType, Type};
@@ -71,7 +72,7 @@ impl Connection {
         &self,
         sql: St,
         params: Parameters<'_>,
-    ) -> Result<DriverStatementResult> {
+    ) -> Result<Box<dyn StatementResult>> {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         driver.query(sql, params).await
     }

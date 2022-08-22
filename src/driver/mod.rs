@@ -1,7 +1,7 @@
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
 use crate::platform::DatabasePlatform;
-use crate::{AsyncResult, ConnectionOptions, EventDispatcher, Parameters, Result};
+use crate::{AsyncResult, ConnectionOptions, Error, EventDispatcher, Parameters, Result};
 use connection::{Connection, DriverConnection};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -20,68 +20,47 @@ pub mod postgres;
 pub mod sqlite;
 
 #[derive(Debug)]
-pub enum Driver {
-    #[cfg(feature = "mysql")]
-    MySQL(mysql::driver::Driver),
-    #[cfg(feature = "postgres")]
-    Postgres(postgres::driver::Driver),
-    #[cfg(feature = "sqlite")]
-    Sqlite(sqlite::driver::Driver),
+pub struct Driver {
+    inner_driver: Box<dyn for<'a> Connection<'a>>,
 }
 
 impl Driver {
+    pub fn create_with_connection(connection: Box<dyn for<'a> Connection<'a>>) -> Self {
+        Self {
+            inner_driver: connection,
+        }
+    }
+
     pub async fn create(connection_options: &ConnectionOptions) -> Result<Self> {
         let driver = match connection_options.scheme.as_ref().unwrap().as_str() {
             #[cfg(feature = "mysql")]
-            "mysql" => {
-                Driver::MySQL(mysql::driver::Driver::create(connection_options.into()).await?)
-            }
+            "mysql" => Box::new(mysql::driver::Driver::create(connection_options.into()).await?)
+                as Box<dyn for<'a> Connection<'a>>,
             #[cfg(feature = "postgres")]
-            "psql" => {
-                Driver::Postgres(postgres::driver::Driver::create(connection_options.into()).await?)
+            "psql" | "postgres" | "postgresql" => {
+                Box::new(postgres::driver::Driver::create(connection_options.into()).await?)
+                    as Box<dyn for<'a> Connection<'a>>
             }
             #[cfg(feature = "sqlite")]
-            "sqlite" => {
-                Driver::Sqlite(sqlite::driver::Driver::create(connection_options.into()).await?)
-            }
-            _ => unimplemented!(),
+            "sqlite" => Box::new(sqlite::driver::Driver::create(connection_options.into()).await?)
+                as Box<dyn for<'a> Connection<'a>>,
+            proto @ _ => return Err(Error::unknown_driver(proto)),
         };
 
-        Ok(driver)
+        Ok(Self {
+            inner_driver: driver,
+        })
     }
 
     pub async fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
     ) -> Box<dyn DatabasePlatform + Send + Sync> {
-        match self {
-            #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => driver.create_platform(ev),
-            #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => driver.create_platform(ev),
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => driver.create_platform(ev),
-        }
-        .await
+        self.inner_driver.create_platform(ev).await
     }
 
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<Box<dyn Statement<'_> + '_>> {
-        let statement = match self {
-            #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => {
-                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
-            }
-            #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => {
-                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
-            }
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => {
-                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
-            }
-        };
-
-        Ok(statement)
+        Ok(self.inner_driver.prepare(sql.into().as_str())?)
     }
 
     /// Executes an SQL statement, returning a result set as a Statement object.

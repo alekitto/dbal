@@ -8,6 +8,7 @@ use std::num::TryFromIntError;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum ErrorKind {
+    UnknownDriver = 0,
     NotReadyError = 1,
     OutOfBoundsError = 2,
     UnsupportedNamedParameters = 3,
@@ -69,6 +70,10 @@ impl Error {
             inner: error.into(),
             backtrace: Backtrace::capture(),
         }
+    }
+
+    pub fn unknown_driver(scheme: &str) -> Self {
+        Self::new(ErrorKind::UnknownDriver, format!("Unknown driver protocol \"{}\". Use Driver::create_with_connection to use a custom driver connection", scheme))
     }
 
     pub fn not_ready() -> Self {

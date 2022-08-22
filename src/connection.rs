@@ -1,5 +1,6 @@
+use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
-use crate::driver::{Driver, DriverStatement};
+use crate::driver::Driver;
 use crate::event::ConnectionEvent;
 use crate::platform::DatabasePlatform;
 use crate::r#type::{IntoType, Type};
@@ -62,7 +63,7 @@ impl Connection {
         Ok(Arc::try_unwrap(this).unwrap())
     }
 
-    pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<DriverStatement<'_>> {
+    pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<Box<dyn Statement<'_> + '_>> {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         driver.prepare(sql)
     }

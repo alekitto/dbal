@@ -113,7 +113,7 @@ for runtime in ["tokio"]:
         # postgres
         #
 
-        for version in ["14", "13", "12", "11", "10", "9_6"]:
+        for version in ["14", "13", "12", "11", "10"]:
             run(
                 f"cargo test --no-default-features --features postgres,runtime-{runtime}-{tls}",
                 comment=f"test postgres {version}",
@@ -122,7 +122,7 @@ for runtime in ["tokio"]:
             )
 
         ## +ssl
-        # for version in ["14", "13", "12", "11", "10", "9_6"]:
+        # for version in ["14", "13", "12", "11", "10"]:
         #     run(
         #         f"cargo test --no-default-features --features postgres,runtime-{runtime}-{tls}",
         #         comment=f"test postgres {version} ssl",

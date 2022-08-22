@@ -45,17 +45,11 @@ impl<'conn> DriverStatement<'conn> {
     pub async fn query(&self, params: Parameters<'conn>) -> Result<Box<dyn StatementResult>> {
         Ok(match self {
             #[cfg(feature = "mysql")]
-            DriverStatement::MySQL(statement) => {
-                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
-            }
+            DriverStatement::MySQL(statement) => statement.query(params).await?,
             #[cfg(feature = "postgres")]
-            DriverStatement::Postgres(statement) => {
-                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
-            }
+            DriverStatement::Postgres(statement) => statement.query(params).await?,
             #[cfg(feature = "sqlite")]
-            DriverStatement::Sqlite(statement) => {
-                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
-            }
+            DriverStatement::Sqlite(statement) => statement.query(params).await?,
             DriverStatement::Null(_) => unreachable!(),
         })
     }

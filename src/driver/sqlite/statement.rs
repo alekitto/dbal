@@ -84,8 +84,6 @@ impl<'conn> Debug for Statement<'conn> {
 }
 
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
-    type StatementResult = StatementResult;
-
     fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
         let idx = match idx {
             ParameterIndex::Positional(i) => i as usize,
@@ -107,24 +105,26 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Box<Self::StatementResult>> {
+    fn query(&self, params: Parameters) -> AsyncResult<Box<dyn crate::driver::StatementResult>> {
         let result = self.internal_query(params);
         Box::pin(async move {
             let (rows, column_count) = result?;
 
-            Ok(Box::new(StatementResult::new(column_count, rows)))
+            Ok(Box::new(StatementResult::new(column_count, rows))
+                as Box<dyn crate::driver::StatementResult>)
         })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Box<Self::StatementResult>> {
+    ) -> AsyncResult<'conn, Box<dyn crate::driver::StatementResult>> {
         let result = self.internal_query(Parameters::Vec(params));
         Box::pin(async move {
             let (rows, column_count) = result?;
 
-            Ok(Box::new(StatementResult::new(column_count, rows)))
+            Ok(Box::new(StatementResult::new(column_count, rows))
+                as Box<dyn crate::driver::StatementResult>)
         })
     }
 

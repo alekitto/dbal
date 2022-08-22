@@ -3,7 +3,7 @@ use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
 use delegate::delegate;
 use std::fmt::Debug;
 
-pub trait Statement<'conn>: Debug {
+pub trait Statement<'conn>: Debug + Send + Sync {
     /// Binds a value to a corresponding named or positional placeholder in the SQL statement
     /// that was used to prepare the statement.
     ///

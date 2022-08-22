@@ -4,7 +4,6 @@ use crate::platform::DatabasePlatform;
 use crate::{AsyncResult, ConnectionOptions, EventDispatcher, Parameters, Result};
 use connection::{Connection, DriverConnection};
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub mod connection;
@@ -28,44 +27,6 @@ pub enum Driver {
     Postgres(postgres::driver::Driver),
     #[cfg(feature = "sqlite")]
     Sqlite(sqlite::driver::Driver),
-}
-
-pub enum DriverStatement<'conn> {
-    #[cfg(feature = "mysql")]
-    MySQL(mysql::statement::Statement<'conn>),
-    #[cfg(feature = "postgres")]
-    Postgres(postgres::statement::Statement<'conn>),
-    #[cfg(feature = "sqlite")]
-    Sqlite(sqlite::statement::Statement<'conn>),
-    Null(PhantomData<&'conn Self>),
-}
-
-impl<'conn> DriverStatement<'conn> {
-    /// Executes an SQL statement, returning a result set as a Statement object.
-    pub async fn query(&self, params: Parameters<'conn>) -> Result<Box<dyn StatementResult>> {
-        Ok(match self {
-            #[cfg(feature = "mysql")]
-            DriverStatement::MySQL(statement) => statement.query(params).await?,
-            #[cfg(feature = "postgres")]
-            DriverStatement::Postgres(statement) => statement.query(params).await?,
-            #[cfg(feature = "sqlite")]
-            DriverStatement::Sqlite(statement) => statement.query(params).await?,
-            DriverStatement::Null(_) => unreachable!(),
-        })
-    }
-
-    /// Executes an SQL statement, returning the number of affected rows.
-    pub async fn execute(&self, params: Parameters<'conn>) -> Result<usize> {
-        Ok(match self {
-            #[cfg(feature = "mysql")]
-            DriverStatement::MySQL(statement) => statement.execute(params).await?,
-            #[cfg(feature = "postgres")]
-            DriverStatement::Postgres(statement) => statement.execute(params).await?,
-            #[cfg(feature = "sqlite")]
-            DriverStatement::Sqlite(statement) => statement.execute(params).await?,
-            DriverStatement::Null(_) => unreachable!(),
-        })
-    }
 }
 
 impl Driver {
@@ -104,16 +65,20 @@ impl Driver {
         .await
     }
 
-    pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<DriverStatement<'_>> {
+    pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<Box<dyn Statement<'_> + '_>> {
         let statement = match self {
             #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => DriverStatement::MySQL(driver.prepare(sql.into().as_str())?),
+            Self::MySQL(driver) => {
+                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
+            }
             #[cfg(feature = "postgres")]
             Self::Postgres(driver) => {
-                DriverStatement::Postgres(driver.prepare(sql.into().as_str())?)
+                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
             }
             #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => DriverStatement::Sqlite(driver.prepare(sql.into().as_str())?),
+            Self::Sqlite(driver) => {
+                Box::new(driver.prepare(sql.into().as_str())?) as Box<dyn Statement<'_>>
+            }
         };
 
         Ok(statement)

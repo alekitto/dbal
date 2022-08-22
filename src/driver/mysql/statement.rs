@@ -140,8 +140,6 @@ impl<'conn> Debug for Statement<'conn> {
 }
 
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
-    type StatementResult = StatementResult;
-
     fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()> {
         let mut parameters = self.parameters.lock().unwrap();
         parameters.insert(param, value);
@@ -149,26 +147,28 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Box<Self::StatementResult>> {
+    fn query(&self, params: Parameters) -> AsyncResult<Box<dyn crate::driver::StatementResult>> {
         let params = Vec::from(params);
 
         Box::pin(async move {
             let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
-            Ok(Box::new(StatementResult::new(column_count, rows)))
+            Ok(Box::new(StatementResult::new(column_count, rows))
+                as Box<dyn crate::driver::StatementResult>)
         })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Box<Self::StatementResult>> {
+    ) -> AsyncResult<'conn, Box<dyn crate::driver::StatementResult>> {
         Box::pin(async move {
             let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
-            Ok(Box::new(StatementResult::new(column_count, rows)))
+            Ok(Box::new(StatementResult::new(column_count, rows))
+                as Box<dyn crate::driver::StatementResult>)
         })
     }
 

@@ -1,7 +1,7 @@
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
 use crate::platform::DatabasePlatform;
-use crate::{AsyncResult, ConnectionOptions, EventDispatcher, Parameters, Result, Row};
+use crate::{AsyncResult, ConnectionOptions, EventDispatcher, Parameters, Result};
 use connection::{Connection, DriverConnection};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -42,19 +42,19 @@ pub enum DriverStatement<'conn> {
 
 impl<'conn> DriverStatement<'conn> {
     /// Executes an SQL statement, returning a result set as a Statement object.
-    pub async fn query(&self, params: Parameters<'conn>) -> Result<DriverStatementResult> {
+    pub async fn query(&self, params: Parameters<'conn>) -> Result<Box<dyn StatementResult>> {
         Ok(match self {
             #[cfg(feature = "mysql")]
             DriverStatement::MySQL(statement) => {
-                DriverStatementResult::MySQL(*statement.query(params).await?)
+                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
             }
             #[cfg(feature = "postgres")]
             DriverStatement::Postgres(statement) => {
-                DriverStatementResult::Postgres(*statement.query(params).await?)
+                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
             }
             #[cfg(feature = "sqlite")]
             DriverStatement::Sqlite(statement) => {
-                DriverStatementResult::Sqlite(*statement.query(params).await?)
+                Box::new(*statement.query(params).await?) as Box<dyn StatementResult>
             }
             DriverStatement::Null(_) => unreachable!(),
         })
@@ -72,15 +72,6 @@ impl<'conn> DriverStatement<'conn> {
             DriverStatement::Null(_) => unreachable!(),
         })
     }
-}
-
-pub enum DriverStatementResult {
-    #[cfg(feature = "mysql")]
-    MySQL(mysql::statement_result::StatementResult),
-    #[cfg(feature = "postgres")]
-    Postgres(postgres::statement_result::StatementResult),
-    #[cfg(feature = "sqlite")]
-    Sqlite(sqlite::statement_result::StatementResult),
 }
 
 impl Driver {
@@ -139,7 +130,7 @@ impl Driver {
         &self,
         sql: St,
         params: Parameters<'_>,
-    ) -> AsyncResult<DriverStatementResult> {
+    ) -> AsyncResult<Box<dyn StatementResult>> {
         let params = Vec::from(params);
         let prepared = self.prepare(sql);
 
@@ -156,47 +147,6 @@ impl Driver {
 
             Ok(query_result.unwrap())
         })
-    }
-}
-
-impl DriverStatementResult {
-    pub fn fetch_one(&self) -> Result<Option<Row>> {
-        match self {
-            #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => driver.fetch_one(),
-            #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => driver.fetch_one(),
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => driver.fetch_one(),
-            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn fetch_all(&self) -> Result<Vec<Row>> {
-        match self {
-            #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => driver.fetch_all(),
-            #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => driver.fetch_all(),
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => driver.fetch_all(),
-            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn column_count(&self) -> usize {
-        match self {
-            #[cfg(feature = "mysql")]
-            Self::MySQL(driver) => driver.column_count(),
-            #[cfg(feature = "postgres")]
-            Self::Postgres(driver) => driver.column_count(),
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite(driver) => driver.column_count(),
-            #[cfg(not(any(feature = "mysql", feature = "postgres", feature = "sqlite")))]
-            _ => unreachable!(),
-        }
     }
 }
 

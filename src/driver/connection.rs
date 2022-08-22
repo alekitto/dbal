@@ -34,7 +34,8 @@ where
         &'conn self,
         sql: &str,
         params: Parameters,
-    ) -> AsyncResult<<<Self as Connection<'conn>>::Statement as Statement>::StatementResult> {
+    ) -> AsyncResult<Box<<<Self as Connection<'conn>>::Statement as Statement>::StatementResult>>
+    {
         let statement = self.prepare(sql);
         if let Err(e) = statement {
             return Box::pin(async move { Err(e) });

@@ -19,7 +19,7 @@ pub trait Statement<'conn>: Debug {
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
     ///            SQL statement being executed.
-    fn query(&self, params: Parameters) -> AsyncResult<Self::StatementResult>;
+    fn query(&self, params: Parameters) -> AsyncResult<Box<Self::StatementResult>>;
 
     /// Executes a prepared statement and returns the resulting rows.
     /// This method consumes the statement.
@@ -29,7 +29,7 @@ pub trait Statement<'conn>: Debug {
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Self::StatementResult>;
+    ) -> AsyncResult<'conn, Box<Self::StatementResult>>;
 
     /// Executes a prepared statement
     ///

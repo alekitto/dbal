@@ -180,26 +180,26 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Self::StatementResult> {
+    fn query(&self, params: Parameters) -> AsyncResult<Box<Self::StatementResult>> {
         let params = Vec::from(params);
 
         Box::pin(async move {
             let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
-            Ok(StatementResult::new(column_count, rows))
+            Ok(Box::new(StatementResult::new(column_count, rows)))
         })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Self::StatementResult> {
+    ) -> AsyncResult<'conn, Box<Self::StatementResult>> {
         Box::pin(async move {
             let result = self.internal_query(params).await;
             let (rows, column_count) = result?;
 
-            Ok(StatementResult::new(column_count, rows))
+            Ok(Box::new(StatementResult::new(column_count, rows)))
         })
     }
 

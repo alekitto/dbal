@@ -135,10 +135,34 @@ impl PartialEq for Value {
             Value::DateTime(value) => other.is_datetime_eq(value),
             Value::Json(value) => other.is_json_eq(value),
             Value::Uuid(value) => other.is_uuid_eq(value),
-            Value::VecInt(_) => todo!(),
-            Value::VecUint(_) => todo!(),
-            Value::VecString(_) => todo!(),
-            Value::VecFloat(_) => todo!(),
+            Value::VecInt(value) => {
+                if let Value::VecInt(other) = other {
+                    value.eq(other)
+                } else {
+                    false
+                }
+            }
+            Value::VecUint(value) => {
+                if let Value::VecUint(other) = other {
+                    value.eq(other)
+                } else {
+                    false
+                }
+            }
+            Value::VecString(value) => {
+                if let Value::VecString(other) = other {
+                    value.eq(other)
+                } else {
+                    false
+                }
+            }
+            Value::VecFloat(value) => {
+                if let Value::VecFloat(other) = other {
+                    value.eq(other)
+                } else {
+                    false
+                }
+            }
         }
     }
 }

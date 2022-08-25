@@ -871,7 +871,7 @@ pub trait DatabasePlatform: Debug {
     /// Some platforms have boolean literals that needs to be correctly converted
     ///
     /// The default conversion tries to convert value into bool
-    fn convert_from_boolean(&self, item: Value) -> Value {
+    fn convert_from_boolean(&self, item: &Value) -> Value {
         default::convert_from_boolean(item)
     }
 

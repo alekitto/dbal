@@ -11,11 +11,7 @@ impl Type for BinaryType {
         Box::new(BinaryType {})
     }
 
-    fn convert_to_value(
-        &self,
-        value: Option<&str>,
-        platform: &dyn DatabasePlatform,
-    ) -> Result<Value> {
+    fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {
         todo!()
     }
 

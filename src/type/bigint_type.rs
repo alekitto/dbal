@@ -1,8 +1,8 @@
 use crate::platform::DatabasePlatform;
 use crate::r#type::Type;
 use crate::schema::ColumnData;
+use crate::Result;
 use crate::{Error, Value};
-use crate::{ParameterType, Result};
 
 pub struct BigintType {}
 
@@ -11,16 +11,16 @@ impl Type for BigintType {
         Box::new(BigintType {})
     }
 
-    fn convert_to_value(&self, value: Option<&str>, _: &dyn DatabasePlatform) -> Result<Value> {
-        Ok(if let Some(value) = value {
-            if value.is_empty() {
-                Value::NULL
-            } else {
-                Value::String(value.to_string())
-            }
-        } else {
-            Value::NULL
-        })
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::String(_) => Ok(value.clone()),
+            Value::Int(val) => Ok(Value::String(val.to_string())),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                "Bigint",
+                &["NULL", "String", "Integer"],
+            )),
+        }
     }
 
     fn get_name(&self) -> &'static str {

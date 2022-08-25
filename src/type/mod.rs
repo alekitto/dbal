@@ -73,16 +73,8 @@ pub trait Type {
     /// Converts a value from its database representation to its PHP representation
     /// of this type.
     #[allow(unused_variables)]
-    fn convert_to_value(
-        &self,
-        value: Option<&str>,
-        platform: &dyn DatabasePlatform,
-    ) -> Result<Value> {
-        if let Some(value) = value {
-            Ok(Value::String(value.to_string()))
-        } else {
-            Ok(Value::NULL)
-        }
+    fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {
+        Ok(value.clone())
     }
 
     fn get_name(&self) -> &'static str;
@@ -142,7 +134,7 @@ impl<T: Type + ?Sized> Type for Box<T> {
     delegate! {
         to (**self) {
             fn convert_to_database_value(&self, value: Value, platform: &dyn DatabasePlatform)-> Result<Value>;
-            fn convert_to_value(&self, value: Option<&str>,platform: &dyn DatabasePlatform) -> Result<Value>;
+            fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value>;
             fn get_name(&self) -> &'static str;
             fn requires_sql_comment_hint(&self, platform: &dyn DatabasePlatform) -> bool;
             fn get_sql_declaration(&self, column: &ColumnData, platform: &dyn DatabasePlatform) -> Result<String>;

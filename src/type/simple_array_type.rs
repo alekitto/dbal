@@ -1,8 +1,8 @@
 use crate::platform::DatabasePlatform;
 use crate::r#type::Type;
 use crate::schema::ColumnData;
-use crate::{Error, Value};
-use crate::{ParameterType, Result};
+use crate::Value;
+use crate::{Error, Result};
 
 /// Array Type which can be used for simple values.
 /// Only use this type if you are sure that your values cannot contain a ",".
@@ -13,29 +13,21 @@ impl Type for SimpleArrayType {
         Box::new(SimpleArrayType {})
     }
 
-    fn convert_to_value(&self, value: Option<&str>, _: &dyn DatabasePlatform) -> Result<Value> {
-        Ok(if let Some(value) = value {
-            if value.is_empty() {
-                Value::NULL
-            } else {
-                Value::VecString(
-                    value
-                        .to_string()
-                        .split(",")
-                        .map(ToString::to_string)
-                        .collect(),
-                )
-            }
-        } else {
-            Value::NULL
-        })
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::VecString(_) => Ok(value.clone()),
+            Value::String(value) => Ok(Value::VecString(
+                value.split(",").map(ToString::to_string).collect(),
+            )),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "String"],
+            )),
+        }
     }
 
-    fn convert_to_database_value(
-        &self,
-        value: Value,
-        platform: &dyn DatabasePlatform,
-    ) -> Result<Value> {
+    fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
         Ok(match value {
             Value::VecString(vec) => Value::String(vec.join(",")),
             _ => Value::NULL,

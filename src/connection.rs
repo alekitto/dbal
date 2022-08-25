@@ -78,7 +78,7 @@ impl Connection {
         driver.query(sql, params).await
     }
 
-    pub fn convert_value<T: IntoType>(&self, value: Option<&str>, column_type: T) -> Result<Value> {
+    pub fn convert_value<T: IntoType>(&self, value: &Value, column_type: T) -> Result<Value> {
         if let Some(platform) = self.platform.as_ref().cloned() {
             let t = column_type.into_type()?;
             t.convert_to_value(value, platform.as_ref().as_ref())
@@ -121,6 +121,7 @@ impl Connection {
 
 #[cfg(test)]
 mod tests {
+    use crate::driver::statement_result::StatementResult;
     use crate::event::ConnectionEvent;
     use crate::rows::ColumnIndex;
     use crate::{params, Connection, EventDispatcher, Row, Value};
@@ -188,5 +189,34 @@ mod tests {
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result = statement.execute(params![]).await;
         assert_eq!(result.is_ok(), true);
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    async fn can_convert_type_to_runtime() {
+        let connection =
+            Connection::create_from_dsn(&std::env::var("DATABASE_DSN").unwrap(), None).unwrap();
+        let connection = connection.connect().await.expect("Connection failed");
+        assert_eq!(connection.is_connected(), true);
+
+        let result = connection
+            .query("SELECT 1", params![])
+            .await
+            .expect("Query failed");
+        let row = result
+            .fetch_one()
+            .expect("Fetch from result failed")
+            .expect("One row is expected");
+
+        let value = row.get(0).expect("At least one column is expected");
+        let v_int = connection
+            .convert_value(value, crate::r#type::INTEGER)
+            .expect("Failed integer conversion");
+        let v_string = connection
+            .convert_value(value, crate::r#type::STRING)
+            .expect("Failed string conversion");
+
+        assert_eq!(v_int, Value::Int(1));
+        assert_eq!(v_string, Value::String("1".to_string()));
     }
 }

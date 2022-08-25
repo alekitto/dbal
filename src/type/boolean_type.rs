@@ -19,15 +19,10 @@ impl Type for BooleanType {
         Ok(platform.convert_booleans_to_database_value(value))
     }
 
-    fn convert_to_value(
-        &self,
-        value: Option<&str>,
-        platform: &dyn DatabasePlatform,
-    ) -> Result<Value> {
-        if let Some(value) = value {
-            Ok(platform.convert_from_boolean(Value::String(value.to_string())))
-        } else {
-            Ok(Value::NULL)
+    fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Boolean(_) => Ok(value.clone()),
+            _ => Ok(platform.convert_from_boolean(value)),
         }
     }
 

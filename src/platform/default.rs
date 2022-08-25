@@ -1209,25 +1209,30 @@ pub fn convert_boolean(item: Value) -> Value {
     }
 }
 
-pub fn convert_from_boolean(item: Value) -> Value {
+pub fn convert_from_boolean(item: &Value) -> Value {
     match item {
         Value::NULL => Value::Boolean(false),
-        Value::Int(i) => Value::Boolean(i != 0),
-        Value::UInt(u) => Value::Boolean(u != 0),
+        Value::Int(i) => Value::Boolean(*i != 0),
+        Value::UInt(u) => Value::Boolean(*u != 0),
         Value::String(s) => Value::Boolean(!s.is_empty()),
-        Value::Float(f) => Value::Boolean(f != 0.0),
-        Value::Boolean(b) => Value::Boolean(b),
+        Value::Float(f) => Value::Boolean(*f != 0.0),
+        Value::Boolean(_) => item.clone(),
         Value::Json(j) => match j {
             serde_json::Value::Null => Value::Boolean(false),
-            serde_json::Value::Bool(b) => Value::Boolean(b),
+            serde_json::Value::Bool(b) => Value::Boolean(*b),
             serde_json::Value::Number(n) => {
+                let n = n.clone();
                 Value::Boolean(n != 0_i64.into() && n != Number::from_f64(0.0).unwrap())
             }
             serde_json::Value::String(s) => Value::Boolean(!s.is_empty()),
             serde_json::Value::Array(a) => Value::Boolean(!a.is_empty()),
             serde_json::Value::Object(_) => Value::Boolean(true),
         },
-        _ => Value::Boolean(true),
+        Value::Bytes(_) | Value::DateTime(_) | Value::Uuid(_) => Value::Boolean(true),
+        Value::VecInt(v) => Value::Boolean(!v.is_empty()),
+        Value::VecUint(v) => Value::Boolean(!v.is_empty()),
+        Value::VecString(v) => Value::Boolean(!v.is_empty()),
+        Value::VecFloat(v) => Value::Boolean(!v.is_empty()),
     }
 }
 

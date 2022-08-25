@@ -26,6 +26,27 @@ impl Type for DecimalType {
         }
     }
 
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL => Ok(value.clone()),
+            Value::Int(i) => Ok(Value::String(i.to_string())),
+            Value::UInt(u) => Ok(Value::String(u.to_string())),
+            Value::Float(f) => Ok(Value::String(f.to_string())),
+            Value::String(str) => {
+                if let Err(e) = str.parse::<f64>() {
+                    Err(e.into())
+                } else {
+                    Ok(Value::String(str.to_string()))
+                }
+            }
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Float", "Int", "UInt"],
+            )),
+        }
+    }
+
     fn get_name(&self) -> &'static str {
         super::DECIMAL
     }

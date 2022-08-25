@@ -10,12 +10,11 @@ impl Type for FloatType {
         Box::new(FloatType {})
     }
 
-    fn convert_to_value(&self, value: Option<&str>, _: &dyn DatabasePlatform) -> Result<Value> {
-        if let Some(value) = value {
-            if value.is_empty() {
-                Ok(Value::NULL)
-            } else {
-                if let Ok(result) = value.parse() {
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Float(_) => Ok(value.clone()),
+            Value::String(ref str) => {
+                if let Ok(result) = str.parse() {
                     Ok(Value::Float(result))
                 } else {
                     Err(Error::conversion_failed_invalid_type(
@@ -25,8 +24,11 @@ impl Type for FloatType {
                     ))
                 }
             }
-        } else {
-            Ok(Value::NULL)
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Numeric string", "Float"],
+            )),
         }
     }
 

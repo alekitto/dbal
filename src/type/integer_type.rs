@@ -10,23 +10,15 @@ impl Type for IntegerType {
         Box::new(IntegerType {})
     }
 
-    fn convert_to_value(&self, value: Option<&str>, _: &dyn DatabasePlatform) -> Result<Value> {
-        if let Some(value) = value {
-            if value.is_empty() {
-                Ok(Value::NULL)
-            } else {
-                if let Ok(result) = value.parse() {
-                    Ok(Value::Int(result))
-                } else {
-                    Err(Error::conversion_failed_invalid_type(
-                        &Value::String(value.to_string()),
-                        self.get_name(),
-                        &["NULL", "Integer"],
-                    ))
-                }
-            }
-        } else {
-            Ok(Value::NULL)
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Int(_) | Value::UInt(_) => Ok(value.clone()),
+            Value::String(str) => Ok(Value::Int(str.parse()?)),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Integer"],
+            )),
         }
     }
 

@@ -10,23 +10,15 @@ impl Type for JsonType {
         Box::new(JsonType {})
     }
 
-    fn convert_to_value(&self, value: Option<&str>, _: &dyn DatabasePlatform) -> Result<Value> {
-        if let Some(value) = value {
-            if value.is_empty() {
-                Ok(Value::NULL)
-            } else {
-                if let Ok(result) = serde_json::from_str(value) {
-                    Ok(Value::Json(result))
-                } else {
-                    Err(Error::conversion_failed_invalid_type(
-                        &Value::String(value.to_string()),
-                        self.get_name(),
-                        &["NULL", "JSON"],
-                    ))
-                }
-            }
-        } else {
-            Ok(Value::NULL)
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Json(_) => Ok(value.clone()),
+            Value::String(value) => Ok(Value::Json(serde_json::from_str(&value)?)),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "JSON String"],
+            )),
         }
     }
 

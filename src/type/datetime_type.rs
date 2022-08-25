@@ -30,29 +30,31 @@ impl Type for DateTimeType {
         }
     }
 
-    fn convert_to_value(
-        &self,
-        value: Option<&str>,
-        platform: &dyn DatabasePlatform,
-    ) -> Result<Value> {
-        if let Some(value) = value {
-            if value.is_empty() {
-                Ok(Value::NULL)
-            } else {
-                if let Ok(dt) =
-                    DateTime::parse_from_str(value, platform.get_date_time_format_string())
-                {
-                    Ok(Value::DateTime(dt.into()))
+    fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::DateTime(_) => Ok(value.clone()),
+            Value::String(value) => {
+                if value.is_empty() {
+                    Ok(Value::NULL)
                 } else {
-                    Err(Error::conversion_failed_invalid_type(
-                        &Value::String(value.to_string()),
-                        self.get_name(),
-                        &["NULL", "DateTime"],
-                    ))
+                    if let Ok(dt) =
+                        DateTime::parse_from_str(&value, platform.get_date_time_format_string())
+                    {
+                        Ok(Value::DateTime(dt.into()))
+                    } else {
+                        Err(Error::conversion_failed_invalid_type(
+                            &Value::String(value.to_string()),
+                            self.get_name(),
+                            &["NULL", "DateTime"],
+                        ))
+                    }
                 }
             }
-        } else {
-            Ok(Value::NULL)
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "DateTime", "String"],
+            )),
         }
     }
 

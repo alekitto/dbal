@@ -8,6 +8,18 @@ pub enum ColumnIndex {
     Position(usize),
 }
 
+impl From<usize> for ColumnIndex {
+    fn from(i: usize) -> Self {
+        Self::Position(i)
+    }
+}
+
+impl From<&str> for ColumnIndex {
+    fn from(s: &str) -> Self {
+        Self::Name(s.to_string())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Row {
     columns: Vec<String>,
@@ -39,8 +51,8 @@ impl Row {
     ///
     /// If an index (string or numeric) is not present, an OutOfBoundsError
     /// error is raised.
-    pub fn get(&self, i: ColumnIndex) -> Result<&Value> {
-        let i = match i {
+    pub fn get<C: Into<ColumnIndex>>(&self, i: C) -> Result<&Value> {
+        let i = match i.into() {
             ColumnIndex::Name(name) => {
                 let mut result = Err(Error::out_of_bounds(name.clone()));
                 for (i, column_name) in (&self.columns).iter().enumerate() {

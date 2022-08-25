@@ -11,10 +11,24 @@ impl Type for StringType {
         Box::new(StringType {})
     }
 
+    fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::String(_) => Ok(value.clone()),
+            Value::Int(v) => Ok(Value::String(v.to_string())),
+            Value::UInt(v) => Ok(Value::String(v.to_string())),
+            Value::Float(v) => Ok(Value::String(v.to_string())),
+            Value::Uuid(v) => Ok(Value::String(v.to_string())),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "String"],
+            )),
+        }
+    }
+
     fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
-            Value::NULL => Ok(value),
-            Value::String(_) => Ok(value),
+            Value::NULL | Value::String(_) => Ok(value),
             _ => Err(Error::conversion_failed_invalid_type(
                 &value,
                 self.get_name(),

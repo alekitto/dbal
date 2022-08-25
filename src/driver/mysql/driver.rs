@@ -96,14 +96,8 @@ impl DriverConnection<ConnectionOptions> for Driver {
     }
 }
 
-/**
- * Get a normalized 'version number' from the server string
- * returned by Oracle MySQL servers.
- *
- * @param string $versionString Version string returned by the driver, i.e. '5.7.10'
- *
- * @throws Exception
- */
+/// Get a normalized 'version number' from the server string
+/// returned by Oracle MySQL servers.
 fn get_oracle_mysql_version_number(version_string: String) -> Result<String> {
     let rx = Regex::new(r"^(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?)?")?;
     let version_parts = rx.captures(&version_string).ok_or(Error::new(

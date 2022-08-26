@@ -5,7 +5,7 @@ pub struct ColumnDiff {
     old_column_name: String,
     pub column: Column,
     pub changed_properties: Vec<String>,
-    pub from_column: Identifier,
+    pub from_column: Option<Column>,
 }
 
 impl ColumnDiff {
@@ -13,13 +13,13 @@ impl ColumnDiff {
         old_column_name: &str,
         column: &Column,
         changed_properties: &[String],
-        from_column: &str,
+        from_column: Option<Column>,
     ) -> Self {
         Self {
             old_column_name: old_column_name.to_string(),
             column: column.clone(),
             changed_properties: changed_properties.clone().to_vec(),
-            from_column: Identifier::new(from_column, false),
+            from_column,
         }
     }
 
@@ -28,6 +28,12 @@ impl ColumnDiff {
     }
 
     pub fn get_old_column_name(&self) -> Identifier {
-        Identifier::new(&self.old_column_name, self.from_column.is_quoted())
+        Identifier::new(
+            &self.old_column_name,
+            self.from_column
+                .as_ref()
+                .map(|c| c.is_quoted())
+                .unwrap_or(false),
+        )
     }
 }

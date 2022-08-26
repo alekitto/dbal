@@ -227,15 +227,9 @@ impl ToSql for Value {
             Value::Bytes(value) => ToSqlOutput::from(value.clone()),
             Value::Float(value) => ToSqlOutput::from(*value),
             Value::Boolean(value) => ToSqlOutput::from(*value),
-            Value::VecString(value) => ToSqlOutput::from(value.join(",")),
-            Value::VecFloat(value) => {
-                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
-            }
-            Value::VecInt(value) => {
-                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
-            }
-            Value::VecUint(value) => {
-                ToSqlOutput::from(value.iter().map(ToString::to_string).join(","))
+            Value::Array(value) => {
+                let vec = value.iter().map(ToString::to_string).join(",");
+                ToSqlOutput::from(vec)
             }
             Value::DateTime(value) => ToSqlOutput::Owned(rusqlite::types::Value::Text(
                 value.clone().format("%+").to_string(),

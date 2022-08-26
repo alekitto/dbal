@@ -13,10 +13,7 @@ pub enum Value {
     Float(f64),
     Boolean(bool),
 
-    VecInt(Vec<i64>),
-    VecUint(Vec<u64>),
-    VecString(Vec<String>),
-    VecFloat(Vec<f64>),
+    Array(Vec<Value>),
 
     /// date-time
     DateTime(DateTime<Local>),
@@ -108,12 +105,7 @@ impl Display for Value {
             Value::Float(value) => value.to_string(),
             Value::Boolean(value) => (if *value { "true" } else { "false" }).to_string(),
             Value::DateTime(value) => value.to_string(),
-            Value::VecString(value) => format!("String array (len: {}) {:?}", value.len(), value),
-            Value::VecFloat(value) => format!("Float array (len: {}) {:?}", value.len(), value),
-            Value::VecInt(value) => format!("Integer array (len: {}) {:?}", value.len(), value),
-            Value::VecUint(value) => {
-                format!("Unsigned integer array (len: {}) {:?}", value.len(), value)
-            }
+            Value::Array(value) => format!("Array (len: {}) {:?}", value.len(), value),
             Value::Json(value) => value.to_string(),
             Value::Uuid(value) => value.to_string(),
         };
@@ -135,29 +127,8 @@ impl PartialEq for Value {
             Value::DateTime(value) => other.is_datetime_eq(value),
             Value::Json(value) => other.is_json_eq(value),
             Value::Uuid(value) => other.is_uuid_eq(value),
-            Value::VecInt(value) => {
-                if let Value::VecInt(other) = other {
-                    value.eq(other)
-                } else {
-                    false
-                }
-            }
-            Value::VecUint(value) => {
-                if let Value::VecUint(other) = other {
-                    value.eq(other)
-                } else {
-                    false
-                }
-            }
-            Value::VecString(value) => {
-                if let Value::VecString(other) = other {
-                    value.eq(other)
-                } else {
-                    false
-                }
-            }
-            Value::VecFloat(value) => {
-                if let Value::VecFloat(other) = other {
+            Value::Array(value) => {
+                if let Value::Array(other) = other {
                     value.eq(other)
                 } else {
                     false

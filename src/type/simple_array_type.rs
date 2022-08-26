@@ -3,6 +3,7 @@ use crate::r#type::Type;
 use crate::schema::ColumnData;
 use crate::Value;
 use crate::{Error, Result};
+use itertools::Itertools;
 
 /// Array Type which can be used for simple values.
 /// Only use this type if you are sure that your values cannot contain a ",".
@@ -15,9 +16,24 @@ impl Type for SimpleArrayType {
 
     fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
-            Value::NULL | Value::VecString(_) => Ok(value.clone()),
-            Value::String(value) => Ok(Value::VecString(
-                value.split(",").map(ToString::to_string).collect(),
+            Value::NULL => Ok(value.clone()),
+            Value::Array(vec) => {
+                if vec.iter().all(|e| matches!(e, Value::String(_))) {
+                    Ok(value.clone())
+                } else {
+                    Err(Error::conversion_failed_invalid_type(
+                        &value,
+                        self.get_name(),
+                        &["NULL", "Array-of-strings", "String"],
+                    ))
+                }
+            }
+            Value::String(value) => Ok(Value::Array(
+                value
+                    .split(",")
+                    .map(ToString::to_string)
+                    .map(Value::from)
+                    .collect(),
             )),
             _ => Err(Error::conversion_failed_invalid_type(
                 &value,
@@ -28,10 +44,30 @@ impl Type for SimpleArrayType {
     }
 
     fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
-        Ok(match value {
-            Value::VecString(vec) => Value::String(vec.join(",")),
-            _ => Value::NULL,
-        })
+        match value {
+            Value::Array(ref vec) => {
+                if vec.iter().all(|e| matches!(e, Value::String(_))) {
+                    Ok(Value::String(
+                        vec.iter()
+                            .map(|el| {
+                                if let Value::String(el) = el {
+                                    el
+                                } else {
+                                    unreachable!()
+                                }
+                            })
+                            .join(","),
+                    ))
+                } else {
+                    Err(Error::conversion_failed_invalid_type(
+                        &value,
+                        self.get_name(),
+                        &["NULL", "Array-of-strings"],
+                    ))
+                }
+            }
+            _ => Ok(Value::NULL),
+        }
     }
 
     fn get_name(&self) -> &'static str {

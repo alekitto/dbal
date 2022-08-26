@@ -1,10 +1,10 @@
 use crate::platform::DatabasePlatform;
 use crate::schema::ColumnData;
-use crate::EventDispatcher;
-use std::any::{type_name, TypeId};
-use std::fmt::{Debug, Formatter};
+use crate::{platform_debug, EventDispatcher};
+use std::any::TypeId;
 use std::sync::Arc;
 
+platform_debug!(SQLitePlatform);
 pub(super) struct SQLitePlatform {
     ev: Arc<EventDispatcher>,
 }
@@ -12,12 +12,6 @@ pub(super) struct SQLitePlatform {
 impl SQLitePlatform {
     pub fn new(ev: Arc<EventDispatcher>) -> Self {
         Self { ev }
-    }
-}
-
-impl Debug for SQLitePlatform {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), core::fmt::Error> {
-        write!(f, "{} {{}}", type_name::<Self>())
     }
 }
 

@@ -974,7 +974,7 @@ pub fn get_default_value_declaration_sql<T: DatabasePlatform + ?Sized>(
     }
 
     if t == TypeId::of::<crate::r#type::BooleanType>() {
-        return Ok(format!(" DEFAULT {}", this.convert_boolean(default)));
+        return Ok(format!(" DEFAULT {}", this.convert_boolean(default)?));
     }
 
     Ok(format!(
@@ -1229,17 +1229,14 @@ pub fn convert_from_boolean(item: &Value) -> Value {
             serde_json::Value::Object(_) => Value::Boolean(true),
         },
         Value::Bytes(_) | Value::DateTime(_) | Value::Uuid(_) => Value::Boolean(true),
-        Value::VecInt(v) => Value::Boolean(!v.is_empty()),
-        Value::VecUint(v) => Value::Boolean(!v.is_empty()),
-        Value::VecString(v) => Value::Boolean(!v.is_empty()),
-        Value::VecFloat(v) => Value::Boolean(!v.is_empty()),
+        Value::Array(vec) => Value::Boolean(!vec.is_empty()),
     }
 }
 
 pub fn convert_booleans_to_database_value<T: DatabasePlatform + ?Sized>(
     this: &T,
     item: Value,
-) -> Value {
+) -> Result<Value> {
     this.convert_boolean(item)
 }
 

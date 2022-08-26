@@ -2,7 +2,7 @@ use crate::{rows::rows_impl, Result, Row, Value};
 use futures::TryStreamExt;
 use std::error::Error;
 use std::io::Read;
-use tokio_postgres::types::{FromSql, Type};
+use tokio_postgres::types::{FromSql, Kind, Type};
 use tokio_postgres::RowStream;
 
 pub struct Rows {
@@ -13,27 +13,58 @@ pub struct Rows {
     pub(crate) position: usize,
 }
 
+fn simple_type_from_sql(
+    ty: &Type,
+    raw: &[u8],
+) -> core::result::Result<Value, Box<dyn Error + Sync + Send>> {
+    Ok(match *ty {
+        Type::CHAR => Value::Int(<i8 as FromSql>::from_sql(ty, raw)? as i64),
+        Type::INT2 => Value::Int(<i16 as FromSql>::from_sql(ty, raw)? as i64),
+        Type::INT4 => Value::Int(<i32 as FromSql>::from_sql(ty, raw)? as i64),
+        Type::INT8 => Value::Int(<i64 as FromSql>::from_sql(ty, raw)?),
+        Type::FLOAT4 => Value::Float(<f32 as FromSql>::from_sql(ty, raw)? as f64),
+        Type::FLOAT8 => Value::Float(<f64 as FromSql>::from_sql(ty, raw)?),
+        Type::BOOL => Value::Boolean(<bool as FromSql>::from_sql(ty, raw)?),
+        Type::JSON | Type::JSONB => {
+            todo!();
+        }
+        Type::CSTRING
+        | Type::VARCHAR
+        | Type::DATE
+        | Type::TIME
+        | Type::TIMETZ
+        | Type::TIMESTAMP
+        | Type::TIMESTAMPTZ
+        | Type::INET
+        | Type::TEXT
+        | Type::UUID
+        | Type::XML
+        | Type::REGCLASS
+        | Type::REGTYPE => {
+            let mut s = String::new();
+            let vv = Vec::from(raw);
+            vv.as_slice().read_to_string(&mut s)?;
+
+            Value::String(s)
+        }
+        _ => Value::Bytes(raw.to_vec()),
+    })
+}
+
 impl<'a> FromSql<'a> for Value {
     fn from_sql(
         ty: &Type,
         raw: &'a [u8],
     ) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {
-        Ok(match ty.clone() {
-            Type::CHAR => Value::Int(<i8 as FromSql>::from_sql(ty, raw).unwrap() as i64),
-            Type::INT2 => Value::Int(<i16 as FromSql>::from_sql(ty, raw).unwrap() as i64),
-            Type::INT4 => Value::Int(<i32 as FromSql>::from_sql(ty, raw).unwrap() as i64),
-            Type::INT8 => Value::Int(<i64 as FromSql>::from_sql(ty, raw).unwrap()),
-            Type::FLOAT4 => Value::Float(<f32 as FromSql>::from_sql(ty, raw).unwrap() as f64),
-            Type::FLOAT8 => Value::Float(<f64 as FromSql>::from_sql(ty, raw).unwrap()),
-            Type::CSTRING | Type::VARCHAR => {
-                let mut s = String::new();
-                let vv = Vec::from(raw);
-                vv.as_slice().read_to_string(&mut s)?;
-
-                Value::String(s)
+        let item = match ty.kind() {
+            Kind::Simple => simple_type_from_sql(ty, raw)?,
+            _ => {
+                println!("{:?}", ty);
+                todo!()
             }
-            _ => Value::Bytes(raw.to_vec()),
-        })
+        };
+
+        Ok(item)
     }
 
     fn from_sql_null(_: &Type) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {

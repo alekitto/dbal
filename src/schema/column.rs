@@ -24,6 +24,7 @@ pub struct ColumnData {
     pub charset: Option<String>,
     pub primary: bool,
     pub check: Option<CheckConstraint>,
+    pub jsonb: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -45,6 +46,7 @@ pub struct Column {
     collation: Option<String>,
     charset: Option<String>,
     check: Option<CheckConstraint>,
+    jsonb: Option<bool>,
 }
 
 impl Column {
@@ -72,6 +74,7 @@ impl Column {
             collation: None,
             charset: None,
             check: None,
+            jsonb: None,
         }
     }
 
@@ -81,6 +84,10 @@ impl Column {
 
     pub fn get_comment(&self) -> &Option<String> {
         &self.comment
+    }
+
+    pub fn is_notnull(&self) -> bool {
+        self.notnull
     }
 
     pub fn is_autoincrement(&self) -> bool {
@@ -109,6 +116,7 @@ impl Column {
             charset: self.charset.clone(),
             primary: false,
             check: self.check.clone(),
+            jsonb: self.jsonb.clone(),
         }
     }
 }

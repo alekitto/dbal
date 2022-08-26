@@ -1,9 +1,12 @@
 use super::postgresql;
-use crate::platform::{DatabasePlatform, DateIntervalUnit, KeywordList};
-use crate::schema::{
-    Column, ColumnData, ForeignKeyConstraint, Identifier, Index, Sequence, TableDiff, TableOptions,
+use crate::driver::postgres::platform::PostgreSQLSchemaManager;
+use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList};
+use crate::r#type::{
+    BigintType, BlobType, BooleanType, DateTimeType, DateTimeTzType, DateType, DecimalType,
+    FloatType, GuidType, IntegerType, JsonType, StringType, TextType, TimeType,
 };
-use crate::{platform_debug, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
+use crate::schema::{ColumnData, Identifier, SchemaManager};
+use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 use dashmap::DashMap;
 use std::any::TypeId;
 use std::sync::Arc;
@@ -11,7 +14,7 @@ use std::sync::Arc;
 pub trait AbstractPostgreSQLPlatform: DatabasePlatform {}
 
 platform_debug!(PostgreSQLPlatform);
-pub(crate) struct PostgreSQLPlatform {
+pub struct PostgreSQLPlatform {
     ev: Arc<EventDispatcher>,
     type_mappings: DashMap<String, TypeId>,
 }
@@ -96,109 +99,12 @@ impl DatabasePlatform for PostgreSQLPlatform {
         true
     }
 
-    fn get_list_databases_sql(&self) -> Result<String> {
-        postgresql::get_list_databases_sql()
-    }
-
-    fn get_list_sequences_sql(&self, database: &str) -> Result<String> {
-        postgresql::get_list_sequences_sql(self, database)
-    }
-
-    fn get_list_tables_sql(&self) -> Result<String> {
-        postgresql::get_list_tables_sql()
-    }
-
-    fn get_list_views_sql(&self, _: &str) -> Result<String> {
-        postgresql::get_list_views_sql()
-    }
-
-    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
-        postgresql::get_list_table_foreign_keys_sql(self, table)
-    }
-
-    fn get_list_table_constraints_sql(&self, table: &str) -> Result<String> {
-        postgresql::get_list_table_constraints_sql(self, table)
-    }
-
-    fn get_list_table_indexes_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
-        postgresql::get_list_table_indexes_sql(self, table)
-    }
-
-    fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
-        postgresql::get_list_table_columns_sql(self, table)
-    }
-
-    fn get_advanced_foreign_key_options_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-    ) -> Result<String> {
-        postgresql::get_advanced_foreign_key_options_sql(self, foreign_key)
-    }
-
-    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>> {
-        postgresql::get_alter_table_sql(self, diff)
-    }
-
-    fn get_rename_index_sql(
-        &self,
-        old_index_name: &Identifier,
-        index: &Index,
-        table_name: &Identifier,
-    ) -> Result<Vec<String>> {
-        postgresql::get_rename_index_sql(self, old_index_name, index, table_name)
-    }
-
-    fn get_comment_on_column_sql(
-        &self,
-        table_name: &Identifier,
-        column: &Column,
-        comment: &str,
-    ) -> String {
-        postgresql::get_comment_on_column_sql(self, table_name, column, comment)
-    }
-
-    fn get_create_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        postgresql::get_create_sequence_sql(self, sequence)
-    }
-
-    fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        postgresql::get_alter_sequence_sql(self, sequence)
-    }
-
-    fn get_drop_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        postgresql::get_drop_sequence_sql(self, sequence)
-    }
-
-    fn get_drop_foreign_key_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        postgresql::get_drop_foreign_key_sql(self, foreign_key, table_name)
-    }
-
-    fn _get_create_table_sql(
-        &self,
-        name: &Identifier,
-        columns: &[ColumnData],
-        options: &TableOptions,
-    ) -> Result<Vec<String>>
-    where
-        Self: Sized,
-    {
-        postgresql::_get_create_table_sql(self, name, columns, options)
-    }
-
     fn convert_boolean(&self, item: Value) -> Result<Value> {
         postgresql::convert_boolean(item)
     }
 
     fn convert_from_boolean(&self, item: &Value) -> Value {
         postgresql::convert_from_boolean(item)
-    }
-
-    fn get_sequence_next_val_sql(&self, sequence: &str) -> Result<String> {
-        postgresql::get_sequence_next_val_sql(sequence)
     }
 
     fn get_set_transaction_isolation_sql(
@@ -285,53 +191,47 @@ impl DatabasePlatform for PostgreSQLPlatform {
     }
 
     fn _initialize_type_mappings(&self) {
-        todo!()
-        /*
-
-        $this->doctrineTypeMapping = [
-            'bigint'           => 'bigint',
-            'bigserial'        => 'bigint',
-            'bool'             => 'boolean',
-            'boolean'          => 'boolean',
-            'bpchar'           => 'string',
-            'bytea'            => 'blob',
-            'char'             => 'string',
-            'date'             => 'date',
-            'datetime'         => 'datetime',
-            'decimal'          => 'decimal',
-            'double'           => 'float',
-            'double precision' => 'float',
-            'float'            => 'float',
-            'float4'           => 'float',
-            'float8'           => 'float',
-            'inet'             => 'string',
-            'int'              => 'integer',
-            'int2'             => 'smallint',
-            'int4'             => 'integer',
-            'int8'             => 'bigint',
-            'integer'          => 'integer',
-            'interval'         => 'string',
-            'json'             => 'json',
-            'jsonb'            => 'json',
-            'money'            => 'decimal',
-            'numeric'          => 'decimal',
-            'serial'           => 'integer',
-            'serial4'          => 'integer',
-            'serial8'          => 'bigint',
-            'real'             => 'float',
-            'smallint'         => 'smallint',
-            'text'             => 'text',
-            'time'             => 'time',
-            'timestamp'        => 'datetime',
-            'timestamptz'      => 'datetimetz',
-            'timetz'           => 'time',
-            'tsvector'         => 'text',
-            'uuid'             => 'guid',
-            'varchar'          => 'string',
-            'year'             => 'date',
-            '_varchar'         => 'string',
-        ];
-         */
+        self._add_type_mapping("bigint", TypeId::of::<BigintType>());
+        self._add_type_mapping("bigserial", TypeId::of::<BigintType>());
+        self._add_type_mapping("bool", TypeId::of::<BooleanType>());
+        self._add_type_mapping("boolean", TypeId::of::<BooleanType>());
+        self._add_type_mapping("bpchar", TypeId::of::<StringType>());
+        self._add_type_mapping("bytea", TypeId::of::<BlobType>());
+        self._add_type_mapping("char", TypeId::of::<StringType>());
+        self._add_type_mapping("date", TypeId::of::<DateType>());
+        self._add_type_mapping("datetime", TypeId::of::<DateTimeType>());
+        self._add_type_mapping("decimal", TypeId::of::<DecimalType>());
+        self._add_type_mapping("double", TypeId::of::<FloatType>());
+        self._add_type_mapping("double precision", TypeId::of::<FloatType>());
+        self._add_type_mapping("float", TypeId::of::<FloatType>());
+        self._add_type_mapping("float4", TypeId::of::<FloatType>());
+        self._add_type_mapping("float8", TypeId::of::<FloatType>());
+        self._add_type_mapping("inet", TypeId::of::<StringType>());
+        self._add_type_mapping("int", TypeId::of::<IntegerType>());
+        self._add_type_mapping("int2", TypeId::of::<IntegerType>());
+        self._add_type_mapping("int4", TypeId::of::<IntegerType>());
+        self._add_type_mapping("int8", TypeId::of::<IntegerType>());
+        self._add_type_mapping("integer", TypeId::of::<IntegerType>());
+        self._add_type_mapping("interval", TypeId::of::<StringType>());
+        self._add_type_mapping("json", TypeId::of::<JsonType>());
+        self._add_type_mapping("jsonb", TypeId::of::<JsonType>());
+        self._add_type_mapping("money", TypeId::of::<DecimalType>());
+        self._add_type_mapping("numeric", TypeId::of::<DecimalType>());
+        self._add_type_mapping("serial", TypeId::of::<IntegerType>());
+        self._add_type_mapping("serial4", TypeId::of::<IntegerType>());
+        self._add_type_mapping("serial8", TypeId::of::<IntegerType>());
+        self._add_type_mapping("real", TypeId::of::<FloatType>());
+        self._add_type_mapping("smallint", TypeId::of::<IntegerType>());
+        self._add_type_mapping("text", TypeId::of::<TextType>());
+        self._add_type_mapping("time", TypeId::of::<TimeType>());
+        self._add_type_mapping("timestamp", TypeId::of::<DateTimeType>());
+        self._add_type_mapping("timestamptz", TypeId::of::<DateTimeTzType>());
+        self._add_type_mapping("timetz", TypeId::of::<TimeType>());
+        self._add_type_mapping("tsvector", TypeId::of::<TextType>());
+        self._add_type_mapping("uuid", TypeId::of::<GuidType>());
+        self._add_type_mapping("varchar", TypeId::of::<StringType>());
+        self._add_type_mapping("year", TypeId::of::<DateType>());
+        self._add_type_mapping("_varchar", TypeId::of::<StringType>());
     }
 
     fn has_native_json_type(&self) -> bool {
@@ -348,10 +248,6 @@ impl DatabasePlatform for PostgreSQLPlatform {
 
     fn supports_column_collation(&self) -> bool {
         true
-    }
-
-    fn get_column_collation_declaration_sql(&self, collation: &str) -> String {
-        postgresql::get_column_collation_declaration_sql(self, collation)
     }
 
     fn get_json_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
@@ -371,6 +267,10 @@ impl DatabasePlatform for PostgreSQLPlatform {
     }
 
     fn create_reserved_keywords_list(&self) -> KeywordList {
-        todo!()
+        KeywordList::postgres_keywords()
+    }
+
+    fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a> {
+        Box::new(PostgreSQLSchemaManager::new(connection))
     }
 }

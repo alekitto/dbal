@@ -6,12 +6,10 @@ mod lock_mode;
 mod trim_mode;
 
 use crate::r#type::{Type, TypeManager};
-use crate::schema::{
-    Asset, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, ForeignKeyReferentialAction,
-    Identifier, Index, Sequence, Table, TableDiff, TableOptions, UniqueConstraint,
-};
-use crate::{Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
+use crate::schema::{ColumnData, Identifier};
+use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 pub use create_flags::CreateFlags;
+use creed::schema::SchemaManager;
 pub use date_interval_unit::DateIntervalUnit;
 pub(crate) use keyword::KeywordList;
 pub use lock_mode::LockMode;
@@ -20,18 +18,15 @@ use std::fmt::Debug;
 use std::sync::Arc;
 pub use trim_mode::TrimMode;
 
-#[macro_export]
-macro_rules! platform_debug {
-    ($platform:ident) => {
-        impl std::fmt::Debug for $platform {
-            fn fmt(
-                &self,
-                f: &mut std::fmt::Formatter<'_>,
-            ) -> core::result::Result<(), core::fmt::Error> {
-                write!(f, "{} {{}}", core::any::type_name::<Self>())
-            }
+pub(crate) macro platform_debug($platform:ident) {
+    impl std::fmt::Debug for $platform {
+        fn fmt(
+            &self,
+            f: &mut std::fmt::Formatter<'_>,
+        ) -> core::result::Result<(), core::fmt::Error> {
+            write!(f, "{} {{}}", core::any::type_name::<Self>())
         }
-    };
+    }
 }
 
 pub trait DatabasePlatform: Debug {
@@ -405,200 +400,9 @@ pub trait DatabasePlatform: Debug {
         default::get_write_lock_sql(self)
     }
 
-    /// Returns the SQL snippet to drop an existing table.
-    fn get_drop_table_sql(&self, table_name: &Identifier) -> Result<String>
-    where
-        Self: Sized + Sync,
-    {
-        default::get_drop_table_sql(self, table_name)
-    }
-
-    /// Returns the SQL to safely drop a temporary table WITHOUT implicitly committing an open transaction.
-    fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String>
-    where
-        Self: Sized + Sync,
-    {
-        default::get_drop_temporary_table_sql(self, table)
-    }
-
-    /// Returns the SQL to drop an index from a table.
-    #[allow(unused_variables)]
-    fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String> {
-        default::get_drop_index_sql(self, index)
-    }
-
-    /// Returns the SQL to drop a constraint.
-    ///
-    /// # Internal
-    /// The method should be only used from within the Platform trait.
-    fn get_drop_constraint_sql(
-        &self,
-        constraint: Identifier,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        default::get_drop_constraint_sql(self, constraint, table_name)
-    }
-
-    /// Returns the SQL to drop a foreign key.
-    fn get_drop_foreign_key_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        default::get_drop_foreign_key_sql(self, foreign_key, table_name)
-    }
-
-    /// Returns the SQL to drop a unique constraint.
-    fn get_drop_unique_constraint_sql(
-        &self,
-        name: Identifier,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        default::get_drop_unique_constraint_sql(self, name, table_name)
-    }
-
-    /// Returns the SQL statement(s) to create a table with the specified name, columns and constraints
-    /// on this platform.
-    fn get_create_table_sql(
-        &self,
-        table: Table,
-        create_flags: Option<CreateFlags>,
-    ) -> Result<Vec<String>>
-    where
-        Self: Sized + Sync,
-    {
-        default::get_create_table_sql(self, table, create_flags)
-    }
-
-    fn get_create_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>>
-    where
-        Self: Sized + Sync,
-    {
-        default::get_create_tables_sql(self, tables)
-    }
-
-    fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>>
-    where
-        Self: Sized + Sync,
-    {
-        default::get_drop_tables_sql(self, tables)
-    }
-
-    fn get_comment_on_table_sql(&self, table_name: &Identifier, comment: &str) -> Result<String> {
-        default::get_comment_on_table_sql(self, table_name, comment)
-    }
-
-    fn get_comment_on_column_sql(
-        &self,
-        table_name: &Identifier,
-        column: &Column,
-        comment: &str,
-    ) -> String {
-        default::get_comment_on_column_sql(self, table_name, column, comment)
-    }
-
-    /// Returns the SQL to create inline comment on a column.
-    fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String> {
-        default::get_inline_column_comment_sql(self, comment)
-    }
-
-    /// Returns the SQL used to create a table.
-    ///
-    /// # Internal
-    /// The method should be only used from within the Platform trait.
-    fn _get_create_table_sql(
-        &self,
-        name: &Identifier,
-        columns: &[ColumnData],
-        options: &TableOptions,
-    ) -> Result<Vec<String>>
-    where
-        Self: Sized,
-    {
-        default::_get_create_table_sql(self, name, columns, options)
-    }
-
-    fn get_create_temporary_table_snippet_sql(&self) -> Result<String> {
-        default::get_create_temporary_table_snippet_sql()
-    }
-
-    /// Returns the SQL to create a sequence on this platform.
-    #[allow(unused_variables)]
-    fn get_create_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        Err(Error::platform_feature_unsupported(
-            "Sequences are not supported by this platform",
-        ))
-    }
-
-    /// Returns the SQL to change a sequence on this platform.
-    #[allow(unused_variables)]
-    fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        Err(Error::platform_feature_unsupported(
-            "Sequences are not supported by this platform",
-        ))
-    }
-
-    /// Returns the SQL snippet to drop an existing sequence.
-    fn get_drop_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        if !self.supports_sequences() {
-            Err(Error::platform_feature_unsupported(
-                "Sequences are not supported by this platform",
-            ))
-        } else {
-            Ok(format!("DROP SEQUENCE {}", sequence.get_quoted_name(self)))
-        }
-    }
-
-    /// Returns the SQL to create an index on a table on this platform.
-    fn get_create_index_sql(&self, index: &Index, table: &Identifier) -> Result<String> {
-        default::get_create_index_sql(self, index, table)
-    }
-
-    /// Adds condition for partial index.
-    fn get_partial_index_sql(&self, index: &Index) -> String {
-        default::get_partial_index_sql(self, index)
-    }
-
-    /// Adds additional flags for index generation.
-    fn get_create_index_sql_flags(&self, index: &Index) -> String {
-        default::get_create_index_sql_flags(index)
-    }
-
-    /// Returns the SQL to create an unnamed primary key constraint.
-    fn get_create_primary_key_sql(&self, index: &Index, table: &Identifier) -> Result<String> {
-        default::get_create_primary_key_sql(self, index, table)
-    }
-
-    /// Returns the SQL to create a named schema.
-    fn get_create_schema_sql(&self, schema_name: &str) -> Result<String> {
-        default::get_create_schema_sql(self, schema_name)
-    }
-
-    /// Returns the SQL to create a unique constraint on a table on this platform.
-    fn get_create_unique_constraint_sql(
-        &self,
-        constraint: &UniqueConstraint,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        default::get_create_unique_constraint_sql(self, constraint, table_name)
-    }
-
-    /// Returns the SQL snippet to drop a schema.
-    fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String> {
-        default::get_drop_schema_sql(self, schema_name)
-    }
-
     /// Gets the comment to append to a column comment that helps parsing this type in reverse engineering.
     fn get_creed_type_comment(&self, creed_type: &dyn Type) -> String {
         default::get_creed_type_comment(creed_type)
-    }
-
-    /// Gets the comment of a passed column modified by potential doctrine type comment hints.
-    fn get_column_comment(&self, column: &Column) -> Result<String>
-    where
-        Self: Sized,
-    {
-        default::get_column_comment(self, column)
     }
 
     /// Quotes a string so that it can be safely used as a table or column name,
@@ -630,141 +434,6 @@ pub trait DatabasePlatform: Debug {
         default::get_string_literal_quote_character()
     }
 
-    /// Returns the SQL to create a new foreign key.
-    fn get_create_foreign_key_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-        table: &Identifier,
-    ) -> Result<String> {
-        default::get_create_foreign_key_sql(self, foreign_key, table)
-    }
-
-    /// Gets the SQL statements for altering an existing table.
-    /// This method returns an array of SQL statements, since some platforms need several statements.
-    #[allow(unused_variables)]
-    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>> {
-        Err(Error::platform_feature_unsupported("alter table"))
-    }
-
-    /// # Protected
-    fn on_schema_alter_table_add_column(
-        &self,
-        column: &Column,
-        diff: &TableDiff,
-        column_sql: Vec<String>,
-    ) -> Result<(bool, Vec<String>)>
-    where
-        Self: Sized + Sync,
-    {
-        default::on_schema_alter_table_add_column(self, column, diff, column_sql)
-    }
-
-    /// # Protected
-    fn on_schema_alter_table_remove_column(
-        &self,
-        column: &Column,
-        diff: &TableDiff,
-        column_sql: Vec<String>,
-    ) -> Result<(bool, Vec<String>)>
-    where
-        Self: Sized + Sync,
-    {
-        default::on_schema_alter_table_remove_column(self, column, diff, column_sql)
-    }
-
-    /// # Protected
-    fn on_schema_alter_table_change_column(
-        &self,
-        column_diff: &ColumnDiff,
-        diff: &TableDiff,
-        column_sql: Vec<String>,
-    ) -> Result<(bool, Vec<String>)>
-    where
-        Self: Sized + Sync,
-    {
-        default::on_schema_alter_table_change_column(self, column_diff, diff, column_sql)
-    }
-
-    /// # Protected
-    fn on_schema_alter_table_rename_column(
-        &self,
-        old_column_name: &str,
-        column: &Column,
-        diff: &TableDiff,
-        column_sql: Vec<String>,
-    ) -> Result<(bool, Vec<String>)>
-    where
-        Self: Sized + Sync,
-    {
-        default::on_schema_alter_table_rename_column(
-            self,
-            old_column_name,
-            column,
-            diff,
-            column_sql,
-        )
-    }
-
-    /// # Protected
-    fn on_schema_alter_table(
-        &self,
-        diff: &TableDiff,
-        sql: Vec<String>,
-    ) -> Result<(bool, Vec<String>)>
-    where
-        Self: Sized + Sync,
-    {
-        default::on_schema_alter_table(self, diff, sql)
-    }
-
-    /// # Protected
-    fn get_pre_alter_table_index_foreign_key_sql(
-        &self,
-        diff: &mut TableDiff,
-    ) -> Result<Vec<String>> {
-        default::get_pre_alter_table_index_foreign_key_sql(self, diff)
-    }
-
-    /// # Protected
-    fn get_post_alter_table_index_foreign_key_sql(&self, diff: &TableDiff) -> Result<Vec<String>> {
-        default::get_post_alter_table_index_foreign_key_sql(self, diff)
-    }
-
-    /// Returns the SQL for renaming an index on a table.
-    ///
-    /// # Arguments
-    ///
-    /// * `old_index_name` - The name of the index to rename from.
-    /// * `index` - The definition of the index to rename to.
-    /// * `tableName` - The table to rename the given index on.
-    ///
-    /// # Protected
-    fn get_rename_index_sql(
-        &self,
-        old_index_name: &Identifier,
-        index: &Index,
-        table_name: &Identifier,
-    ) -> Result<Vec<String>> {
-        default::get_rename_index_sql(self, old_index_name, index, table_name)
-    }
-
-    /// Gets declaration of a number of columns in bulk.
-    fn get_column_declaration_list_sql(&self, columns: &[ColumnData]) -> Result<String>
-    where
-        Self: Sized,
-    {
-        default::get_column_declaration_list_sql(self, columns)
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to declare a generic type
-    /// column to be used in statements like CREATE TABLE.
-    fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String>
-    where
-        Self: Sized,
-    {
-        default::get_column_declaration_sql(self, name, column)
-    }
-
     /// Returns the SQL snippet that declares a floating point column of arbitrary precision.
     fn get_decimal_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         default::get_decimal_type_declaration_sql(column)
@@ -776,32 +445,6 @@ pub trait DatabasePlatform: Debug {
         default::get_default_value_declaration_sql(self, column)
     }
 
-    /// Obtains DBMS specific SQL code portion needed to set a CHECK constraint
-    /// declaration to be used in statements like CREATE TABLE.
-    fn get_check_declaration_sql(&self, definition: &[ColumnData]) -> Result<String> {
-        default::get_check_declaration_sql(self, definition)
-    }
-
-    fn get_check_field_declaration_sql(&self, definition: &ColumnData) -> Result<String> {
-        default::get_check_field_declaration_sql(self, definition)
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to set a unique
-    /// constraint declaration to be used in statements like CREATE TABLE.
-    fn get_unique_constraint_declaration_sql(
-        &self,
-        name: &str,
-        constraint: &UniqueConstraint,
-    ) -> Result<String> {
-        default::get_unique_constraint_declaration_sql(self, name, constraint)
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to set an index
-    /// declaration to be used in statements like CREATE TABLE.
-    fn get_index_declaration_sql(&self, name: &str, index: &Index) -> Result<String> {
-        default::get_index_declaration_sql(self, name, index)
-    }
-
     /// Obtains SQL code portion needed to create a custom column,
     /// e.g. when a column has the "columnDefinition" keyword.
     /// Only "AUTOINCREMENT" and "PRIMARY KEY" are added if appropriate.
@@ -809,56 +452,9 @@ pub trait DatabasePlatform: Debug {
         default::get_custom_type_declaration_sql(column)
     }
 
-    /// Obtains DBMS specific SQL code portion needed to set an index
-    /// declaration to be used in statements like CREATE TABLE.
-    fn get_index_field_declaration_list_sql(&self, index: &Index) -> Result<String> {
-        default::get_index_field_declaration_list_sql(self, index)
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to set an index
-    /// declaration to be used in statements like CREATE TABLE.
-    fn get_columns_field_declaration_list_sql(&self, columns: &[String]) -> Result<String> {
-        default::get_columns_field_declaration_list_sql(columns)
-    }
-
     /// Some vendors require temporary table names to be qualified specially.
     fn get_temporary_table_name(&self, table_name: &str) -> Result<String> {
         default::get_temporary_table_name(table_name)
-    }
-
-    /// Obtain DBMS specific SQL code portion needed to set the FOREIGN KEY constraint
-    /// of a column declaration to be used in statements like CREATE TABLE.
-    fn get_foreign_key_declaration_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-    ) -> Result<String> {
-        default::get_foreign_key_declaration_sql(self, foreign_key)
-    }
-
-    /// Returns the FOREIGN KEY query section dealing with non-standard options
-    /// as MATCH, INITIALLY DEFERRED, ON UPDATE, ...
-    fn get_advanced_foreign_key_options_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-    ) -> Result<String> {
-        default::get_advanced_foreign_key_options_sql(self, foreign_key)
-    }
-
-    /// Returns the given referential action in uppercase if valid, otherwise throws an exception.
-    fn get_foreign_key_referential_action_sql(
-        &self,
-        action: &ForeignKeyReferentialAction,
-    ) -> Result<String> {
-        default::get_foreign_key_referential_action_sql(action)
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to set the FOREIGN KEY constraint
-    /// of a column declaration to be used in statements like CREATE TABLE.
-    fn get_foreign_key_base_declaration_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-    ) -> Result<String> {
-        default::get_foreign_key_base_declaration_sql(self, foreign_key)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set the CHARACTER SET
@@ -867,12 +463,6 @@ pub trait DatabasePlatform: Debug {
     #[allow(unused_variables)]
     fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
         default::get_column_charset_declaration_sql()
-    }
-
-    /// Obtains DBMS specific SQL code portion needed to set the COLLATION
-    /// of a column declaration to be used in statements like CREATE TABLE.
-    fn get_column_collation_declaration_sql(&self, collation: &str) -> String {
-        default::get_column_collation_declaration_sql(self, collation)
     }
 
     /// Some platforms need the boolean values to be converted.
@@ -922,79 +512,6 @@ pub trait DatabasePlatform: Debug {
     /// # Protected
     fn get_transaction_isolation_level_sql(&self, level: TransactionIsolationLevel) -> String {
         default::get_transaction_isolation_level_sql(level)
-    }
-
-    fn get_list_databases_sql(&self) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list databases"))
-    }
-
-    #[allow(unused_variables)]
-    fn get_list_sequences_sql(&self, database: &str) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list sequences"))
-    }
-
-    #[allow(unused_variables)]
-    fn get_list_table_constraints_sql(&self, table: &str) -> Result<String> {
-        Err(Error::platform_feature_unsupported(
-            "list table constraints",
-        ))
-    }
-
-    #[allow(unused_variables)]
-    fn get_list_table_columns_sql(&self, table: &str, database: Option<&str>) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list table columns"))
-    }
-
-    fn get_list_tables_sql(&self) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list tables"))
-    }
-
-    /// Returns the SQL to list all views of a database or user.
-    #[allow(unused_variables)]
-    fn get_list_views_sql(&self, database: &str) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list views"))
-    }
-
-    /// Returns the list of indexes for the current database.
-    /// The current database parameter is optional but will always be passed
-    /// when using the SchemaManager API and is the database the given table is in.
-    ///
-    /// Attention: Some platforms only support currentDatabase when they
-    /// re connected with that database. Cross-database information schema
-    /// requests may be impossible.
-    #[allow(unused_variables)]
-    fn get_list_table_indexes_sql(&self, table: &str, database: Option<&str>) -> Result<String> {
-        Err(Error::platform_feature_unsupported("list table indexes"))
-    }
-
-    #[allow(unused_variables)]
-    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
-        Err(Error::platform_feature_unsupported(
-            "list table foreign keys",
-        ))
-    }
-
-    fn get_create_view_sql(&self, name: &str, sql: &str) -> Result<String> {
-        default::get_create_view_sql(name, sql)
-    }
-
-    fn get_drop_view_sql(&self, name: &str) -> Result<String> {
-        default::get_drop_view_sql(name)
-    }
-
-    #[allow(unused_variables)]
-    fn get_sequence_next_val_sql(&self, sequence: &str) -> Result<String> {
-        Err(Error::platform_feature_unsupported("sequence next val"))
-    }
-
-    /// Returns the SQL to create a new database.
-    fn get_create_database_sql(&self, name: &str) -> Result<String> {
-        default::get_create_database_sql(self, name)
-    }
-
-    /// Returns the SQL snippet to drop an existing database.
-    fn get_drop_database_sql(&self, name: &str) -> Result<String> {
-        default::get_drop_database_sql(self, name)
     }
 
     /// Returns the SQL to set the transaction isolation level.
@@ -1189,8 +706,8 @@ pub trait DatabasePlatform: Debug {
     }
 
     /// This is for test reasons, many vendors have special requirements for dummy statements.
-    fn get_dummy_select_sql(&self) -> String {
-        "SELECT 1".to_string()
+    fn get_dummy_select_sql(&self, expression: Option<&str>) -> String {
+        format!("SELECT {}", expression.unwrap_or("1"))
     }
 
     /// Returns the SQL to create a new savepoint.
@@ -1217,29 +734,85 @@ pub trait DatabasePlatform: Debug {
         default::get_like_wildcard_characters()
     }
 
-    /// Compares the definitions of the given columns in the context of this platform.
-    fn columns_equal(&self, column1: &Column, column2: &Column) -> Result<bool>
-    where
-        Self: Sized,
-    {
-        default::columns_equal(self, column1, column2)
+    fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
+}
+
+impl<P: DatabasePlatform + ?Sized> DatabasePlatform for &mut P {
+    delegate::delegate! {
+        to(**self) {
+            fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn _initialize_type_mappings(&self);
+            fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
+            fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_name(&self) -> String;
+            fn get_type_mapping(&self, db_type: &str) -> Result<TypeId>;
+            fn get_current_database_expression(&self) -> String;
+            fn create_reserved_keywords_list(&self) -> KeywordList;
+            fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
+        }
+    }
+}
+
+impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Box<P> {
+    delegate::delegate! {
+        to(**self) {
+            fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn _initialize_type_mappings(&self);
+            fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
+            fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_name(&self) -> String;
+            fn get_type_mapping(&self, db_type: &str) -> Result<TypeId>;
+            fn get_current_database_expression(&self) -> String;
+            fn create_reserved_keywords_list(&self) -> KeywordList;
+            fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
+        }
+    }
+}
+
+impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
+    delegate::delegate! {
+        to(**self) {
+            fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn _initialize_type_mappings(&self);
+            fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
+            fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
+            fn get_name(&self) -> String;
+            fn get_type_mapping(&self, db_type: &str) -> Result<TypeId>;
+            fn get_current_database_expression(&self) -> String;
+            fn create_reserved_keywords_list(&self) -> KeywordList;
+            fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::event::SchemaDropTableEvent;
-    use crate::platform::keyword::{KeywordList, Keywords};
-    use crate::platform::DatabasePlatform;
-    use crate::schema::ColumnData;
-    use crate::EventDispatcher;
-    use crate::Result;
+pub(crate) mod tests {
+    use crate::platform::keyword::Keywords;
+    use crate::platform::{DatabasePlatform, KeywordList};
+    use crate::schema::tests::MockSchemaManager;
+    use crate::schema::{ColumnData, SchemaManager};
+    use crate::{Connection, EventDispatcher, Result};
     use std::any::TypeId;
     use std::fmt::{Debug, Formatter};
     use std::sync::Arc;
 
-    struct MockPlatform {
-        ev: Arc<EventDispatcher>,
+    pub struct MockPlatform {
+        pub ev: Arc<EventDispatcher>,
     }
 
     pub(super) struct MockKeywords {}
@@ -1313,19 +886,12 @@ mod tests {
         fn create_reserved_keywords_list(&self) -> KeywordList {
             KeywordList::new(&MOCK_KEYWORDS)
         }
-    }
 
-    #[tokio::test]
-    async fn can_overwrite_drop_table_sql_via_event_listener() {
-        let ev = Arc::new(EventDispatcher::new());
-        ev.add_listener(|e: &mut SchemaDropTableEvent| {
-            e.prevent_default();
-            e.sql = Some(format!("-- DROP SCHEMA {}", e.get_table()));
-        });
-
-        let platform = MockPlatform { ev };
-        let d = platform.get_drop_table_sql(&"table".into()).unwrap();
-
-        assert_eq!("-- DROP SCHEMA table", d);
+        fn create_schema_manager<'a>(
+            &self,
+            connection: &'a Connection,
+        ) -> Box<dyn SchemaManager + 'a> {
+            Box::new(MockSchemaManager::new(connection))
+        }
     }
 }

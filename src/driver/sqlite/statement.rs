@@ -57,6 +57,7 @@ impl<'conn> Statement<'conn> {
         use crate::driver::statement::Statement;
         for (idx, param) in params.into_iter() {
             let result = self.bind_value(idx, param);
+            #[allow(clippy::question_mark)]
             if result.is_err() {
                 return result;
             }
@@ -77,7 +78,7 @@ impl<'conn> Debug for Statement<'conn> {
                     .unwrap()
                     .0
                     .expanded_sql()
-                    .unwrap_or_else(|| "".to_string()),
+                    .unwrap_or_default(),
             )
             .finish()
     }

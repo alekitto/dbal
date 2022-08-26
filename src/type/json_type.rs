@@ -10,6 +10,18 @@ impl Type for JsonType {
         Box::new(JsonType {})
     }
 
+    fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL => Ok(value),
+            Value::Json(j) => Ok(Value::String(j.to_string())),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Json"],
+            )),
+        }
+    }
+
     fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
             Value::NULL | Value::Json(_) => Ok(value.clone()),

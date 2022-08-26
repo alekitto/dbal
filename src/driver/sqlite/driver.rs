@@ -161,7 +161,7 @@ pub struct Driver {
 
 impl Debug for Driver {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt("Driver (SQLite) {}", f)
+        f.debug_struct("Driver (SQLite)").finish_non_exhaustive()
     }
 }
 
@@ -302,25 +302,24 @@ mod tests {
         let result = tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
 
         let rows = result.fetch_all();
-        assert_eq!(rows.is_ok(), true);
-        let rows = rows.unwrap();
 
         assert_eq!(rows.len(), 1);
         assert_eq!(
-            Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
-            *rows.get(0).unwrap(),
+            &Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
+            rows.get(0).unwrap(),
         );
 
         // Re-execute
-        let result = tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
+        let mut result =
+            tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
 
-        let row = result.fetch_one().expect("Fetch one succeeds");
+        let row = result.fetch_one();
         assert_eq!(
-            Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
+            &Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
             row.unwrap(),
         );
 
-        let row = result.fetch_one().expect("Fetch one succeeds");
+        let row = result.fetch_one();
         assert_eq!(row.is_none(), true);
     }
 
@@ -331,10 +330,10 @@ mod tests {
 
         let statement = tokio_test::block_on(connection.query("SELECT sqrt(2)", params![]))
             .expect("Query must succeed");
-        let rows = statement.fetch_all().expect("Fetch must succeed");
+        let rows = statement.fetch_all();
         assert_eq!(
-            *rows.get(0).unwrap(),
-            Row::new(
+            rows.get(0).unwrap(),
+            &Row::new(
                 vec!["sqrt(2)".to_string()],
                 vec![Value::Float(std::f64::consts::SQRT_2)]
             )
@@ -342,10 +341,10 @@ mod tests {
 
         let statement = tokio_test::block_on(connection.query("SELECT mod(17, 3)", params![]))
             .expect("Query must succeed");
-        let rows = statement.fetch_all().expect("Fetch must succeed");
+        let rows = statement.fetch_all();
         assert_eq!(
-            *rows.get(0).unwrap(),
-            Row::new(vec!["mod(17, 3)".to_string()], vec![Value::Int(2)])
+            rows.get(0).unwrap(),
+            &Row::new(vec!["mod(17, 3)".to_string()], vec![Value::Int(2)])
         );
 
         let statement = tokio_test::block_on(connection.query(
@@ -353,10 +352,10 @@ mod tests {
             params![],
         ))
         .expect("Query must succeed");
-        let rows = statement.fetch_all().expect("Fetch must succeed");
+        let rows = statement.fetch_all();
         assert_eq!(
-            *rows.get(0).unwrap(),
-            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(2)])
+            rows.get(0).unwrap(),
+            &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(2)])
         );
 
         let statement = tokio_test::block_on(connection.query(
@@ -364,10 +363,10 @@ mod tests {
             params![],
         ))
         .expect("Query must succeed");
-        let rows = statement.fetch_all().expect("Fetch must succeed");
+        let rows = statement.fetch_all();
         assert_eq!(
-            *rows.get(0).unwrap(),
-            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(4)])
+            rows.get(0).unwrap(),
+            &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(4)])
         );
 
         let statement = tokio_test::block_on(connection.query(
@@ -375,10 +374,10 @@ mod tests {
             params![],
         ))
         .expect("Query must succeed");
-        let rows = statement.fetch_all().expect("Fetch must succeed");
+        let rows = statement.fetch_all();
         assert_eq!(
-            *rows.get(0).unwrap(),
-            Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(0)])
+            rows.get(0).unwrap(),
+            &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(0)])
         );
     }
 }

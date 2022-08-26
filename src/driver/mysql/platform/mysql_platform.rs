@@ -1,12 +1,13 @@
 use super::mysql;
 use crate::driver::mysql::platform::{mariadb, MySQLVariant};
-use crate::platform::{default, DatabasePlatform, DateIntervalUnit, KeywordList};
+use crate::driver::mysql::MySQLSchemaManager;
+use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList};
 use crate::r#type::{
     BigintType, BinaryType, BlobType, DateTimeType, DateType, DecimalType, FloatType, IntegerType,
     JsonType, SimpleArrayType, StringType, TextType, TimeType,
 };
-use crate::schema::{ColumnData, ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions};
-use crate::{platform_debug, Error};
+use crate::schema::{ColumnData, SchemaManager};
+use crate::{Connection, Error};
 use crate::{EventDispatcher, Result, TransactionIsolationLevel};
 use dashmap::DashMap;
 use std::any::TypeId;
@@ -20,20 +21,10 @@ pub const LENGTH_LIMIT_TINYBLOB: usize = 255;
 pub const LENGTH_LIMIT_BLOB: usize = 65535;
 pub const LENGTH_LIMIT_MEDIUMBLOB: usize = 16777215;
 
-pub trait AbstractMySQLPlatform: DatabasePlatform {
-    /// Build SQL for table options
-    fn build_table_options(&self, options: &TableOptions) -> String {
-        mysql::build_table_options(self, options)
-    }
-
-    /// Build SQL for partition options
-    fn build_partition_options(&self, options: &TableOptions) -> String {
-        mysql::build_partition_options(options)
-    }
-}
+pub trait AbstractMySQLPlatform: DatabasePlatform {}
 
 platform_debug!(MySQLPlatform);
-pub(crate) struct MySQLPlatform {
+pub struct MySQLPlatform {
     variant: MySQLVariant,
     ev: Arc<EventDispatcher>,
     type_mappings: DashMap<String, TypeId>,
@@ -162,82 +153,9 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_read_lock_sql()
     }
 
-    /// MySQL commits a transaction implicitly when DROP TABLE is executed, however not
-    /// if DROP TEMPORARY TABLE is executed.
-    #[inline(always)]
-    fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String>
-    where
-        Self: Sized + Sync,
-    {
-        mysql::get_drop_temporary_table_sql(self, table)
-    }
-
-    #[inline(always)]
-    fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String> {
-        mysql::get_drop_index_sql(self, index, table)
-    }
-
-    #[inline(always)]
-    fn get_drop_unique_constraint_sql(
-        &self,
-        name: Identifier,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        mysql::get_drop_unique_constraint_sql(self, name, table_name)
-    }
-
-    #[inline(always)]
-    fn _get_create_table_sql(
-        &self,
-        name: &Identifier,
-        columns: &[ColumnData],
-        options: &TableOptions,
-    ) -> Result<Vec<String>>
-    where
-        Self: Sized,
-    {
-        mysql::_get_create_table_sql(self, name, columns, options)
-    }
-
-    #[inline(always)]
-    fn get_create_index_sql_flags(&self, index: &Index) -> String {
-        mysql::get_create_index_sql_flags(index)
-    }
-
     #[inline(always)]
     fn quote_string_literal(&self, str: &str) -> String {
         mysql::quote_string_literal(self, str)
-    }
-
-    #[inline(always)]
-    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
-    where
-        Self: Sized + Sync,
-    {
-        mysql::get_alter_table_sql(self, diff)
-    }
-
-    #[inline(always)]
-    fn get_pre_alter_table_index_foreign_key_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
-    where
-        Self: Sized + Sync,
-    {
-        mysql::get_pre_alter_table_index_foreign_key_sql(self, diff)
-    }
-
-    #[inline(always)]
-    fn get_rename_index_sql(
-        &self,
-        old_index_name: &Identifier,
-        index: &Index,
-        table_name: &Identifier,
-    ) -> Result<Vec<String>> {
-        match self.variant {
-            MySQLVariant::MySQL | MySQLVariant::MySQL80 => {
-                mysql::get_rename_index_sql(self, old_index_name, index, table_name)
-            }
-            _ => default::get_rename_index_sql(self, old_index_name, index, table_name),
-        }
     }
 
     #[inline(always)]
@@ -251,31 +169,8 @@ impl DatabasePlatform for MySQLPlatform {
     }
 
     #[inline(always)]
-    fn get_advanced_foreign_key_options_sql(
-        &self,
-        foreign_key: &ForeignKeyConstraint,
-    ) -> Result<String> {
-        mysql::get_advanced_foreign_key_options_sql(self, foreign_key)
-    }
-
-    #[inline(always)]
     fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
         mysql::get_column_charset_declaration_sql(charset)
-    }
-
-    #[inline(always)]
-    fn get_column_collation_declaration_sql(&self, collation: &str) -> String {
-        mysql::get_column_collation_declaration_sql(self, collation)
-    }
-
-    #[inline(always)]
-    fn get_list_databases_sql(&self) -> Result<String> {
-        mysql::get_list_databases_sql()
-    }
-
-    #[inline(always)]
-    fn get_list_views_sql(&self, database: &str) -> Result<String> {
-        mysql::get_list_views_sql(self, database)
     }
 
     #[inline(always)]
@@ -395,5 +290,9 @@ impl DatabasePlatform for MySQLPlatform {
             .get(&db_type)
             .map(|r| *r.value())
             .ok_or_else(|| Error::unknown_database_type(&db_type, &self.get_name()))
+    }
+
+    fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a> {
+        Box::new(MySQLSchemaManager::new(connection, self.variant))
     }
 }

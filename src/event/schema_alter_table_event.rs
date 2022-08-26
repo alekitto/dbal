@@ -1,19 +1,18 @@
-use crate::event::event::PlatformBox;
-use crate::platform::DatabasePlatform;
 use crate::schema::TableDiff;
+use crate::util::PlatformBox;
 use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Event Arguments used when SQL queries for renaming table columns are generated inside DatabasePlatform.
-pub struct SchemaAlterTableEvent<'platform, 'table: 'platform> {
+pub struct SchemaAlterTableEvent<'table> {
     prevent_default_flag: AtomicBool,
     table_diff: &'table TableDiff<'table>,
-    platform: PlatformBox<'platform>,
+    platform: PlatformBox,
     pub(crate) sql: Vec<String>,
 }
 
-impl Event for SchemaAlterTableEvent<'_, '_> {
+impl Event for SchemaAlterTableEvent<'_> {
     fn is_async() -> bool {
         false
     }
@@ -23,15 +22,12 @@ impl Event for SchemaAlterTableEvent<'_, '_> {
     }
 }
 
-impl<'platform, 'table: 'platform> SchemaAlterTableEvent<'platform, 'table> {
-    pub(crate) fn new(
-        table_diff: &'table TableDiff,
-        platform: &'platform (dyn DatabasePlatform + Sync),
-    ) -> Self {
+impl<'table> SchemaAlterTableEvent<'table> {
+    pub(crate) fn new(table_diff: &'table TableDiff, platform: PlatformBox) -> Self {
         Self {
             prevent_default_flag: AtomicBool::new(false),
             table_diff,
-            platform: Box::new(platform),
+            platform,
             sql: vec![],
         }
     }
@@ -48,8 +44,8 @@ impl<'platform, 'table: 'platform> SchemaAlterTableEvent<'platform, 'table> {
         self.table_diff
     }
 
-    pub fn get_platform(&self) -> &PlatformBox<'platform> {
-        &self.platform
+    pub fn get_platform(&self) -> PlatformBox {
+        self.platform.clone()
     }
 
     pub fn add_sql(&mut self, sql: &mut Vec<String>) {

@@ -1,19 +1,18 @@
-use crate::event::event::PlatformBox;
-use crate::platform::DatabasePlatform;
 use crate::schema::{ColumnDiff, TableDiff};
+use crate::util::PlatformBox;
 use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub struct SchemaAlterTableChangeColumnEvent<'platform, 'table: 'platform, 'column: 'table> {
+pub struct SchemaAlterTableChangeColumnEvent<'table, 'column: 'table> {
     prevent_default_flag: AtomicBool,
     column_diff: &'column ColumnDiff,
     table_diff: &'table TableDiff<'table>,
-    platform: PlatformBox<'platform>,
+    platform: PlatformBox,
     pub(crate) sql: Vec<String>,
 }
 
-impl Event for SchemaAlterTableChangeColumnEvent<'_, '_, '_> {
+impl Event for SchemaAlterTableChangeColumnEvent<'_, '_> {
     fn is_async() -> bool {
         false
     }
@@ -23,19 +22,17 @@ impl Event for SchemaAlterTableChangeColumnEvent<'_, '_, '_> {
     }
 }
 
-impl<'platform, 'table: 'platform, 'column: 'table>
-    SchemaAlterTableChangeColumnEvent<'platform, 'table, 'column>
-{
+impl<'table, 'column: 'table> SchemaAlterTableChangeColumnEvent<'table, 'column> {
     pub(crate) fn new(
         column_diff: &'column ColumnDiff,
         table_diff: &'table TableDiff,
-        platform: &'platform (dyn DatabasePlatform + Sync),
+        platform: PlatformBox,
     ) -> Self {
         Self {
             prevent_default_flag: AtomicBool::new(false),
             column_diff,
             table_diff,
-            platform: Box::new(platform),
+            platform,
             sql: vec![],
         }
     }
@@ -56,8 +53,8 @@ impl<'platform, 'table: 'platform, 'column: 'table>
         self.column_diff
     }
 
-    pub fn get_platform(&self) -> &PlatformBox<'platform> {
-        &self.platform
+    pub fn get_platform(&self) -> PlatformBox {
+        self.platform.clone()
     }
 
     pub fn get_sql(&self) -> Vec<String> {

@@ -1,11 +1,13 @@
 use crate::driver::postgres::platform::postgresql_platform::AbstractPostgreSQLPlatform;
+use crate::driver::postgres::platform::AbstractPostgreSQLSchemaManager;
 use crate::error::ErrorKind;
 use crate::platform::{default, DateIntervalUnit};
 use crate::r#type::{BinaryType, BlobType, Type, TypeManager};
 use crate::schema::{
-    Asset, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier, Index, Sequence,
-    TableDiff, TableOptions,
+    Asset, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier, Index, IntoIdentifier,
+    Sequence, TableDiff, TableOptions,
 };
+use crate::util::PlatformBox;
 use crate::{Error, Result, TransactionIsolationLevel, Value};
 use itertools::Itertools;
 use std::any::TypeId;
@@ -72,14 +74,14 @@ pub fn get_date_diff_expression(date1: &str, date2: &str) -> Result<String> {
 }
 
 pub fn get_current_database_expression() -> String {
-    "CURRENT_DATABASE".to_string()
+    "CURRENT_DATABASE()".to_string()
 }
 
 pub fn get_list_databases_sql() -> Result<String> {
     Ok("SELECT datname FROM pg_database".to_string())
 }
 
-pub fn get_list_sequences_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_list_sequences_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     database: &str,
 ) -> Result<String> {
@@ -117,7 +119,7 @@ pub fn get_list_views_sql() -> Result<String> {
         .to_string())
 }
 
-pub fn get_list_table_foreign_keys_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_list_table_foreign_keys_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     table: &str,
 ) -> Result<String> {
@@ -134,7 +136,7 @@ pub fn get_list_table_foreign_keys_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
     ))
 }
 
-pub fn get_list_table_constraints_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_list_table_constraints_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     table: &str,
 ) -> Result<String> {
@@ -158,7 +160,7 @@ WHERE oid IN (
     ))
 }
 
-pub fn get_list_table_indexes_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_list_table_indexes_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     table: &str,
 ) -> Result<String> {
@@ -177,7 +179,7 @@ pub fn get_list_table_indexes_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
     ))
 }
 
-fn get_table_where_clause<T: AbstractPostgreSQLPlatform + ?Sized>(
+fn get_table_where_clause<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     table: &str,
     class_alias: &str,
@@ -208,7 +210,7 @@ fn get_table_where_clause<T: AbstractPostgreSQLPlatform + ?Sized>(
     ))
 }
 
-pub fn get_list_table_columns_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_list_table_columns_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     table: &str,
 ) -> Result<String> {
@@ -250,7 +252,7 @@ SELECT
     ))
 }
 
-pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
@@ -286,13 +288,15 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLPlatform + ?Siz
     Ok(query)
 }
 
-pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
+pub fn get_alter_table_sql<T: AbstractPostgreSQLSchemaManager + Sync + ?Sized>(
     this: &T,
     diff: &mut TableDiff,
 ) -> Result<Vec<String>> {
     let mut sql = vec![];
     let mut comments_sql = vec![];
     let mut column_sql = vec![];
+
+    let platform = this.get_platform()?;
 
     for column in &diff.added_columns {
         let (res, new_column_sql) =
@@ -305,13 +309,13 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
         let query = format!(
             "ADD {}",
             this.get_column_declaration_sql(
-                &column.get_quoted_name(this),
-                &column.generate_column_data(this)
+                &column.get_quoted_name(&platform),
+                &column.generate_column_data(&platform)
             )?
         );
         sql.push(format!(
             "ALTER TABLE {} {}",
-            diff.get_name().get_quoted_name(this),
+            diff.get_name().get_quoted_name(&platform),
             query
         ));
 
@@ -320,7 +324,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             continue;
         }
 
-        comments_sql.push(this.get_comment_on_column_sql(&diff.get_name(), column, &comment));
+        comments_sql.push(this.get_comment_on_column_sql(&diff.get_name(), column, &comment)?);
     }
 
     for column in &diff.removed_columns {
@@ -331,10 +335,10 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             continue;
         }
 
-        let query = format!("DROP {}", column.get_quoted_name(this));
+        let query = format!("DROP {}", column.get_quoted_name(&platform));
         sql.push(format!(
             "ALTER TABLE {} {}",
-            diff.get_name().get_quoted_name(this),
+            diff.get_name().get_quoted_name(&platform),
             query
         ));
     }
@@ -347,7 +351,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             continue;
         }
 
-        let old_column_name = column_diff.get_old_column_name().get_quoted_name(this);
+        let old_column_name = column_diff.get_old_column_name().get_quoted_name(&platform);
         let column = &column_diff.column;
 
         if column_diff.has_changed("type")
@@ -356,35 +360,35 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             || column_diff.has_changed("fixed")
         {
             let r#type = TypeManager::get_instance().get_type(column.get_type())?;
-            let mut column_data = column.generate_column_data(this);
+            let mut column_data = column.generate_column_data(&platform);
             column_data.autoincrement = Some(false);
 
             let query = format!(
                 "ALTER {} TYPE {}",
                 old_column_name,
-                r#type.get_sql_declaration(&column_data, this)?
+                r#type.get_sql_declaration(&column_data, &platform)?
             );
             sql.push(format!(
                 "ALTER TABLE {} {}",
-                diff.get_name().get_quoted_name(this),
+                diff.get_name().get_quoted_name(&platform),
                 query
             ));
         }
 
         if column_diff.has_changed("default") {
-            let column_data = column.generate_column_data(this);
+            let column_data = column.generate_column_data(&platform);
             let default_clause = if column_data.default == Value::NULL {
                 " DROP DEFAULT".to_string()
             } else {
                 format!(
                     " SET{}",
-                    this.get_default_value_declaration_sql(&column_data)?
+                    platform.get_default_value_declaration_sql(&column_data)?
                 )
             };
             let query = format!("ALTER {}{}", old_column_name, default_clause);
             sql.push(format!(
                 "ALTER TABLE {} {}",
-                diff.get_name().get_quoted_name(this),
+                diff.get_name().get_quoted_name(&platform),
                 query
             ));
         }
@@ -397,7 +401,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             );
             sql.push(format!(
                 "ALTER TABLE {} {}",
-                diff.get_name().get_quoted_name(this),
+                diff.get_name().get_quoted_name(&platform),
                 query
             ));
         }
@@ -411,7 +415,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
                     "SELECT setval('{}', (SELECT MAX({}) FROM {}))",
                     seq_name,
                     old_column_name,
-                    diff.get_name().get_quoted_name(this)
+                    diff.get_name().get_quoted_name(&platform)
                 ));
                 let query = format!(
                     "ALTER {} SET DEFAULT nextval('{}')",
@@ -419,14 +423,14 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
                 );
                 sql.push(format!(
                     "ALTER TABLE {} {}",
-                    diff.get_name().get_quoted_name(this),
+                    diff.get_name().get_quoted_name(&platform),
                     query
                 ));
             } else {
                 let query = format!("ALTER {} DROP DEFAULT", old_column_name);
                 sql.push(format!(
                     "ALTER TABLE {} {}",
-                    diff.get_name().get_quoted_name(this),
+                    diff.get_name().get_quoted_name(&platform),
                     query
                 ));
             }
@@ -442,7 +446,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
                 &diff.get_name(),
                 column,
                 &new_comment,
-            ));
+            )?);
         }
 
         if column_diff.has_changed("length") {
@@ -451,11 +455,11 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
                 old_column_name,
                 TypeManager::get_instance()
                     .get_type(column.get_type())?
-                    .get_sql_declaration(&column.generate_column_data(this), this)?
+                    .get_sql_declaration(&column.generate_column_data(&platform), &platform)?
             );
             sql.push(format!(
                 "ALTER TABLE {} {}",
-                diff.get_name().get_quoted_name(this),
+                diff.get_name().get_quoted_name(&platform),
                 query
             ));
         }
@@ -477,9 +481,9 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
         let old_column_name = Identifier::new(old_column_name, false);
         sql.push(format!(
             "ALTER TABLE {} RENAME COLUMN {} TO {}",
-            diff.get_name().get_quoted_name(this),
-            old_column_name.get_quoted_name(this),
-            column.get_quoted_name(this)
+            diff.get_name().get_quoted_name(&platform),
+            old_column_name.get_quoted_name(&platform),
+            column.get_quoted_name(&platform)
         ));
     }
 
@@ -490,8 +494,8 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
         if let Some(new_name) = diff.get_new_name() {
             sql.push(format!(
                 "ALTER TABLE {} RENAME TO {}",
-                diff.get_name().get_quoted_name(this),
-                new_name.get_quoted_name(this)
+                diff.get_name().get_quoted_name(&platform),
+                new_name.get_quoted_name(&platform)
             ));
         }
 
@@ -539,14 +543,15 @@ fn is_unchanged_binary_column(column_diff: &ColumnDiff) -> bool {
     }
 }
 
-pub fn get_rename_index_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_rename_index_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     old_index_name: &Identifier,
     index: &Index,
     table_name: &Identifier,
 ) -> Result<Vec<String>> {
-    let mut old_index_name = old_index_name.get_quoted_name(this);
-    let table_name = table_name.get_quoted_name(this);
+    let platform = this.get_platform()?;
+    let mut old_index_name = old_index_name.get_quoted_name(&platform);
+    let table_name = table_name.get_quoted_name(&platform);
     if table_name.contains('.') {
         let schema = table_name.split_once('.').unwrap().0;
         old_index_name = format!("{}.{}", schema, old_index_name);
@@ -555,50 +560,44 @@ pub fn get_rename_index_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
     Ok(vec![format!(
         "ALTER INDEX {} RENAME TO {}",
         old_index_name,
-        index.get_quoted_name(this)
+        index.get_quoted_name(&platform)
     )])
 }
 
-pub fn get_comment_on_column_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_comment_on_column_sql(
+    platform: PlatformBox,
     table_name: &Identifier,
     column: &Column,
     comment: &str,
-) -> String {
+) -> Result<String> {
     let comment = if comment.is_empty() {
         "NULL".to_string()
     } else {
-        this.quote_string_literal(comment)
+        platform.quote_string_literal(comment)
     };
-    format!(
+    Ok(format!(
         "COMMENT ON COLUMN {}.{} IS {}",
-        table_name.get_quoted_name(this),
-        column.get_quoted_name(this),
+        table_name.get_quoted_name(&platform),
+        column.get_quoted_name(&platform),
         comment
-    )
+    ))
 }
 
-pub fn get_create_sequence_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
-    sequence: &Sequence,
-) -> Result<String> {
+pub fn get_create_sequence_sql(platform: PlatformBox, sequence: &Sequence) -> Result<String> {
     Ok(format!(
         "CREATE SEQUENCE {} INCREMENT BY {} MINVALUE {} START {} {}",
-        sequence.get_quoted_name(this),
+        sequence.get_quoted_name(&platform),
         sequence.get_allocation_size(),
-        sequence.initial_value(),
-        sequence.initial_value(),
+        sequence.get_initial_value(),
+        sequence.get_initial_value(),
         get_sequence_cache_sql(sequence)
     ))
 }
 
-pub fn get_alter_sequence_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
-    sequence: &Sequence,
-) -> Result<String> {
+pub fn get_alter_sequence_sql(platform: PlatformBox, sequence: &Sequence) -> Result<String> {
     Ok(format!(
         "ALTER SEQUENCE {} INCREMENT BY {} {}",
-        sequence.get_quoted_name(this),
+        sequence.get_quoted_name(&platform),
         sequence.get_allocation_size(),
         get_sequence_cache_sql(sequence)
     ))
@@ -614,25 +613,25 @@ pub fn get_sequence_cache_sql(sequence: &Sequence) -> String {
     }
 }
 
-pub fn get_drop_sequence_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
-    sequence: &Sequence,
+pub fn get_drop_sequence_sql(
+    platform: PlatformBox,
+    sequence: &dyn IntoIdentifier,
 ) -> Result<String> {
-    default::get_drop_sequence_sql(this, sequence).map(|sql| sql + " CASCADE")
+    default::get_drop_sequence_sql(platform, sequence).map(|sql| sql + " CASCADE")
 }
 
-pub fn get_drop_foreign_key_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
+pub fn get_drop_foreign_key_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
-    foreign_key: &ForeignKeyConstraint,
-    table_name: &Identifier,
+    foreign_key: &dyn IntoIdentifier,
+    table_name: &dyn IntoIdentifier,
 ) -> Result<String> {
     this.get_drop_constraint_sql(
-        Identifier::new(foreign_key.get_name(), foreign_key.is_quoted()),
-        table_name,
+        &foreign_key.into_identifier(),
+        &table_name.into_identifier(),
     )
 }
 
-pub fn _get_create_table_sql<T: AbstractPostgreSQLPlatform>(
+pub fn _get_create_table_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     name: &Identifier,
     columns: &[ColumnData],
@@ -646,7 +645,7 @@ pub fn _get_create_table_sql<T: AbstractPostgreSQLPlatform>(
 
     let mut sql = vec![format!(
         "CREATE TABLE {} ({})",
-        name.get_quoted_name(this),
+        name.get_quoted_name(&this.get_platform()?),
         query_fields
     )];
     for index in options.indexes.values() {
@@ -893,11 +892,14 @@ pub fn get_default_value_declaration_sql<T: AbstractPostgreSQLPlatform + ?Sized>
     }
 }
 
-pub fn get_column_collation_declaration_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_column_collation_declaration_sql(
+    platform: PlatformBox,
     collation: &str,
-) -> String {
-    format!("COLLATE {}", this.quote_single_identifier(collation))
+) -> Result<String> {
+    Ok(format!(
+        "COLLATE {}",
+        platform.quote_single_identifier(collation)
+    ))
 }
 
 pub fn get_json_type_declaration_sql(column: &ColumnData) -> Result<String> {
@@ -909,7 +911,7 @@ pub fn get_json_type_declaration_sql(column: &ColumnData) -> Result<String> {
     .to_string())
 }
 
-fn get_old_column_comment<T: AbstractPostgreSQLPlatform>(
+fn get_old_column_comment<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     this: &T,
     column_diff: &ColumnDiff,
 ) -> Option<String> {

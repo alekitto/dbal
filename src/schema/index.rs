@@ -1,10 +1,10 @@
 use crate::platform::DatabasePlatform;
-use crate::schema::asset::{AbstractAsset, Asset};
-use crate::schema::Identifier;
+use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
+use crate::schema::{Identifier, IntoIdentifier};
 use crate::Value;
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Clone, IntoIdentifier)]
 pub struct Index {
     asset: AbstractAsset,
     columns: HashMap<String, Identifier>,
@@ -74,8 +74,8 @@ impl Index {
 
     pub fn get_quoted_columns<T: DatabasePlatform + ?Sized>(&self, platform: &T) -> Vec<String> {
         self.columns
-            .iter()
-            .map(|(_, c)| c.get_quoted_name(platform))
+            .values()
+            .map(|c| c.get_quoted_name(platform))
             .collect()
     }
 
@@ -103,8 +103,8 @@ impl Index {
         self.options.get(name)
     }
 
-    pub fn get_options(&self) -> Vec<Value> {
-        self.options.iter().map(|(_, v)| v).cloned().collect()
+    pub fn get_options(&self) -> &HashMap<String, Value> {
+        &self.options
     }
 
     /// Adds a new column to the index.
@@ -121,26 +121,96 @@ impl Index {
     pub fn is_unique(&self) -> bool {
         self.is_unique
     }
+
+    /// Checks if this index exactly spans the given column names in the correct order.
+    fn spans_columns(&self, column_names: &[String]) -> bool {
+        self.columns.iter().enumerate().all(|(index, column)| {
+            column_names.get(index).is_some_and(|column_name| {
+                self.trim_quotes(&column.1.get_name().to_lowercase())
+                    == self.trim_quotes(&column_name.to_lowercase())
+            })
+        })
+    }
+
+    pub fn is_fulfilled_by(&self, other: &Index) -> bool {
+        // allow the other index to be equally large only. It being larger is an option
+        // but it creates a problem with scenarios of the kind PRIMARY KEY(foo,bar) UNIQUE(foo)
+        if other.get_columns().len() != self.get_columns().len() {
+            return false;
+        }
+
+        // Check if columns are the same, and even in the same order
+        if self.spans_columns(&other.get_columns()) {
+            if self.same_partial_index(other) || !self.has_same_column_lengths(other) {
+                return false;
+            }
+
+            if !self.is_unique() && self.is_primary() {
+                // this is a special case: If the current key is neither primary or unique, any unique or
+                // primary key will always have the same effect for the index and there cannot be any constraint
+                // overlaps. This means a primary or unique index can always fulfill the requirements of just an
+                // index that has no constraints.
+                return true;
+            }
+
+            other.is_primary() == self.is_primary() && other.is_unique() == self.is_unique()
+        } else {
+            false
+        }
+    }
+
+    /// Return whether the two indexes have the same partial index
+    fn same_partial_index(&self, other: &Index) -> bool {
+        self.get_option("where") == other.get_option("where")
+    }
+
+    /// Returns whether the index has the same column lengths as the other
+    fn has_same_column_lengths(&self, other: &Index) -> bool {
+        self.options.get("lengths") == other.options.get("lengths")
+    }
 }
 
-impl Asset for Index {
-    fn get_name(&self) -> String {
-        self.asset.get_name()
-    }
+impl_asset!(Index, asset);
 
-    fn set_name(&mut self, name: String) {
-        self.asset.set_name(name)
-    }
+pub struct IndexOptions {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub primary: bool,
+    pub flags: Vec<String>,
+    pub options_lengths: Vec<Option<usize>>,
+    pub options_where: Option<String>,
+}
 
-    fn get_namespace_name(&self) -> Option<String> {
-        self.asset.get_namespace_name()
-    }
+impl IndexOptions {
+    pub fn new_index(self) -> Index {
+        let lengths = Value::Array(
+            self.options_lengths
+                .iter()
+                .map(|v| match v {
+                    Some(s) => Value::from(s),
+                    None => Value::NULL,
+                })
+                .collect(),
+        );
 
-    fn get_shortest_name(&self, default_namespace_name: &str) -> String {
-        self.asset.get_shortest_name(default_namespace_name)
-    }
+        let mut options = HashMap::new();
+        options.insert("lengths".to_string(), lengths);
+        options.insert(
+            "where".to_string(),
+            match self.options_where {
+                Some(s) => Value::String(s),
+                None => Value::NULL,
+            },
+        );
 
-    fn is_quoted(&self) -> bool {
-        self.asset.is_quoted()
+        Index::new(
+            self.name,
+            self.columns,
+            self.unique,
+            self.primary,
+            self.flags,
+            options,
+        )
     }
 }

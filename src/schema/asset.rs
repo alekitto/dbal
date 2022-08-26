@@ -1,7 +1,8 @@
 use crate::platform::DatabasePlatform;
+use crate::schema::{Identifier, IntoIdentifier};
 use crc::{Crc, CRC_32_ISO_HDLC};
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, IntoIdentifier, PartialEq)]
 pub(crate) struct AbstractAsset {
     quoted: bool,
     namespace: Option<String>,
@@ -36,7 +37,7 @@ pub(super) fn generate_identifier_name(
     identifier.to_uppercase()
 }
 
-pub trait Asset {
+pub trait Asset: IntoIdentifier {
     /// Returns the name of this schema asset.
     fn get_name(&self) -> String;
 
@@ -72,12 +73,7 @@ pub trait Asset {
 
     /// Trim quotes from the identifier.
     fn trim_quotes(&self, identifier: &str) -> String {
-        identifier
-            .to_string()
-            .replace('`', "")
-            .replace('"', "")
-            .replace('[', "")
-            .replace(']', "")
+        identifier.to_string().replace(['`', '"', '[', ']'], "")
     }
 
     /// The shortest name is stripped of the default namespace. All other
@@ -103,6 +99,60 @@ pub trait Asset {
             })
             .collect::<Vec<String>>()
             .join(".")
+    }
+}
+
+impl<A: Asset + ?Sized> IntoIdentifier for &mut A {
+    delegate::delegate! {
+        to(**self) {
+            fn into_identifier(&self) -> Identifier;
+        }
+    }
+}
+
+impl<A: Asset + ?Sized> Asset for &mut A {
+    delegate::delegate! {
+        to(**self) {
+            fn get_name(&self) -> String;
+            fn set_name(&mut self, name: String);
+            fn get_namespace_name(&self) -> Option<String>;
+            fn get_shortest_name(&self, default_namespace_name: &str) -> String;
+            fn is_quoted(&self) -> bool;
+        }
+    }
+}
+
+impl<A: Asset + ?Sized> IntoIdentifier for Box<A> {
+    delegate::delegate! {
+        to(**self) {
+            fn into_identifier(&self) -> Identifier;
+        }
+    }
+}
+
+impl<A: Asset + ?Sized> Asset for Box<A> {
+    delegate::delegate! {
+        to(**self) {
+            fn get_name(&self) -> String;
+            fn set_name(&mut self, name: String);
+            fn get_namespace_name(&self) -> Option<String>;
+            fn get_shortest_name(&self, default_namespace_name: &str) -> String;
+            fn is_quoted(&self) -> bool;
+        }
+    }
+}
+
+pub(crate) macro impl_asset($t:ident,$e:ident) {
+    impl crate::schema::Asset for $t {
+        delegate::delegate! {
+            to(self.$e) {
+                fn get_name(&self) -> String;
+                fn set_name(&mut self, name: String);
+                fn get_namespace_name(&self) -> Option<String>;
+                fn get_shortest_name(&self, default_namespace_name: &str) -> String;
+                fn is_quoted(&self) -> bool;
+            }
+        }
     }
 }
 

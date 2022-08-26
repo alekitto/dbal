@@ -2,25 +2,28 @@ use crate::driver::mysql::platform::mysql_platform::{
     AbstractMySQLPlatform, LENGTH_LIMIT_BLOB, LENGTH_LIMIT_MEDIUMBLOB, LENGTH_LIMIT_MEDIUMTEXT,
     LENGTH_LIMIT_TEXT, LENGTH_LIMIT_TINYBLOB, LENGTH_LIMIT_TINYTEXT,
 };
-use crate::platform::{default, DateIntervalUnit};
+use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
+use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
 use crate::r#type::{BlobType, TextType};
 use crate::schema::{
     Asset, ColumnData, ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
 };
+use crate::util::PlatformBox;
 use crate::{Error, Result, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::marker::Sized;
 use core::option::Option::Some;
 use itertools::Itertools;
 use std::any::TypeId;
 use std::cmp::Ordering;
+use std::sync::Arc;
 
-pub fn build_table_options<T: AbstractMySQLPlatform + ?Sized>(
+pub fn build_table_options<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
     options: &TableOptions,
-) -> String {
+) -> Result<String> {
     let options = options.clone();
     if let Some(table_options) = &options.table_options {
-        return table_options.clone();
+        return Ok(table_options.clone());
     }
 
     let mut opts = vec![];
@@ -31,7 +34,7 @@ pub fn build_table_options<T: AbstractMySQLPlatform + ?Sized>(
     let collation = options
         .collation
         .unwrap_or_else(|| format!("{}_unicode_ci", charset));
-    opts.push(this.get_column_collation_declaration_sql(&collation));
+    opts.push(this.get_column_collation_declaration_sql(&collation)?);
 
     let engine = options.engine.unwrap_or_else(|| "InnoDB".to_string());
     opts.push(format!("ENGINE = {}", engine));
@@ -48,7 +51,7 @@ pub fn build_table_options<T: AbstractMySQLPlatform + ?Sized>(
         opts.push(format!("ROW_FORMAT = {}", row_format));
     }
 
-    opts.iter().join(", ")
+    Ok(opts.iter().join(", "))
 }
 
 pub fn build_partition_options(options: &TableOptions) -> String {
@@ -118,7 +121,7 @@ pub fn get_list_databases_sql() -> Result<String> {
     Ok("SHOW DATABASES".to_string())
 }
 
-pub fn get_list_views_sql<T: AbstractMySQLPlatform + ?Sized>(
+pub fn get_list_views_sql<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
     database: &str,
 ) -> Result<String> {
@@ -191,12 +194,13 @@ pub fn get_boolean_type_declaration_sql() -> Result<String> {
     Ok("TINYINT(1)".to_string())
 }
 
-pub fn _get_create_table_sql<T: AbstractMySQLPlatform>(
+pub fn _get_create_table_sql<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
     name: &Identifier,
     columns: &[ColumnData],
     options: &TableOptions,
 ) -> Result<Vec<String>> {
+    let platform = this.get_platform()?;
     let mut query_fields = this.get_column_declaration_list_sql(columns)?;
     for (constraint_name, definition) in &options.unique_constraints {
         query_fields += ", ";
@@ -218,8 +222,12 @@ pub fn _get_create_table_sql<T: AbstractMySQLPlatform>(
         query += "TEMPORARY ";
     }
 
-    query += &format!("TABLE {} ({}) ", name.get_quoted_name(this), query_fields);
-    query += &this.build_table_options(options);
+    query += &format!(
+        "TABLE {} ({}) ",
+        name.get_quoted_name(&platform),
+        query_fields
+    );
+    query += &this.build_table_options(options)?;
     query += &this.build_partition_options(options);
 
     let mut sql = vec![query];
@@ -249,7 +257,7 @@ pub fn get_default_value_declaration_sql<T: AbstractMySQLPlatform + ?Sized>(
     default::get_default_value_declaration_sql(this, &column)
 }
 
-pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
+pub fn get_alter_table_sql<T: AbstractMySQLSchemaManager + Sync + ?Sized>(
     this: &T,
     diff: &mut TableDiff,
 ) -> Result<Vec<String>> {
@@ -257,8 +265,10 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
     let mut query_parts = vec![];
     let new_name = diff.get_new_name();
 
+    let platform = this.get_platform()?;
+
     if let Some(new_name) = new_name {
-        query_parts.push(format!("RENAME TO {}", new_name.get_quoted_name(this)));
+        query_parts.push(format!("RENAME TO {}", new_name.get_quoted_name(&platform)));
     }
 
     for column in &diff.added_columns {
@@ -270,7 +280,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
             continue;
         }
 
-        let mut column_data = column.generate_column_data(this);
+        let mut column_data = column.generate_column_data(&platform);
         let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
             None
@@ -280,7 +290,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
 
         query_parts.push(format!(
             "ADD {}",
-            this.get_column_declaration_sql(&column.get_quoted_name(this), &column_data)?
+            this.get_column_declaration_sql(&column.get_quoted_name(&platform), &column_data)?
         ))
     }
 
@@ -293,7 +303,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
             continue;
         }
 
-        query_parts.push(format!("DROP {}", column.get_quoted_name(this)));
+        query_parts.push(format!("DROP {}", column.get_quoted_name(&platform)));
     }
 
     for column_diff in &diff.changed_columns {
@@ -306,7 +316,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         }
 
         let column = &column_diff.column;
-        let mut column_data = column.generate_column_data(this);
+        let mut column_data = column.generate_column_data(&platform);
 
         let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
@@ -317,8 +327,8 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
 
         query_parts.push(format!(
             "CHANGE {} {}",
-            column_diff.get_old_column_name().get_quoted_name(this),
-            this.get_column_declaration_sql(&column.get_quoted_name(this), &column_data)?
+            column_diff.get_old_column_name().get_quoted_name(&platform),
+            this.get_column_declaration_sql(&column.get_quoted_name(&platform), &column_data)?
         ));
     }
 
@@ -332,7 +342,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         }
 
         let old_column_name = Identifier::new(old_column_name, false);
-        let mut column_data = column.generate_column_data(this);
+        let mut column_data = column.generate_column_data(&platform);
 
         let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
@@ -343,8 +353,8 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
 
         query_parts.push(format!(
             "CHANGE {} {}",
-            old_column_name.get_quoted_name(this),
-            this.get_column_declaration_sql(&column.get_quoted_name(this), &column_data)?
+            old_column_name.get_quoted_name(&platform),
+            this.get_column_declaration_sql(&column.get_quoted_name(&platform), &column_data)?
         ));
     }
 
@@ -391,7 +401,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         if !query_parts.is_empty() {
             sql.push(format!(
                 "ALTER TABLE {} {}",
-                diff.get_name().get_quoted_name(this),
+                diff.get_name().get_quoted_name(&platform),
                 query_parts.join(", ")
             ));
         }
@@ -404,17 +414,19 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
     Ok(sql)
 }
 
-fn get_pre_alter_table_alter_primary_key_sql<T: AbstractMySQLPlatform>(
+fn get_pre_alter_table_alter_primary_key_sql<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
     diff: &TableDiff,
     index: &Index,
 ) -> Result<Vec<String>> {
     let mut sql = vec![];
+    let platform = this.get_platform()?;
+
     if !index.is_primary() || diff.from_table.is_none() {
         return Ok(sql);
     }
 
-    let table_name = diff.get_name().get_quoted_name(this);
+    let table_name = diff.get_name().get_quoted_name(&platform);
     let from_table = diff.from_table.unwrap();
 
     for column_name in index.get_columns() {
@@ -423,13 +435,13 @@ fn get_pre_alter_table_alter_primary_key_sql<T: AbstractMySQLPlatform>(
                 continue;
             }
 
-            let mut column_data = column.generate_column_data(this);
+            let mut column_data = column.generate_column_data(&platform);
             column_data.autoincrement = Some(false);
 
             sql.push(format!(
                 "ALTER TABLE {} MODIFY {}",
                 table_name,
-                this.get_column_declaration_sql(&column.get_quoted_name(this), &column_data)?
+                this.get_column_declaration_sql(&column.get_quoted_name(&platform), &column_data)?
             ));
         }
     }
@@ -437,12 +449,14 @@ fn get_pre_alter_table_alter_primary_key_sql<T: AbstractMySQLPlatform>(
     Ok(sql)
 }
 
-pub fn get_pre_alter_table_index_foreign_key_sql<T: AbstractMySQLPlatform + Sync>(
+pub fn get_pre_alter_table_index_foreign_key_sql<T: AbstractMySQLSchemaManager + Sync + ?Sized>(
     this: &T,
     diff: &mut TableDiff,
 ) -> Result<Vec<String>> {
     let mut sql = vec![];
-    let table = diff.get_name().get_quoted_name(this);
+    let platform = this.get_platform()?;
+
+    let table = diff.get_name().get_quoted_name(&platform);
 
     for index in &diff.changed_indexes {
         let mut pre = get_pre_alter_table_alter_primary_key_sql(this, diff, index)?;
@@ -580,11 +594,14 @@ pub fn get_column_charset_declaration_sql(charset: &str) -> String {
     format!("CHARACTER SET {}", charset)
 }
 
-pub fn get_column_collation_declaration_sql<T: AbstractMySQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_column_collation_declaration_sql(
+    platform: PlatformBox,
     collation: &str,
-) -> String {
-    format!("COLLATE {}", this.quote_single_identifier(collation))
+) -> Result<String> {
+    Ok(format!(
+        "COLLATE {}",
+        platform.quote_single_identifier(collation)
+    ))
 }
 
 /**
@@ -592,7 +609,7 @@ pub fn get_column_collation_declaration_sql<T: AbstractMySQLPlatform + ?Sized>(
  *
  * @internal The method should be only used from within the {@see AbstractPlatform} class hierarchy.
  */
-pub fn get_advanced_foreign_key_options_sql<T: AbstractMySQLPlatform + ?Sized>(
+pub fn get_advanced_foreign_key_options_sql<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
@@ -609,24 +626,24 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractMySQLPlatform + ?Sized>(
     Ok(query)
 }
 
-pub fn get_drop_index_sql<T: AbstractMySQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_drop_index_sql(
+    platform: Arc<Box<dyn DatabasePlatform + Send + Sync>>,
     index: &Identifier,
     table: &Identifier,
 ) -> Result<String> {
     Ok(format!(
         "DROP INDEX {} ON {}",
-        index.get_quoted_name(this),
-        table.get_quoted_name(this)
+        index.get_quoted_name(&platform),
+        table.get_quoted_name(&platform)
     ))
 }
 
-pub fn get_drop_unique_constraint_sql<T: AbstractMySQLPlatform + ?Sized>(
+pub fn get_drop_unique_constraint_sql<T: AbstractMySQLSchemaManager + ?Sized>(
     this: &T,
-    name: Identifier,
+    name: &Identifier,
     table_name: &Identifier,
 ) -> Result<String> {
-    this.get_drop_index_sql(&name, table_name)
+    this.get_drop_index_sql(name, table_name)
 }
 
 pub fn get_set_transaction_isolation_sql<T: AbstractMySQLPlatform + ?Sized>(
@@ -643,14 +660,11 @@ pub fn get_read_lock_sql() -> Result<String> {
     Ok("LOCK IN SHARE MODE".to_string())
 }
 
-pub fn get_drop_temporary_table_sql<T: AbstractMySQLPlatform + Sync>(
-    this: &T,
-    table: &Identifier,
-) -> Result<String> {
-    let table_arg = table.get_quoted_name(this);
-
-    let mut ev = SchemaDropTableEvent::new(table_arg.clone(), this);
-    this.get_event_manager().dispatch_sync(&mut ev);
+pub fn get_drop_temporary_table_sql(this: PlatformBox, table: &Identifier) -> Result<String> {
+    let table_arg = table.get_quoted_name(&this);
+    let ev = this
+        .get_event_manager()
+        .dispatch_sync(SchemaDropTableEvent::new(table_arg.clone(), this.clone()))?;
 
     if ev.is_default_prevented() {
         if let Some(ref sql) = ev.sql {
@@ -687,17 +701,17 @@ pub fn get_default_transaction_isolation_level() -> TransactionIsolationLevel {
     TransactionIsolationLevel::RepeatableRead
 }
 
-pub fn get_rename_index_sql<T: AbstractMySQLPlatform + Sync>(
-    this: &T,
+pub fn get_rename_index_sql(
+    platform: PlatformBox,
     old_index_name: &Identifier,
     index: &Index,
     table_name: &Identifier,
 ) -> Result<Vec<String>> {
     Ok(vec![format!(
         "ALTER TABLE {} RENAME INDEX {} TO {}",
-        table_name.get_quoted_name(this),
-        old_index_name.get_quoted_name(this),
-        index.get_quoted_name(this)
+        table_name.get_quoted_name(&platform),
+        old_index_name.get_quoted_name(&platform),
+        index.get_quoted_name(&platform)
     )])
 }
 

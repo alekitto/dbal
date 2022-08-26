@@ -1,5 +1,4 @@
-use crate::Event;
-use futures::future::BoxFuture;
+use crate::{AsyncResult, Event, Result};
 use std::any::*;
 use std::default::Default;
 use std::fmt::{Debug, Formatter};
@@ -7,12 +6,12 @@ use tokio::sync::Mutex;
 
 struct AsyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Event) -> BoxFuture<()>) + Send>,
+    handler: Box<dyn (FnMut(&mut dyn Event) -> AsyncResult<()>) + Send>,
 }
 
 struct SyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Event)) + Send>,
+    handler: Box<dyn (FnMut(&mut dyn Event) -> Result<()>) + Send>,
 }
 
 #[derive(Default)]
@@ -35,7 +34,7 @@ impl EventDispatcher {
         }
     }
 
-    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) + Send + 'static)
+    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) -> Result<()> + Send + 'static)
     where
         Ev: Event + 'static,
     {
@@ -49,13 +48,11 @@ impl EventDispatcher {
 
     pub async fn add_async_listener<Ev>(
         &self,
-        mut action: impl FnMut(&mut Ev) -> BoxFuture<()> + 'static + Send,
+        mut action: impl FnMut(&mut Ev) -> AsyncResult<()> + 'static + Send,
     ) where
         Ev: Event + 'static,
     {
-        if !Ev::is_async() {
-            panic!("Trying to add an async listener to a sync event. Aborting...");
-        }
+        debug_assert!(Ev::is_async());
 
         self.async_listeners.lock().await.push(AsyncListener {
             event: Ev::event_type(),
@@ -65,27 +62,31 @@ impl EventDispatcher {
         });
     }
 
-    pub fn dispatch_sync<Ev>(&self, ev: &mut Ev)
+    pub fn dispatch_sync<Ev>(&self, mut ev: Ev) -> Result<Ev>
     where
         Ev: Event,
     {
         for l in self.sync_listeners.lock().unwrap().iter_mut() {
             if Ev::event_type() == l.event {
-                (l.handler)(ev);
+                (l.handler)(&mut ev)?;
             }
         }
+
+        Ok(ev)
     }
 
-    pub async fn dispatch_async<Ev>(&self, ev: &mut Ev)
+    pub async fn dispatch_async<Ev>(&self, ev: Ev) -> Result<Ev>
     where
         Ev: Event,
     {
-        self.dispatch_sync(ev);
+        let mut ev = self.dispatch_sync(ev)?;
         for l in self.async_listeners.lock().await.iter_mut() {
             if Ev::event_type() == l.event {
-                let promise = (l.handler)(ev);
-                promise.await;
+                let promise = (l.handler)(&mut ev);
+                promise.await?;
             }
         }
+
+        Ok(ev)
     }
 }

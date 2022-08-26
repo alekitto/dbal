@@ -1,10 +1,10 @@
 use crate::platform::DatabasePlatform;
-use crate::schema::asset::{AbstractAsset, Asset};
-use crate::schema::Identifier;
+use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
+use crate::schema::{Identifier, IntoIdentifier};
 use crate::Value;
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Clone, IntoIdentifier)]
 pub struct UniqueConstraint {
     asset: AbstractAsset,
     columns: HashMap<String, Identifier>,
@@ -66,8 +66,8 @@ impl UniqueConstraint {
 
     pub fn get_quoted_columns<T: DatabasePlatform + ?Sized>(&self, platform: &T) -> Vec<String> {
         self.columns
-            .iter()
-            .map(|(_, c)| c.get_quoted_name(platform))
+            .values()
+            .map(|c| c.get_quoted_name(platform))
             .collect()
     }
 
@@ -96,7 +96,7 @@ impl UniqueConstraint {
     }
 
     pub fn get_options(&self) -> Vec<Value> {
-        self.options.iter().map(|(_, v)| v).cloned().collect()
+        self.options.values().cloned().collect()
     }
 
     /// Adds a new column to the unique constraint.
@@ -107,24 +107,4 @@ impl UniqueConstraint {
     }
 }
 
-impl Asset for UniqueConstraint {
-    fn get_name(&self) -> String {
-        self.asset.get_name()
-    }
-
-    fn set_name(&mut self, name: String) {
-        self.asset.set_name(name)
-    }
-
-    fn get_namespace_name(&self) -> Option<String> {
-        self.asset.get_namespace_name()
-    }
-
-    fn get_shortest_name(&self, default_namespace_name: &str) -> String {
-        self.asset.get_shortest_name(default_namespace_name)
-    }
-
-    fn is_quoted(&self) -> bool {
-        self.asset.is_quoted()
-    }
-}
+impl_asset!(UniqueConstraint, asset);

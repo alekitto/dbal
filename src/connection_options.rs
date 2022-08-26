@@ -1,7 +1,8 @@
+use crate::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use url::{ParseError, Url};
+use url::Url;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SslMode {
@@ -83,7 +84,7 @@ impl ConnectionOptions {
 }
 
 impl TryFrom<&str> for ConnectionOptions {
-    type Error = ParseError;
+    type Error = Error;
 
     fn try_from(dsn: &str) -> Result<Self, Self::Error> {
         let dsn = dsn.to_string();
@@ -101,9 +102,13 @@ impl TryFrom<&str> for ConnectionOptions {
         let username = url.username();
         let db_name = url.path().trim_start_matches('/');
 
-        let options = match url.scheme() {
+        match url.scheme() {
+            #[cfg(not(feature = "mysql"))]
+            platform @ "mysql" | platform @ "mariadb" => {
+                Err(Error::platform_not_compiled(platform))
+            }
             #[cfg(feature = "mysql")]
-            "mysql" | "mariadb" => options
+            "mysql" | "mariadb" => Ok(options
                 .with_scheme(Some("mysql".to_string()))
                 .with_username(if username.is_empty() {
                     None
@@ -116,39 +121,48 @@ impl TryFrom<&str> for ConnectionOptions {
                 .with_database_name(Some(db_name.to_string()))
                 .with_database_name_suffix(
                     query_params.get("dbname_suffix").map(|s| s.to_string()),
-                ),
+                )),
+            #[cfg(not(feature = "postgres"))]
+            platform @ "pg"
+            | platform @ "psql"
+            | platform @ "postgres"
+            | platform @ "postgresql" => Err(Error::platform_not_compiled(platform)),
             #[cfg(feature = "postgres")]
-            "pg" | "psql" | "postgres" | "postgresql" => options
-                .with_scheme(Some("psql".to_string()))
-                .with_username(Some(
-                    if username.is_empty() {
-                        "postgres"
-                    } else {
-                        username
-                    }
-                    .to_string(),
-                ))
-                .with_password(url.password().map(String::from))
-                .with_host(url.host_str().map(String::from))
-                .with_port(url.port().or(Some(5432)))
-                .with_database_name(Some(
-                    if db_name.is_empty() {
-                        "postgres"
-                    } else {
-                        db_name
-                    }
-                    .to_string(),
-                ))
-                .with_database_name_suffix(query_params.get("dbname_suffix").map(|s| s.to_string()))
-                .with_application_name(query_params.get("application_name").map(|s| s.to_string())),
-            #[cfg(feature = "sqlite")]
-            "sqlite" => options
-                .with_scheme(Some("sqlite".to_string()))
-                .with_file_path(Some(url.path().to_string())),
-            _ => unimplemented!(),
-        };
+            "pg" | "psql" | "postgres" | "postgresql" => {
+                let username = if username.is_empty() {
+                    "postgres"
+                } else {
+                    username
+                };
 
-        Ok(options)
+                let db_name = if db_name.is_empty() {
+                    "postgres"
+                } else {
+                    db_name
+                };
+
+                Ok(options
+                    .with_scheme(Some("psql".to_string()))
+                    .with_username(Some(username.to_string()))
+                    .with_password(url.password().map(String::from))
+                    .with_host(url.host_str().map(String::from))
+                    .with_port(url.port().or(Some(5432)))
+                    .with_database_name(Some(db_name.to_string()))
+                    .with_database_name_suffix(
+                        query_params.get("dbname_suffix").map(|s| s.to_string()),
+                    )
+                    .with_application_name(
+                        query_params.get("application_name").map(|s| s.to_string()),
+                    ))
+            }
+            #[cfg(not(feature = "sqlite"))]
+            platform @ "sqlite" => Err(Error::platform_not_compiled(platform)),
+            #[cfg(feature = "sqlite")]
+            "sqlite" => Ok(options
+                .with_scheme(Some("sqlite".to_string()))
+                .with_file_path(Some(url.path().to_string()))),
+            scheme => Err(Error::unknown_driver(scheme)),
+        }
     }
 }
 

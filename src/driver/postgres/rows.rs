@@ -1,4 +1,4 @@
-use crate::{rows::rows_impl, Result, Row, Value};
+use crate::{rows, Result, Row, Value};
 use futures::TryStreamExt;
 use std::error::Error;
 use std::io::Read;
@@ -8,9 +8,7 @@ use tokio_postgres::RowStream;
 pub struct Rows {
     columns: Vec<String>,
     column_count: usize,
-
-    pub(crate) rows: Vec<Row>,
-    pub(crate) position: usize,
+    rows: Vec<Row>,
 }
 
 fn simple_type_from_sql(
@@ -29,6 +27,7 @@ fn simple_type_from_sql(
             todo!();
         }
         Type::CSTRING
+        | Type::NAME
         | Type::VARCHAR
         | Type::DATE
         | Type::TIME
@@ -40,6 +39,14 @@ fn simple_type_from_sql(
         | Type::UUID
         | Type::XML
         | Type::REGCLASS
+        | Type::REGPROC
+        | Type::REGROLE
+        | Type::REGPROCEDURE
+        | Type::REGOPERATOR
+        | Type::REGOPER
+        | Type::REGCOLLATION
+        | Type::REGCONFIG
+        | Type::REGNAMESPACE
         | Type::REGTYPE => {
             let mut s = String::new();
             let vv = Vec::from(raw);
@@ -76,7 +83,20 @@ impl<'a> FromSql<'a> for Value {
     }
 }
 
-rows_impl!(Rows);
+impl rows::Rows for Rows {
+    fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&Row> {
+        self.rows.get(index)
+    }
+
+    fn to_vec(self) -> Vec<Row> {
+        self.rows
+    }
+}
+
 impl Rows {
     pub(super) async fn new(row_stream: RowStream) -> Result<Rows> {
         let mut result = Vec::new();
@@ -109,7 +129,6 @@ impl Rows {
             columns,
             column_count,
             rows: result,
-            position: 0,
         })
     }
 

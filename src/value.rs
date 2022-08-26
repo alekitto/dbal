@@ -25,6 +25,18 @@ pub enum Value {
     Uuid(uuid::Uuid),
 }
 
+impl Default for Value {
+    fn default() -> Self {
+        Self::NULL
+    }
+}
+
+impl Default for &Value {
+    fn default() -> Self {
+        &Value::NULL
+    }
+}
+
 impl Value {
     fn is_null(&self) -> bool {
         matches!(self, Value::NULL)
@@ -138,57 +150,51 @@ impl PartialEq for Value {
     }
 }
 
-macro_rules! from_to_value {
-    ($variant:ident,$source:ty) => {
-        impl From<$source> for Value {
-            #[inline]
-            fn from(value: $source) -> Self {
-                Value::$variant(value)
+macro from_to_value($variant:ident,$source:ty) {
+    impl From<$source> for Value {
+        #[inline]
+        fn from(value: $source) -> Self {
+            Value::$variant(value)
+        }
+    }
+
+    impl TryFrom<Value> for $source {
+        type Error = Error;
+
+        #[inline]
+        fn try_from(value: Value) -> Result<Self, Self::Error> {
+            match value {
+                Value::$variant(value) => Ok(value),
+                _ => Err(Error::type_mismatch()),
             }
         }
-
-        impl TryFrom<Value> for $source {
-            type Error = Error;
-
-            #[inline]
-            fn try_from(value: Value) -> Result<Self, Self::Error> {
-                match value {
-                    Value::$variant(value) => Ok(value),
-                    _ => Err(Error::type_mismatch()),
-                }
-            }
-        }
-    };
+    }
 }
 
-macro_rules! from_to_value_deref {
-    ($variant:ident,$source:ty) => {
-        from_to_value!($variant, $source);
+macro from_to_value_deref($variant:ident,$source:ty) {
+    from_to_value!($variant, $source);
 
-        impl From<&$source> for Value {
-            #[inline]
-            fn from(value: &$source) -> Self {
-                Value::$variant(*value)
-            }
+    impl From<&$source> for Value {
+        #[inline]
+        fn from(value: &$source) -> Self {
+            Value::$variant(*value)
         }
-    };
+    }
 }
 
-macro_rules! from_to_value_clone {
-    ($variant:ident,$source:ty) => {
-        from_to_value!($variant, $source);
+macro from_to_value_clone($variant:ident,$source:ty) {
+    from_to_value!($variant, $source);
 
-        impl From<&$source> for Value {
-            #[inline]
-            fn from(value: &$source) -> Self {
-                Value::$variant(value.clone())
-            }
+    impl From<&$source> for Value {
+        #[inline]
+        fn from(value: &$source) -> Self {
+            Value::$variant(value.clone())
         }
-    };
+    }
 }
 
 // int/uint implementations
-macro_rules! from_traits_int_impl {
+macro from_traits_int_impl {
     ($variant:ident,$target:ty,$($source:ty),*) => {$(
         impl From<$source> for Value {
             #[inline]
@@ -232,7 +238,7 @@ macro_rules! from_traits_int_impl {
     )*}
 }
 
-macro_rules! from_traits_clone_impl {
+macro from_traits_clone_impl {
     ($variant:ident,$($source:ty),*) => {$(
         from_to_value_clone!($variant, $source);
 
@@ -250,7 +256,7 @@ macro_rules! from_traits_clone_impl {
     )*}
 }
 
-macro_rules! from_traits_deref_impl {
+macro from_traits_deref_impl {
     ($variant:ident,$($source:ty),*) => {$(
         from_to_value_deref!($variant, $source);
 
@@ -276,7 +282,33 @@ from_traits_clone_impl!(Bytes, Vec<u8>);
 from_traits_clone_impl!(Json, serde_json::Value);
 
 from_traits_deref_impl!(Uuid, uuid::Uuid);
-from_traits_deref_impl!(Boolean, bool);
+
+from_to_value_deref!(Boolean, bool);
+impl From<&Value> for bool {
+    fn from(item: &Value) -> Self {
+        match item {
+            Value::NULL => false,
+            Value::Int(i) => *i != 0,
+            Value::UInt(u) => *u != 0,
+            Value::String(s) => !s.is_empty(),
+            Value::Float(f) => *f != 0.0,
+            Value::Boolean(cur) => *cur,
+            Value::Json(j) => match j {
+                serde_json::Value::Null => false,
+                serde_json::Value::Bool(b) => *b,
+                serde_json::Value::Number(n) => {
+                    let n = n.clone();
+                    n != 0_i64.into() && n != serde_json::Number::from_f64(0.0).unwrap()
+                }
+                serde_json::Value::String(s) => !s.is_empty(),
+                serde_json::Value::Array(a) => !a.is_empty(),
+                serde_json::Value::Object(_) => true,
+            },
+            Value::Bytes(_) | Value::DateTime(_) | Value::Uuid(_) => true,
+            Value::Array(vec) => !vec.is_empty(),
+        }
+    }
+}
 
 impl From<&[u8]> for Value {
     #[inline]

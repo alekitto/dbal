@@ -86,7 +86,8 @@ pub struct Driver {
 
 impl Debug for Driver {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt("Driver (PostgreSQL) {}", f)
+        f.debug_struct("Driver (PostgreSQL)")
+            .finish_non_exhaustive()
     }
 }
 
@@ -239,8 +240,8 @@ mod tests {
 
         let statement = connection.query("SELECT 1 + 1", params![]).await;
         assert_eq!(statement.is_ok(), true);
-        let statement = statement.unwrap();
-        let row: Row = statement.fetch_one().unwrap().unwrap();
+        let mut statement = statement.unwrap();
+        let row = statement.fetch_one().unwrap();
 
         assert_eq!(row.get(ColumnIndex::Position(0)).unwrap(), &Value::Int(2));
     }

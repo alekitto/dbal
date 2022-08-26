@@ -7,6 +7,7 @@ mod datetime_type;
 mod datetime_tz_type;
 mod decimal_type;
 mod float_type;
+mod guid_type;
 mod integer_type;
 mod json_type;
 mod simple_array_type;
@@ -29,6 +30,7 @@ pub use datetime_tz_type::DateTimeTzType;
 pub use decimal_type::DecimalType;
 use delegate::delegate;
 pub use float_type::FloatType;
+pub use guid_type::GuidType;
 pub use integer_type::IntegerType;
 pub use json_type::JsonType;
 use lazy_static::lazy_static;
@@ -48,6 +50,7 @@ pub const DATETIME: &str = "datetime";
 pub const DATETIMETZ: &str = "datetimetz";
 pub const DECIMAL: &str = "decimal";
 pub const FLOAT: &str = "float";
+pub const GUID: &str = "guid";
 pub const INTEGER: &str = "integer";
 pub const JSON: &str = "json";
 pub const SIMPLE_ARRAY: &str = "simple_array";
@@ -111,6 +114,12 @@ impl IntoType for &str {
     }
 }
 
+impl IntoType for &String {
+    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
+        TypeManager::get_instance().get_type_by_name(self)
+    }
+}
+
 impl IntoType for TypeId {
     fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
         TypeManager::get_instance().get_type(self)
@@ -124,6 +133,27 @@ impl IntoType for Arc<Box<dyn Type + Send + Sync>> {
 }
 
 impl<T: Type + ?Sized> Type for Box<T> {
+    fn default() -> Box<dyn Type + Sync + Send>
+    where
+        Self: Sized,
+    {
+        unreachable!()
+    }
+
+    delegate! {
+        to (**self) {
+            fn convert_to_database_value(&self, value: Value, platform: &dyn DatabasePlatform)-> Result<Value>;
+            fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value>;
+            fn get_name(&self) -> &'static str;
+            fn requires_sql_comment_hint(&self, platform: &dyn DatabasePlatform) -> bool;
+            fn get_sql_declaration(&self, column: &ColumnData, platform: &dyn DatabasePlatform) -> Result<String>;
+            fn get_binding_type(&self) -> ParameterType;
+            fn get_mapped_database_types(&self, platform: &dyn DatabasePlatform) -> Vec<String>;
+        }
+    }
+}
+
+impl<T: Type + ?Sized> Type for &mut T {
     fn default() -> Box<dyn Type + Sync + Send>
     where
         Self: Sized,
@@ -176,6 +206,7 @@ impl TypeManager {
             Arc::new(DecimalType::default()),
         );
         type_map.insert(TypeId::of::<FloatType>(), Arc::new(FloatType::default()));
+        type_map.insert(TypeId::of::<GuidType>(), Arc::new(GuidType::default()));
         type_map.insert(
             TypeId::of::<IntegerType>(),
             Arc::new(IntegerType::default()),
@@ -192,7 +223,10 @@ impl TypeManager {
         Self { type_map }
     }
 
-    // pub fn register(&self, )
+    pub fn register<T: Type + 'static>(&self) {
+        self.type_map
+            .insert(TypeId::of::<T>(), Arc::new(T::default()));
+    }
 
     pub fn get_instance() -> &'static Self {
         &TYPE_MANAGER_INSTANCE

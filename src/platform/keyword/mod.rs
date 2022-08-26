@@ -4,6 +4,10 @@ mod mariadb_keywords;
 mod mysql80_keywords;
 #[cfg(feature = "mysql")]
 mod mysql_keywords;
+#[cfg(feature = "postgres")]
+mod postgresql_keywords;
+#[cfg(feature = "sqlite")]
+mod sqlite_keywords;
 
 pub trait Keywords {
     /// Returns the name of this keyword list.
@@ -40,5 +44,15 @@ impl KeywordList {
     #[cfg(feature = "mysql")]
     pub fn mysql80_keywords() -> Self {
         Self::new(&mysql80_keywords::MYSQL80_KEYWORDS)
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres_keywords() -> Self {
+        Self::new(&postgresql_keywords::POSTGRESQL_KEYWORDS)
+    }
+
+    #[cfg(feature = "sqlite")]
+    pub fn sqlite_keywords() -> Self {
+        Self::new(&sqlite_keywords::SQLITE_KEYWORDS)
     }
 }

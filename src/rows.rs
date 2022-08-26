@@ -29,11 +29,13 @@ pub struct Row {
 impl PartialEq for Row {
     fn eq(&self, other: &Self) -> bool {
         self.columns.len() == other.columns.len()
-            && (&self.columns)
+            && self
+                .columns
                 .iter()
                 .enumerate()
                 .all(|(index, name)| name == other.columns.get(index).unwrap())
-            && (&self.values)
+            && self
+                .values
                 .iter()
                 .enumerate()
                 .all(|(index, value)| value == other.values.get(index).unwrap())
@@ -55,7 +57,7 @@ impl Row {
         let i = match i.into() {
             ColumnIndex::Name(name) => {
                 let mut result = Err(Error::out_of_bounds(name.clone()));
-                for (i, column_name) in (&self.columns).iter().enumerate() {
+                for (i, column_name) in self.columns.iter().enumerate() {
                     if Ordering::Equal == name.cmp(column_name) {
                         result = Ok(i);
                     }

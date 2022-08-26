@@ -400,7 +400,7 @@ pub fn get_create_table_sql<T: DatabasePlatform + Sync>(
     this.get_event_manager().dispatch_sync(&mut e);
 
     if e.is_default_prevented() {
-        let mut sql = e.get_sql().clone();
+        let mut sql = e.get_sql();
         sql.append(&mut column_sql);
 
         return Ok(sql);
@@ -424,7 +424,7 @@ pub fn get_create_table_sql<T: DatabasePlatform + Sync>(
                 continue;
             }
 
-            sql.push(this.get_comment_on_column_sql(table.get_table_name(), &column, &comment));
+            sql.push(this.get_comment_on_column_sql(table.get_table_name(), column, &comment));
         }
     }
 
@@ -670,11 +670,7 @@ pub fn get_creed_type_comment(creed_type: &dyn Type) -> String {
 }
 
 pub fn get_column_comment<T: DatabasePlatform>(this: &T, column: &Column) -> Result<String> {
-    let mut comment = column
-        .get_comment()
-        .as_ref()
-        .map(|v| v.clone())
-        .unwrap_or_default();
+    let mut comment = column.get_comment().as_ref().cloned().unwrap_or_default();
     let column_type = TypeManager::get_instance().get_type(column.get_type())?;
     if column_type.requires_sql_comment_hint(this) {
         comment += &this.get_creed_type_comment(column_type.as_ref());
@@ -727,7 +723,7 @@ pub fn on_schema_alter_table_add_column<T: DatabasePlatform + Sync>(
     let mut event = SchemaAlterTableAddColumnEvent::new(column, diff, this);
     this.get_event_manager().dispatch_sync(&mut event);
 
-    let mut sql = event.get_sql().clone();
+    let mut sql = event.get_sql();
     column_sql.append(&mut sql);
 
     Ok((event.is_default_prevented(), column_sql))
@@ -742,7 +738,7 @@ pub fn on_schema_alter_table_remove_column<T: DatabasePlatform + Sync>(
     let mut event = SchemaAlterTableRemoveColumnEvent::new(column, diff, this);
     this.get_event_manager().dispatch_sync(&mut event);
 
-    let mut sql = event.get_sql().clone();
+    let mut sql = event.get_sql();
     column_sql.append(&mut sql);
 
     Ok((event.is_default_prevented(), column_sql))
@@ -757,7 +753,7 @@ pub fn on_schema_alter_table_change_column<T: DatabasePlatform + Sync>(
     let mut event = SchemaAlterTableChangeColumnEvent::new(column_diff, diff, this);
     this.get_event_manager().dispatch_sync(&mut event);
 
-    let mut sql = event.get_sql().clone();
+    let mut sql = event.get_sql();
     column_sql.append(&mut sql);
 
     Ok((event.is_default_prevented(), column_sql))
@@ -773,7 +769,7 @@ pub fn on_schema_alter_table_rename_column<T: DatabasePlatform + Sync>(
     let mut event = SchemaAlterTableRenameColumnEvent::new(old_column_name, column, diff, this);
     this.get_event_manager().dispatch_sync(&mut event);
 
-    let mut sql = event.get_sql().clone();
+    let mut sql = event.get_sql();
     column_sql.append(&mut sql);
 
     Ok((event.is_default_prevented(), column_sql))
@@ -787,7 +783,7 @@ pub fn on_schema_alter_table<T: DatabasePlatform + Sync>(
     let mut event = SchemaAlterTableEvent::new(diff, this);
     this.get_event_manager().dispatch_sync(&mut event);
 
-    let mut alt_sql = event.get_sql().clone();
+    let mut alt_sql = event.get_sql();
     sql.append(&mut alt_sql);
 
     Ok((event.is_default_prevented(), sql))

@@ -13,9 +13,9 @@ impl Type for JsonType {
     fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
             Value::NULL | Value::Json(_) => Ok(value.clone()),
-            Value::String(value) => Ok(Value::Json(serde_json::from_str(&value)?)),
+            Value::String(value) => Ok(Value::Json(serde_json::from_str(value)?)),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "JSON String"],
             )),

@@ -45,7 +45,7 @@ impl<'platform, 'table: 'platform> SchemaAlterTableEvent<'platform, 'table> {
     }
 
     pub fn get_table_diff(&self) -> &TableDiff {
-        &self.table_diff
+        self.table_diff
     }
 
     pub fn get_platform(&self) -> &PlatformBox<'platform> {

@@ -110,13 +110,13 @@ impl Column {
             unsigned: self.unsigned,
             autoincrement: self.autoincrement,
             column_definition: self.column_definition.clone(),
-            version: self.version.clone(),
+            version: self.version,
             comment: self.comment.clone(),
             collation: self.collation.clone(),
             charset: self.charset.clone(),
             primary: false,
             check: self.check.clone(),
-            jsonb: self.jsonb.clone(),
+            jsonb: self.jsonb,
         }
     }
 }

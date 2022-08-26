@@ -12,7 +12,7 @@ struct AsyncListener {
 
 struct SyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Event) -> ()) + Send>,
+    handler: Box<dyn (FnMut(&mut dyn Event)) + Send>,
 }
 
 #[derive(Default)]
@@ -35,7 +35,7 @@ impl EventDispatcher {
         }
     }
 
-    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) -> () + Send + 'static)
+    pub fn add_listener<Ev>(&self, mut action: impl FnMut(&mut Ev) + Send + 'static)
     where
         Ev: Event + 'static,
     {

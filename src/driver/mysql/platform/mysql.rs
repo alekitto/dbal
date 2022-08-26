@@ -271,7 +271,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         }
 
         let mut column_data = column.generate_column_data(this);
-        let comment = this.get_column_comment(&column)?;
+        let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
             None
         } else {
@@ -308,7 +308,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         let column = &column_diff.column;
         let mut column_data = column.generate_column_data(this);
 
-        let comment = this.get_column_comment(&column)?;
+        let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
             None
         } else {
@@ -334,7 +334,7 @@ pub fn get_alter_table_sql<T: AbstractMySQLPlatform + Sync>(
         let old_column_name = Identifier::new(old_column_name, false);
         let mut column_data = column.generate_column_data(this);
 
-        let comment = this.get_column_comment(&column)?;
+        let comment = this.get_column_comment(column)?;
         column_data.comment = if comment.is_empty() {
             None
         } else {
@@ -679,7 +679,7 @@ pub fn get_blob_type_declaration_sql(column: &ColumnData) -> Result<String> {
 }
 
 pub fn quote_string_literal<T: AbstractMySQLPlatform + Sync>(this: &T, str: &str) -> String {
-    let str = str.replace("\\", "\\\\");
+    let str = str.replace('\\', "\\\\");
     default::quote_string_literal(this, &str)
 }
 

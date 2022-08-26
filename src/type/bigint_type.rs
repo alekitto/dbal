@@ -16,7 +16,7 @@ impl Type for BigintType {
             Value::NULL | Value::String(_) => Ok(value.clone()),
             Value::Int(val) => Ok(Value::String(val.to_string())),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 "Bigint",
                 &["NULL", "String", "Integer"],
             )),

@@ -49,11 +49,11 @@ impl<'platform, 'table: 'platform, 'column: 'table>
     }
 
     pub fn get_table_diff(&self) -> &TableDiff {
-        &self.table_diff
+        self.table_diff
     }
 
     pub fn get_column_diff(&self) -> &ColumnDiff {
-        &self.column_diff
+        self.column_diff
     }
 
     pub fn get_platform(&self) -> &PlatformBox<'platform> {

@@ -5,7 +5,7 @@ use crate::schema::{Identifier, Index};
 use crate::Value;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ForeignKeyReferentialAction {
     Cascade,
     SetNull,

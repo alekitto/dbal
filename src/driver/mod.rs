@@ -44,7 +44,7 @@ impl Driver {
             #[cfg(feature = "sqlite")]
             "sqlite" => Box::new(sqlite::driver::Driver::create(connection_options.into()).await?)
                 as Box<dyn for<'a> Connection<'a>>,
-            proto @ _ => return Err(Error::unknown_driver(proto)),
+            proto => return Err(Error::unknown_driver(proto)),
         };
 
         Ok(Self {
@@ -60,7 +60,7 @@ impl Driver {
     }
 
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<Box<dyn Statement<'_> + '_>> {
-        Ok(self.inner_driver.prepare(sql.into().as_str())?)
+        self.inner_driver.prepare(sql.into().as_str())
     }
 
     /// Executes an SQL statement, returning a result set as a Statement object.

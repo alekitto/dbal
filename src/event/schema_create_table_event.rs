@@ -44,7 +44,7 @@ impl<'platform, 'table: 'platform> SchemaCreateTableEvent<'platform, 'table> {
     }
 
     pub fn get_table(&self) -> &Table {
-        &self.table
+        self.table
     }
 
     pub fn get_platform(&self) -> &PlatformBox<'platform> {

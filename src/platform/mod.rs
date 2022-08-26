@@ -206,6 +206,25 @@ pub trait DatabasePlatform: Debug {
         default::get_trim_expression(str, mode, char)
     }
 
+    /// Returns the SQL snippet to get the position of the first occurrence of substring $substr in string `str`.
+    ///
+    /// # Arguments
+    ///
+    /// * 'str' - Literal string.
+    /// * 'substr' - Literal string to find.
+    /// * 'start_pos' - Position to start at, beginning of string by default.
+    #[allow(unused_variables)]
+    fn get_locate_expression(
+        &self,
+        str: &str,
+        substr: &str,
+        start_pos: Option<usize>,
+    ) -> Result<String> {
+        Err(Error::platform_feature_unsupported(
+            "locate expressions are not supported by this platform",
+        ))
+    }
+
     /// Returns a SQL snippet to get a substring inside an SQL statement.
     ///
     /// Note: Not SQL92, but common functionality.
@@ -864,8 +883,8 @@ pub trait DatabasePlatform: Debug {
     ///
     /// There are two contexts when converting booleans: Literals and Prepared Statements.
     /// This method should handle the literal case
-    fn convert_boolean(&self, item: Value) -> Value {
-        default::convert_boolean(item)
+    fn convert_boolean(&self, item: Value) -> Result<Value> {
+        Ok(default::convert_boolean(item))
     }
 
     /// Some platforms have boolean literals that needs to be correctly converted
@@ -880,7 +899,7 @@ pub trait DatabasePlatform: Debug {
     ///
     /// # Note
     /// If the input is not a boolean the original input might be returned.
-    fn convert_booleans_to_database_value(&self, item: Value) -> Value {
+    fn convert_booleans_to_database_value(&self, item: Value) -> Result<Value> {
         default::convert_booleans_to_database_value(self, item)
     }
 

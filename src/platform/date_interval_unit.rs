@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+#[derive(PartialEq)]
 pub enum DateIntervalUnit {
     Second,
     Minute,

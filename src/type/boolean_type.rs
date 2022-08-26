@@ -16,7 +16,7 @@ impl Type for BooleanType {
         value: Value,
         platform: &dyn DatabasePlatform,
     ) -> Result<Value> {
-        Ok(platform.convert_booleans_to_database_value(value))
+        platform.convert_booleans_to_database_value(value)
     }
 
     fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {

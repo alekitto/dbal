@@ -1,8 +1,9 @@
 use super::asset::Asset;
 use crate::platform::DatabasePlatform;
-use crate::schema::asset::AbstractAsset;
-use crate::schema::{Identifier, Index};
+use crate::schema::asset::{impl_asset, AbstractAsset};
+use crate::schema::{Identifier, Index, IntoIdentifier};
 use crate::Value;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -14,7 +15,7 @@ pub enum ForeignKeyReferentialAction {
     SetDefault,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, IntoIdentifier)]
 pub struct ForeignKeyConstraint {
     asset: AbstractAsset,
     local_columns: Vec<Identifier>,
@@ -76,6 +77,10 @@ impl ForeignKeyConstraint {
             .collect()
     }
 
+    pub fn get_unquoted_local_columns(&self) -> Vec<String> {
+        self.local_columns.iter().map(|c| c.get_name()).collect()
+    }
+
     pub fn get_foreign_columns(&self) -> &Vec<Identifier> {
         &self.foreign_columns
     }
@@ -90,6 +95,10 @@ impl ForeignKeyConstraint {
             .collect()
     }
 
+    pub fn get_unquoted_foreign_columns(&self) -> Vec<String> {
+        self.foreign_columns.iter().map(|c| c.get_name()).collect()
+    }
+
     pub fn get_foreign_table(&self) -> &Identifier {
         &self.foreign_table
     }
@@ -101,8 +110,22 @@ impl ForeignKeyConstraint {
         self.foreign_table.get_quoted_name(platform)
     }
 
+    pub fn get_options(&self) -> HashMap<String, Value> {
+        self.options.clone()
+    }
+
     pub fn get_option(&self, option: &str) -> Option<&Value> {
         self.options.get(option)
+    }
+
+    /// Returns the non-schema qualified foreign table name.
+    pub fn get_unqualified_foreign_table_name(&self) -> String {
+        let name = self.foreign_table.get_name().to_lowercase();
+        if let Some(pos) = name.rfind('.') {
+            name.split_at(pos + 1).1.to_string()
+        } else {
+            name
+        }
     }
 
     /// Checks whether this foreign key constraint intersects the given index columns.
@@ -121,24 +144,21 @@ impl ForeignKeyConstraint {
     }
 }
 
-impl Asset for ForeignKeyConstraint {
-    fn get_name(&self) -> String {
-        self.asset.get_name()
-    }
+fn lowercase_vec<T: Borrow<str>>(v: Vec<T>) -> Vec<String> {
+    v.iter().map(|c| c.borrow().to_lowercase()).collect()
+}
 
-    fn set_name(&mut self, name: String) {
-        self.asset.set_name(name)
-    }
-
-    fn get_namespace_name(&self) -> Option<String> {
-        self.asset.get_namespace_name()
-    }
-
-    fn get_shortest_name(&self, default_namespace_name: &str) -> String {
-        self.asset.get_shortest_name(default_namespace_name)
-    }
-
-    fn is_quoted(&self) -> bool {
-        self.asset.is_quoted()
+impl PartialEq for ForeignKeyConstraint {
+    fn eq(&self, other: &Self) -> bool {
+        lowercase_vec(self.get_unquoted_local_columns())
+            == lowercase_vec(other.get_unquoted_local_columns())
+            && lowercase_vec(self.get_unquoted_foreign_columns())
+                == lowercase_vec(other.get_unquoted_foreign_columns())
+            && self.get_unqualified_foreign_table_name()
+                == other.get_unqualified_foreign_table_name()
+            && self.on_update == other.on_update
+            && self.on_delete == other.on_delete
     }
 }
+
+impl_asset!(ForeignKeyConstraint, asset);

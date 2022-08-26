@@ -20,7 +20,7 @@ pub struct Driver {
 
 impl Debug for Driver {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt("Driver (MySQL) {}", f)
+        f.debug_struct("Driver (MySQL)").finish_non_exhaustive()
     }
 }
 
@@ -137,7 +137,7 @@ impl<'conn> Connection<'conn> for Driver {
                 .await
                 .unwrap_or_else(|| "5.7.9".to_string());
             if version.contains("mariadb")
-                && compare_to(version.clone(), "10.2.7", Cmp::Ge).unwrap_or(false)
+                && compare_to(&version, "10.2.7", Cmp::Ge).unwrap_or(false)
             {
                 Box::new(platform::MySQLPlatform::new(
                     platform::MySQLVariant::MariaDB,

@@ -1,18 +1,17 @@
-use crate::event::event::PlatformBox;
-use crate::platform::DatabasePlatform;
 use crate::schema::Table;
+use crate::util::PlatformBox;
 use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub struct SchemaCreateTableEvent<'platform, 'table: 'platform> {
+pub struct SchemaCreateTableEvent<'table> {
     prevent_default_flag: AtomicBool,
     table: &'table Table,
-    platform: PlatformBox<'platform>,
+    platform: PlatformBox,
     pub(crate) sql: Vec<String>,
 }
 
-impl Event for SchemaCreateTableEvent<'_, '_> {
+impl Event for SchemaCreateTableEvent<'_> {
     fn is_async() -> bool {
         false
     }
@@ -22,15 +21,12 @@ impl Event for SchemaCreateTableEvent<'_, '_> {
     }
 }
 
-impl<'platform, 'table: 'platform> SchemaCreateTableEvent<'platform, 'table> {
-    pub(crate) fn new(
-        table: &'table Table,
-        platform: &'platform (dyn DatabasePlatform + Sync),
-    ) -> Self {
+impl<'table> SchemaCreateTableEvent<'table> {
+    pub(crate) fn new(table: &'table Table, platform: PlatformBox) -> Self {
         Self {
             prevent_default_flag: AtomicBool::new(false),
             table,
-            platform: Box::new(platform),
+            platform,
             sql: vec![],
         }
     }
@@ -47,8 +43,8 @@ impl<'platform, 'table: 'platform> SchemaCreateTableEvent<'platform, 'table> {
         self.table
     }
 
-    pub fn get_platform(&self) -> &PlatformBox<'platform> {
-        &self.platform
+    pub fn get_platform(&self) -> PlatformBox {
+        self.platform.clone()
     }
 
     pub(crate) fn get_sql(&self) -> Vec<String> {

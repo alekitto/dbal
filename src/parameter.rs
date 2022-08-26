@@ -90,7 +90,7 @@ impl TryFrom<Parameter> for i64 {
         match value.value {
             Value::Int(i) => Ok(i),
             Value::UInt(i) => i64::try_from(i).map_err(|e| e.into()),
-            Value::Boolean(b) => Ok(if b { 1_i64 } else { 0_i64 }),
+            Value::Boolean(b) => Ok(i64::from(b)),
             _ => Err(Error::type_mismatch()),
         }
     }
@@ -137,15 +137,16 @@ impl TryFrom<Parameter> for Vec<u8> {
 
 pub const NO_PARAMS: Parameters = Parameters::Array(&[]);
 
-#[macro_export]
-macro_rules! params {
+pub macro params {
     [] => {
         $crate::parameter::NO_PARAMS
-    };
+    },
+
     [($idx:expr=>$value:expr)] => {
         $crate::Parameters::Array(&[ ($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)) ])
-    };
+    },
+
     [$(($idx:expr=>$value:expr),)*] => {
         $crate::Parameters::Array(&[ $(($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)),)* ])
-    };
+    }
 }

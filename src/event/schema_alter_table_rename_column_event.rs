@@ -1,21 +1,20 @@
-use crate::event::event::PlatformBox;
-use crate::platform::DatabasePlatform;
 use crate::schema::{Column, TableDiff};
+use crate::util::PlatformBox;
 use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Event Arguments used when SQL queries for renaming table columns are generated inside DatabasePlatform.
-pub struct SchemaAlterTableRenameColumnEvent<'platform, 'table: 'platform, 'column: 'table> {
+pub struct SchemaAlterTableRenameColumnEvent<'table, 'column: 'table> {
     prevent_default_flag: AtomicBool,
     table_diff: &'table TableDiff<'table>,
     column: &'column Column,
     old_column_name: String,
-    platform: PlatformBox<'platform>,
+    platform: PlatformBox,
     pub(crate) sql: Vec<String>,
 }
 
-impl Event for SchemaAlterTableRenameColumnEvent<'_, '_, '_> {
+impl Event for SchemaAlterTableRenameColumnEvent<'_, '_> {
     fn is_async() -> bool {
         false
     }
@@ -25,21 +24,19 @@ impl Event for SchemaAlterTableRenameColumnEvent<'_, '_, '_> {
     }
 }
 
-impl<'platform, 'table: 'platform, 'column: 'table>
-    SchemaAlterTableRenameColumnEvent<'platform, 'table, 'column>
-{
+impl<'table, 'column: 'table> SchemaAlterTableRenameColumnEvent<'table, 'column> {
     pub(crate) fn new(
         old_column_name: &str,
         column: &'column Column,
         table_diff: &'table TableDiff,
-        platform: &'platform (dyn DatabasePlatform + Sync),
+        platform: PlatformBox,
     ) -> Self {
         Self {
             prevent_default_flag: AtomicBool::new(false),
             old_column_name: old_column_name.to_string(),
             table_diff,
             column,
-            platform: Box::new(platform),
+            platform,
             sql: vec![],
         }
     }
@@ -64,8 +61,8 @@ impl<'platform, 'table: 'platform, 'column: 'table>
         self.column
     }
 
-    pub fn get_platform(&self) -> &PlatformBox<'platform> {
-        &self.platform
+    pub fn get_platform(&self) -> PlatformBox {
+        self.platform.clone()
     }
 
     pub fn add_sql(&mut self, sql: &mut Vec<String>) {

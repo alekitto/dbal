@@ -1,7 +1,8 @@
 use super::asset::AbstractAsset;
-use crate::schema::asset::Asset;
+use crate::schema::asset::{impl_asset, Asset};
+use creed_derive::IntoIdentifier;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, IntoIdentifier, PartialEq)]
 pub struct Identifier {
     asset: AbstractAsset,
 }
@@ -20,30 +21,27 @@ impl Identifier {
     }
 }
 
+pub trait IntoIdentifier {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_identifier(&self) -> Identifier;
+}
+
+impl IntoIdentifier for str {
+    fn into_identifier(&self) -> Identifier {
+        Identifier::from(self)
+    }
+}
+
+impl IntoIdentifier for String {
+    fn into_identifier(&self) -> Identifier {
+        Identifier::from(self.as_str())
+    }
+}
+
 impl From<&str> for Identifier {
     fn from(s: &str) -> Self {
         Identifier::new(s, false)
     }
 }
 
-impl Asset for Identifier {
-    fn get_name(&self) -> String {
-        self.asset.get_name()
-    }
-
-    fn set_name(&mut self, name: String) {
-        self.asset.set_name(name)
-    }
-
-    fn get_namespace_name(&self) -> Option<String> {
-        self.asset.get_namespace_name()
-    }
-
-    fn get_shortest_name(&self, default_namespace_name: &str) -> String {
-        self.asset.get_shortest_name(default_namespace_name)
-    }
-
-    fn is_quoted(&self) -> bool {
-        self.asset.is_quoted()
-    }
-}
+impl_asset!(Identifier, asset);

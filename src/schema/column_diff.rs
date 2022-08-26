@@ -1,6 +1,8 @@
 use crate::schema::{Asset, Column, Identifier};
+use std::borrow::Borrow;
 
 /// Represents the change of a column.
+#[derive(Clone)]
 pub struct ColumnDiff {
     old_column_name: String,
     pub column: Column,
@@ -9,16 +11,19 @@ pub struct ColumnDiff {
 }
 
 impl ColumnDiff {
-    pub fn new(
+    pub fn new<S: Borrow<str>>(
         old_column_name: &str,
         column: &Column,
-        changed_properties: &[String],
+        changed_properties: &[S],
         from_column: Option<Column>,
     ) -> Self {
         Self {
             old_column_name: old_column_name.to_string(),
             column: column.clone(),
-            changed_properties: changed_properties.to_vec(),
+            changed_properties: changed_properties
+                .iter()
+                .map(|c| c.borrow().to_string())
+                .collect(),
             from_column,
         }
     }

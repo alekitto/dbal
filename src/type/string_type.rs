@@ -3,6 +3,7 @@ use crate::r#type::Type;
 use crate::schema::ColumnData;
 use crate::Result;
 use crate::{Error, Value};
+use std::io::Read;
 
 pub struct StringType {}
 
@@ -18,6 +19,13 @@ impl Type for StringType {
             Value::UInt(v) => Ok(Value::String(v.to_string())),
             Value::Float(v) => Ok(Value::String(v.to_string())),
             Value::Uuid(v) => Ok(Value::String(v.to_string())),
+            Value::Bytes(v) => {
+                let mut s = String::new();
+                v.as_slice()
+                    .read_to_string(&mut s)
+                    .map(|_| Value::String(s))
+                    .map_err(|e| e.into())
+            }
             _ => Err(Error::conversion_failed_invalid_type(
                 value,
                 self.get_name(),

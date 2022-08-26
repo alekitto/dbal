@@ -1,17 +1,16 @@
-use crate::event::event::PlatformBox;
-use crate::platform::DatabasePlatform;
+use crate::util::PlatformBox;
 use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub struct SchemaDropTableEvent<'a> {
+pub struct SchemaDropTableEvent {
     prevent_default_flag: AtomicBool,
     table: String,
-    platform: PlatformBox<'a>,
+    platform: PlatformBox,
     pub(crate) sql: Option<String>,
 }
 
-impl Event for SchemaDropTableEvent<'_> {
+impl Event for SchemaDropTableEvent {
     fn is_async() -> bool {
         false
     }
@@ -21,12 +20,12 @@ impl Event for SchemaDropTableEvent<'_> {
     }
 }
 
-impl<'a> SchemaDropTableEvent<'a> {
-    pub(crate) fn new(table: String, platform: &'a (dyn DatabasePlatform + Sync)) -> Self {
+impl SchemaDropTableEvent {
+    pub(crate) fn new(table: String, platform: PlatformBox) -> Self {
         Self {
             prevent_default_flag: AtomicBool::new(false),
             table,
-            platform: Box::new(platform),
+            platform,
             sql: None,
         }
     }
@@ -43,7 +42,7 @@ impl<'a> SchemaDropTableEvent<'a> {
         &self.table
     }
 
-    pub fn get_platform(&self) -> &PlatformBox<'a> {
-        &self.platform
+    pub fn get_platform(&self) -> PlatformBox {
+        self.platform.clone()
     }
 }

@@ -1,5 +1,6 @@
 use crate::schema::{Asset, Column, ColumnDiff, ForeignKeyConstraint, Identifier, Index, Table};
 
+#[derive(Clone)]
 pub struct TableDiff<'a>
 where
     Self: 'a,

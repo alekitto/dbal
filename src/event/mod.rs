@@ -6,9 +6,11 @@ mod schema_alter_table_change_column_event;
 mod schema_alter_table_event;
 mod schema_alter_table_remove_column_event;
 mod schema_alter_table_rename_column_event;
+mod schema_column_definition_event;
 mod schema_create_table_column_event;
 mod schema_create_table_event;
 mod schema_drop_table_event;
+mod schema_index_definition_event;
 
 pub use connection_event::ConnectionEvent;
 pub use event::Event;
@@ -18,6 +20,8 @@ pub use schema_alter_table_change_column_event::SchemaAlterTableChangeColumnEven
 pub use schema_alter_table_event::SchemaAlterTableEvent;
 pub use schema_alter_table_remove_column_event::SchemaAlterTableRemoveColumnEvent;
 pub use schema_alter_table_rename_column_event::SchemaAlterTableRenameColumnEvent;
+pub use schema_column_definition_event::SchemaColumnDefinitionEvent;
 pub use schema_create_table_column_event::SchemaCreateTableColumnEvent;
 pub use schema_create_table_event::SchemaCreateTableEvent;
 pub use schema_drop_table_event::SchemaDropTableEvent;
+pub use schema_index_definition_event::SchemaIndexDefinitionEvent;

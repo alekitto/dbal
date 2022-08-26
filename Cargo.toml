@@ -7,9 +7,10 @@ edition = "2021"
 [dependencies]
 bitflags = "1"
 chrono = "0.4"
+creed_derive = { path = "./derive" }
 crc = "3"
 dashmap = "5"
-delegate = "0.7"
+delegate = "0.8"
 fallible-iterator = "0.2"
 futures = "0.3"
 itertools = "0.10"
@@ -51,3 +52,6 @@ features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "
 
 [dev-dependencies.tokio-test]
 version = "0.4"
+
+[workspace]
+members = ["derive"]

@@ -36,3 +36,41 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
         Box::new(statement).query_owned(Vec::from(params))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use crate::driver::connection::Connection;
+    use crate::driver::statement::Statement;
+    use crate::platform::tests::MockPlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::{Async, EventDispatcher};
+    use std::fmt::{Debug, Formatter};
+    use std::sync::Arc;
+
+    pub struct MockConnection {}
+
+    impl Debug for MockConnection {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("MockConnection").finish()
+        }
+    }
+
+    impl<'conn> Connection<'conn> for MockConnection {
+        fn create_platform(
+            &self,
+            ev: Arc<EventDispatcher>,
+        ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+            Box::pin(async move {
+                Box::new(MockPlatform { ev }) as Box<dyn DatabasePlatform + Send + Sync>
+            })
+        }
+
+        fn server_version(&self) -> Async<Option<String>> {
+            Box::pin(async { None })
+        }
+
+        fn prepare(&'conn self, sql: &str) -> crate::Result<Box<dyn Statement + 'conn>> {
+            todo!()
+        }
+    }
+}

@@ -1,17 +1,28 @@
 use super::statement::Statement;
-use crate::{rows::rows_impl, Result, Row, Value};
+use crate::{rows, Result, Row, Value};
 use rusqlite::types::ValueRef;
 use rusqlite::Column;
 
 pub struct Rows {
     columns: Vec<String>,
     column_count: usize,
-
-    pub(crate) rows: Vec<Row>,
-    pub(crate) position: usize,
+    rows: Vec<Row>,
 }
 
-rows_impl!(Rows);
+impl rows::Rows for Rows {
+    fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&Row> {
+        self.rows.get(index)
+    }
+
+    fn to_vec(self) -> Vec<Row> {
+        self.rows
+    }
+}
+
 impl Rows {
     pub(super) fn new(statement: &Statement) -> Result<Rows> {
         let mut statement = statement.statement.lock().unwrap();
@@ -46,7 +57,6 @@ impl Rows {
             columns,
             column_count,
             rows: result,
-            position: 0,
         })
     }
 

@@ -5,25 +5,28 @@ use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::TryFromIntError;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ErrorKind {
     UnknownDriver = 0,
-    NotReadyError = 1,
-    OutOfBoundsError = 2,
-    UnsupportedNamedParameters = 3,
-    MixedParametersTypes = 4,
-    TypeMismatch = 5,
-    UnknownType = 6,
-    ConversionFailed = 7,
-    UnknownDatabaseType = 8,
+    PlatformNotCompiled = 1,
+    NotReadyError = 2,
+    OutOfBoundsError = 3,
+    UnsupportedNamedParameters = 4,
+    MixedParametersTypes = 5,
+    TypeMismatch = 6,
+    UnknownType = 7,
+    ConversionFailed = 8,
+    UnknownDatabaseType = 9,
 
     PostgresTypeMismatch = 1001,
     PlatformFeatureUnsupported = 2000,
     NoColumnsForTable = 2001,
     ForeignKeyDefinitionInvalid = 2002,
     IndexDefinitionInvalid = 2003,
+    ColumnDoesNotExist = 2004,
     NotConnected = 5000,
+    DatabaseRequired = 5001,
 
     UnknownError = -1,
 }
@@ -72,13 +75,28 @@ impl Error {
         }
     }
 
+    pub fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
     pub fn unknown_driver(scheme: &str) -> Self {
         Self::new(ErrorKind::UnknownDriver, format!("Unknown driver protocol \"{}\". Use Driver::create_with_connection to use a custom driver connection", scheme))
+    }
+
+    pub fn platform_not_compiled(platform: &str) -> Self {
+        Self::new(
+            ErrorKind::PlatformNotCompiled,
+            format!(
+                "Invalid platform \"{}\": support for this platform has not beed compiled",
+                platform
+            ),
+        )
     }
 
     pub fn not_ready() -> Self {
         Self::new(ErrorKind::NotReadyError, "Statement not ready")
     }
+
     pub fn type_mismatch() -> Self {
         Self::new(ErrorKind::TypeMismatch, "Type mismatch")
     }
@@ -156,8 +174,25 @@ impl Error {
         )
     }
 
+    pub fn column_does_not_exist(invalid_column: &str, table_name: &str) -> Self {
+        Self::new(
+            ErrorKind::ColumnDoesNotExist,
+            format!(
+                "Column '{}' does not exist on table '{}'.",
+                invalid_column, table_name
+            ),
+        )
+    }
+
     pub fn not_connected() -> Self {
         Self::new(ErrorKind::NotConnected, "Not connected")
+    }
+
+    pub fn database_required(method_name: &str) -> Self {
+        Self::new(
+            ErrorKind::DatabaseRequired,
+            format!("A database is required for the method: {}.", method_name),
+        )
     }
 
     pub fn conversion_failed_invalid_type(

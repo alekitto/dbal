@@ -1,6 +1,7 @@
-use crate::schema::asset::AbstractAsset;
-use crate::schema::{Asset, Identifier, Table};
+use crate::schema::asset::{impl_asset, AbstractAsset};
+use crate::schema::{Asset, Identifier, IntoIdentifier, Table};
 
+#[derive(Clone, IntoIdentifier)]
 pub struct Sequence {
     asset: AbstractAsset,
     allocation_size: usize,
@@ -30,7 +31,7 @@ impl Sequence {
         self.allocation_size
     }
 
-    pub fn initial_value(&self) -> usize {
+    pub fn get_initial_value(&self) -> usize {
         self.initial_value
     }
 
@@ -95,24 +96,4 @@ impl Sequence {
     }
 }
 
-impl Asset for Sequence {
-    fn get_name(&self) -> String {
-        self.asset.get_name()
-    }
-
-    fn set_name(&mut self, name: String) {
-        self.asset.set_name(name)
-    }
-
-    fn get_namespace_name(&self) -> Option<String> {
-        self.asset.get_namespace_name()
-    }
-
-    fn get_shortest_name(&self, default_namespace_name: &str) -> String {
-        self.asset.get_shortest_name(default_namespace_name)
-    }
-
-    fn is_quoted(&self) -> bool {
-        self.asset.is_quoted()
-    }
-}
+impl_asset!(Sequence, asset);

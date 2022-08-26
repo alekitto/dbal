@@ -214,6 +214,6 @@ impl TypeManager {
     }
 
     pub fn get_types(&self) -> Result<Vec<TypeId>> {
-        Ok(self.type_map.iter().map(|t| t.key().clone()).collect())
+        Ok(self.type_map.iter().map(|t| *t.key()).collect())
     }
 }

@@ -52,13 +52,9 @@ impl Table {
 
     pub fn get_column(&self, name: &Identifier) -> Option<&Column> {
         let name = name.get_name();
-        for column in &self.columns {
-            if column.get_name() == name {
-                return Some(column);
-            }
-        }
-
-        None
+        self.columns
+            .iter()
+            .find(|&column| column.get_name() == name)
     }
 
     pub fn get_indices(&self) -> &Vec<Index> {
@@ -78,13 +74,7 @@ impl Table {
     }
 
     pub fn get_primary_key(&self) -> Option<&Index> {
-        for index in &self.indices {
-            if index.is_primary() {
-                return Some(index);
-            }
-        }
-
-        None
+        self.indices.iter().find(|&index| index.is_primary())
     }
 
     pub fn get_engine(&self) -> Option<String> {

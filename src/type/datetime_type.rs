@@ -36,22 +36,20 @@ impl Type for DateTimeType {
             Value::String(value) => {
                 if value.is_empty() {
                     Ok(Value::NULL)
+                } else if let Ok(dt) =
+                    DateTime::parse_from_str(value, platform.get_date_time_format_string())
+                {
+                    Ok(Value::DateTime(dt.into()))
                 } else {
-                    if let Ok(dt) =
-                        DateTime::parse_from_str(&value, platform.get_date_time_format_string())
-                    {
-                        Ok(Value::DateTime(dt.into()))
-                    } else {
-                        Err(Error::conversion_failed_invalid_type(
-                            &Value::String(value.to_string()),
-                            self.get_name(),
-                            &["NULL", "DateTime"],
-                        ))
-                    }
+                    Err(Error::conversion_failed_invalid_type(
+                        &Value::String(value.to_string()),
+                        self.get_name(),
+                        &["NULL", "DateTime"],
+                    ))
                 }
             }
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "DateTime", "String"],
             )),

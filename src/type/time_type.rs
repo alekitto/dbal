@@ -34,11 +34,11 @@ impl Type for TimeType {
         match value {
             Value::NULL | Value::DateTime(_) => Ok(value.clone()),
             Value::String(str) => {
-                let dt = DateTime::parse_from_str(&str, platform.get_date_format_string())?;
+                let dt = DateTime::parse_from_str(str, platform.get_date_format_string())?;
                 Ok(Value::DateTime(dt.into()))
             }
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "DateTime", "String"],
             )),

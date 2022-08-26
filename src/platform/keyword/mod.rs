@@ -14,11 +14,11 @@ pub trait Keywords {
 }
 
 pub struct KeywordList {
-    keywords: Box<&'static dyn Keywords>,
+    keywords: &'static dyn Keywords,
 }
 
 impl KeywordList {
-    pub(crate) fn new(keywords: Box<&'static dyn Keywords>) -> Self {
+    pub(crate) fn new(keywords: &'static dyn Keywords) -> Self {
         Self { keywords }
     }
 
@@ -29,16 +29,16 @@ impl KeywordList {
 
     #[cfg(feature = "mysql")]
     pub fn mariadb_keywords() -> Self {
-        Self::new(Box::new(&mariadb_keywords::MARIADB_KEYWORDS))
+        Self::new(&mariadb_keywords::MARIADB_KEYWORDS)
     }
 
     #[cfg(feature = "mysql")]
     pub fn mysql_keywords() -> Self {
-        Self::new(Box::new(&mysql_keywords::MYSQL_KEYWORDS))
+        Self::new(&mysql_keywords::MYSQL_KEYWORDS)
     }
 
     #[cfg(feature = "mysql")]
     pub fn mysql80_keywords() -> Self {
-        Self::new(Box::new(&mysql80_keywords::MYSQL80_KEYWORDS))
+        Self::new(&mysql80_keywords::MYSQL80_KEYWORDS)
     }
 }

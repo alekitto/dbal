@@ -21,7 +21,7 @@ impl Connection {
         event_manager: Option<EventDispatcher>,
     ) -> Self {
         let connection_options = Self::add_database_suffix(connection_options);
-        let event_manager = Arc::new(event_manager.unwrap_or_else(|| EventDispatcher::default()));
+        let event_manager = Arc::new(event_manager.unwrap_or_default());
 
         Self {
             connection_options,
@@ -106,7 +106,10 @@ impl Connection {
             let db_name = &options.database_name;
             let db_name = format!(
                 "{}{}",
-                db_name.as_ref().cloned().unwrap_or("app".to_string()),
+                db_name
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| "app".to_string()),
                 db_suffix
             );
 

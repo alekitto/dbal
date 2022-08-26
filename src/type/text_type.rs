@@ -15,7 +15,7 @@ impl Type for TextType {
         match value {
             Value::NULL | Value::String(_) => Ok(value.clone()),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "String"],
             )),

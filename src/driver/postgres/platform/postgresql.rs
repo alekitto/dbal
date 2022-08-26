@@ -266,7 +266,7 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLPlatform + ?Siz
     let deferrable = foreign_key
         .get_option("deferrable")
         .cloned()
-        .unwrap_or_else(|| Value::Boolean(false));
+        .unwrap_or(Value::Boolean(false));
     if deferrable == Value::Boolean(true) {
         query += " DEFERRABLE";
     } else {
@@ -276,7 +276,7 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLPlatform + ?Siz
     let deferred = foreign_key
         .get_option("deferred")
         .cloned()
-        .unwrap_or_else(|| Value::Boolean(false));
+        .unwrap_or(Value::Boolean(false));
     if deferred == Value::Boolean(true) {
         query += " INITIALLY DEFERRED";
     } else {
@@ -432,7 +432,7 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLPlatform + Sync>(
             }
         }
 
-        let new_comment = this.get_column_comment(&column)?;
+        let new_comment = this.get_column_comment(column)?;
         let old_comment = get_old_column_comment(this, column_diff);
 
         if column_diff.has_changed("comment")
@@ -649,11 +649,11 @@ pub fn _get_create_table_sql<T: AbstractPostgreSQLPlatform>(
         name.get_quoted_name(this),
         query_fields
     )];
-    for (_, index) in &options.indexes {
+    for index in options.indexes.values() {
         sql.push(this.get_create_index_sql(index, name)?);
     }
 
-    for (_, unique_constraint) in &options.unique_constraints {
+    for unique_constraint in options.unique_constraints.values() {
         sql.push(this.get_create_unique_constraint_sql(unique_constraint, name)?);
     }
 

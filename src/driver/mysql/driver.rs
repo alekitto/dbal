@@ -100,10 +100,9 @@ impl DriverConnection<ConnectionOptions> for Driver {
 /// returned by Oracle MySQL servers.
 fn get_oracle_mysql_version_number(version_string: String) -> Result<String> {
     let rx = Regex::new(r"^(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?)?")?;
-    let version_parts = rx.captures(&version_string).ok_or(Error::new(
-        ErrorKind::UnknownError,
-        "mysql: invalid version string",
-    ))?;
+    let version_parts = rx
+        .captures(&version_string)
+        .ok_or_else(|| Error::new(ErrorKind::UnknownError, "mysql: invalid version string"))?;
 
     let major_version = version_parts.name("major").unwrap().as_str();
     let minor_version = version_parts

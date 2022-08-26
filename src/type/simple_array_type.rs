@@ -22,7 +22,7 @@ impl Type for SimpleArrayType {
                     Ok(value.clone())
                 } else {
                     Err(Error::conversion_failed_invalid_type(
-                        &value,
+                        value,
                         self.get_name(),
                         &["NULL", "Array-of-strings", "String"],
                     ))
@@ -30,13 +30,13 @@ impl Type for SimpleArrayType {
             }
             Value::String(value) => Ok(Value::Array(
                 value
-                    .split(",")
+                    .split(',')
                     .map(ToString::to_string)
                     .map(Value::from)
                     .collect(),
             )),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "String"],
             )),

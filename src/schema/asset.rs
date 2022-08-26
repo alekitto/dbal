@@ -65,7 +65,7 @@ pub trait Asset {
         if identifier.is_empty() {
             false
         } else {
-            let c: char = identifier.chars().nth(0).unwrap();
+            let c: char = identifier.chars().next().unwrap();
             c == '`' || c == '"' || c == '['
         }
     }
@@ -126,7 +126,7 @@ impl Asset for AbstractAsset {
 
         if name.contains('.') {
             let parts: Vec<&str> = name.split('.').collect();
-            self.namespace = parts.get(0).map(|s| s.to_string());
+            self.namespace = parts.first().map(|s| s.to_string());
             self.name = parts.get(1).map(|s| s.to_string()).unwrap();
         } else {
             self.namespace = None;

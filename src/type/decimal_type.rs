@@ -40,7 +40,7 @@ impl Type for DecimalType {
                 }
             }
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "Float", "Int", "UInt"],
             )),

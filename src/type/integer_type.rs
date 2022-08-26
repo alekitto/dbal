@@ -15,7 +15,7 @@ impl Type for IntegerType {
             Value::NULL | Value::Int(_) | Value::UInt(_) => Ok(value.clone()),
             Value::String(str) => Ok(Value::Int(str.parse()?)),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "Integer"],
             )),

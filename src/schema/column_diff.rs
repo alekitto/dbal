@@ -18,7 +18,7 @@ impl ColumnDiff {
         Self {
             old_column_name: old_column_name.to_string(),
             column: column.clone(),
-            changed_properties: changed_properties.clone().to_vec(),
+            changed_properties: changed_properties.to_vec(),
             from_column,
         }
     }

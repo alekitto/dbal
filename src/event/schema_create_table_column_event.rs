@@ -49,11 +49,11 @@ impl<'platform, 'table: 'platform, 'column: 'table>
     }
 
     pub fn get_table(&self) -> &Table {
-        &self.table
+        self.table
     }
 
     pub fn get_column(&self) -> &Column {
-        &self.column
+        self.column
     }
 
     pub fn get_platform(&self) -> &PlatformBox<'platform> {

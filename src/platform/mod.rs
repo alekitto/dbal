@@ -141,7 +141,7 @@ pub trait DatabasePlatform: Debug {
                 .get_type(type_id)?
                 .get_mapped_database_types(self)
             {
-                self._add_type_mapping(&db_type, type_id.clone())
+                self._add_type_mapping(&db_type, type_id)
             }
         }
 
@@ -1311,7 +1311,7 @@ mod tests {
         }
 
         fn create_reserved_keywords_list(&self) -> KeywordList {
-            KeywordList::new(Box::new(&MOCK_KEYWORDS))
+            KeywordList::new(&MOCK_KEYWORDS)
         }
     }
 

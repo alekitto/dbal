@@ -19,7 +19,7 @@ impl Type for StringType {
             Value::Float(v) => Ok(Value::String(v.to_string())),
             Value::Uuid(v) => Ok(Value::String(v.to_string())),
             _ => Err(Error::conversion_failed_invalid_type(
-                &value,
+                value,
                 self.get_name(),
                 &["NULL", "String"],
             )),

@@ -366,7 +366,7 @@ impl DatabasePlatform for PostgreSQLPlatform {
         let db_type = db_type.to_lowercase();
         self.type_mappings
             .get(&db_type)
-            .map(|r| r.value().clone())
+            .map(|r| *r.value())
             .ok_or_else(|| Error::unknown_database_type(&db_type, &self.get_name()))
     }
 

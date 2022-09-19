@@ -39,6 +39,12 @@ pub struct Error {
 
 pub struct StdError(Error);
 
+impl StdError {
+    pub fn backtrace(&self) -> Option<&Backtrace> {
+        Some(&self.0.backtrace)
+    }
+}
+
 impl Display for StdError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.0.to_string(), f)
@@ -73,6 +79,10 @@ impl Error {
             inner: error.into(),
             backtrace: Backtrace::capture(),
         }
+    }
+
+    pub fn backtrace(&self) -> Option<&Backtrace> {
+        Some(&self.backtrace)
     }
 
     pub fn kind(&self) -> ErrorKind {

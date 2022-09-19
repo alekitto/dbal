@@ -1,8 +1,11 @@
 [package]
 name = "creed"
+description = "Extensible Database Abstraction Layer for SQL databases"
 version = "0.1.0"
 authors = ["Alessandro Chitolina <alekitto@gmail.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/alekitto/dbal"
 
 [dependencies]
 bitflags = "1"

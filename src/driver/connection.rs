@@ -26,7 +26,7 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>>;
 
     /// Executes an SQL statement, returning a result set as a Statement object.
-    fn query(&'conn self, sql: &str, params: Parameters) -> AsyncResult<Box<dyn StatementResult>> {
+    fn query(&'conn self, sql: &str, params: Parameters) -> AsyncResult<StatementResult> {
         let statement = self.prepare(sql);
         if let Err(e) = statement {
             return Box::pin(async move { Err(e) });

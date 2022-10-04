@@ -4,14 +4,17 @@ use std::default::Default;
 use std::fmt::{Debug, Formatter};
 use tokio::sync::Mutex;
 
+pub type AsyncHandlerFn = dyn (FnMut(&mut dyn Event) -> AsyncResult<()>) + Send;
+pub type SyncHandlerFn = dyn (FnMut(&mut dyn Event) -> Result<()>) + Send;
+
 struct AsyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Event) -> AsyncResult<()>) + Send>,
+    handler: Box<AsyncHandlerFn>,
 }
 
 struct SyncListener {
     event: TypeId,
-    handler: Box<dyn (FnMut(&mut dyn Event) -> Result<()>) + Send>,
+    handler: Box<SyncHandlerFn>,
 }
 
 #[derive(Default)]
@@ -22,7 +25,7 @@ pub struct EventDispatcher {
 
 impl Debug for EventDispatcher {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt("EventDispatcher {}", f)
+        f.debug_struct("EventDispatcher").finish_non_exhaustive()
     }
 }
 

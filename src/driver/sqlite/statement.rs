@@ -1,7 +1,7 @@
 use crate::driver::sqlite::driver::Driver;
-use crate::driver::sqlite::rows::Rows;
-use crate::driver::sqlite::statement_result::StatementResult;
-use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
+use crate::driver::sqlite::rows::SqliteRowsIterator;
+use crate::driver::statement_result::StatementResult;
+use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Rows};
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -42,15 +42,20 @@ impl<'conn> Statement<'conn> {
         }
     }
 
-    fn internal_query(&self, params: Parameters<'_>) -> Result<(Rows, usize)> {
+    fn internal_query(&self, params: Parameters<'_>) -> Result<Rows> {
         let params = Vec::from(params);
         self._bind_params(params)?;
 
-        let rows = Rows::new(self)?;
+        let iterator = SqliteRowsIterator::new(self)?;
+        let rows = Rows::new(
+            iterator.columns().clone(),
+            iterator.len(),
+            None,
+            Box::pin(iterator),
+        );
         self.row_count.store(rows.len(), Ordering::SeqCst);
-        let column_count = rows.column_count();
 
-        Ok((rows, column_count))
+        Ok(rows)
     }
 
     fn _bind_params(&self, params: Vec<(ParameterIndex, Parameter)>) -> Result<()> {
@@ -106,27 +111,17 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Box<dyn crate::driver::StatementResult>> {
+    fn query(&self, params: Parameters) -> AsyncResult<crate::driver::StatementResult> {
         let result = self.internal_query(params);
-        Box::pin(async move {
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+        Box::pin(async move { Ok(StatementResult::new(result?)) })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Box<dyn crate::driver::StatementResult>> {
+    ) -> AsyncResult<'conn, StatementResult> {
         let result = self.internal_query(Parameters::Vec(params));
-        Box::pin(async move {
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+        Box::pin(async move { Ok(StatementResult::new(result?)) })
     }
 
     fn execute(&self, params: Parameters) -> AsyncResult<usize> {

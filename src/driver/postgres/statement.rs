@@ -1,21 +1,20 @@
 use super::driver::Driver;
-use super::rows::Rows;
-use super::statement_result::StatementResult;
+use crate::driver::postgres::rows::PostgreSQLRowsIterator;
+use crate::driver::statement_result::StatementResult;
 use crate::error::{Error, StdError};
 use crate::parameter_type::ParameterType;
-use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Value};
-use std::collections::HashMap;
+use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Rows, Value};
+use dashmap::DashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
 use tokio_postgres::types::private::BytesMut;
 use tokio_postgres::types::{to_sql_checked, IsNull, ToSql, Type};
 
 pub struct Statement<'conn> {
     pub(super) connection: &'conn Driver,
     pub(super) sql: String,
-    parameters: Arc<Mutex<HashMap<ParameterIndex, Parameter>>>,
+    parameters: DashMap<ParameterIndex, Parameter>,
     row_count: AtomicUsize,
     phantom_data: PhantomData<&'conn Self>,
 }
@@ -92,14 +91,14 @@ impl ToSql for Parameter {
 }
 
 impl<'conn> Statement<'conn> {
-    pub fn new(connection: &'conn Driver, sql: &str) -> Result<super::statement::Statement<'conn>> {
-        Ok(Statement {
+    pub fn new(connection: &'conn Driver, sql: &str) -> Statement<'conn> {
+        Statement {
             connection,
             sql: sql.to_string(),
-            parameters: Arc::new(Mutex::new(HashMap::new())),
+            parameters: DashMap::new(),
             row_count: AtomicUsize::new(usize::MAX),
             phantom_data: PhantomData::default(),
-        })
+        }
     }
 
     async fn prepare_statement(
@@ -126,10 +125,7 @@ impl<'conn> Statement<'conn> {
         Ok((statement, raw_params))
     }
 
-    async fn internal_query(
-        &'conn self,
-        params: Vec<(ParameterIndex, Parameter)>,
-    ) -> Result<(Rows, usize)> {
+    async fn internal_query(&'conn self, params: Vec<(ParameterIndex, Parameter)>) -> Result<Rows> {
         let (statement, raw_params) = self.prepare_statement(params).await?;
         let row_stream = self
             .connection
@@ -137,11 +133,11 @@ impl<'conn> Statement<'conn> {
             .query_raw(&statement, raw_params)
             .await?;
 
-        let rows = Rows::new(row_stream).await?;
-        let column_count = rows.column_count();
+        let iterator = PostgreSQLRowsIterator::new(row_stream).await?;
+        let rows = Rows::new(iterator.columns().clone(), 0, None, Box::pin(iterator));
         self.row_count.store(rows.len(), Ordering::SeqCst);
 
-        Ok((rows, column_count))
+        Ok(rows)
     }
 
     async fn internal_execute(
@@ -156,7 +152,6 @@ impl<'conn> Statement<'conn> {
             .await? as usize;
 
         self.row_count.store(affected_rows, Ordering::SeqCst);
-
         Ok(affected_rows)
     }
 }
@@ -165,42 +160,28 @@ impl<'conn> Debug for Statement<'conn> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PostgreSQL Statement")
             .field("sql", &self.sql)
-            .field("parameters", &self.parameters.lock().unwrap())
+            .field("parameters", &self.parameters)
             .finish()
     }
 }
 
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()> {
-        let mut parameters = self.parameters.lock().unwrap();
-        parameters.insert(param, value);
-
+        self.parameters.insert(param, value);
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Box<dyn crate::driver::StatementResult>> {
+    fn query(&self, params: Parameters) -> AsyncResult<StatementResult> {
         let params = Vec::from(params);
 
-        Box::pin(async move {
-            let result = self.internal_query(params).await;
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+        Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Box<dyn crate::driver::StatementResult>> {
-        Box::pin(async move {
-            let result = self.internal_query(params).await;
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+    ) -> AsyncResult<'conn, StatementResult> {
+        Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
     fn execute(&self, params: Parameters) -> AsyncResult<usize> {

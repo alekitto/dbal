@@ -68,7 +68,7 @@ impl Driver {
         &self,
         sql: St,
         params: Parameters<'_>,
-    ) -> AsyncResult<Box<dyn StatementResult>> {
+    ) -> AsyncResult<StatementResult> {
         let params = Vec::from(params);
         let prepared = self.prepare(sql);
 

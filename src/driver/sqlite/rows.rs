@@ -1,30 +1,19 @@
 use super::statement::Statement;
-use crate::{rows, Result, Row, Value};
+use crate::{Result, Row, Value};
+use futures::Stream;
 use rusqlite::types::ValueRef;
 use rusqlite::Column;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-pub struct Rows {
+pub(super) struct SqliteRowsIterator {
     columns: Vec<String>,
-    column_count: usize,
-    rows: Vec<Row>,
+    length: usize,
+    iterator: Box<dyn Iterator<Item = Row> + Send + Sync>,
 }
 
-impl rows::Rows for Rows {
-    fn len(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn get(&self, index: usize) -> Option<&Row> {
-        self.rows.get(index)
-    }
-
-    fn to_vec(self) -> Vec<Row> {
-        self.rows
-    }
-}
-
-impl Rows {
-    pub(super) fn new(statement: &Statement) -> Result<Rows> {
+impl SqliteRowsIterator {
+    pub(super) fn new(statement: &Statement) -> Result<Self> {
         let mut statement = statement.statement.lock().unwrap();
 
         let column_count = statement.0.column_count();
@@ -53,26 +42,31 @@ impl Rows {
             result.push(Row::new(columns.clone(), data_vector));
         }
 
-        Ok(Rows {
+        Ok(Self {
             columns,
-            column_count,
-            rows: result,
+            length: result.len(),
+            iterator: Box::new(result.into_iter()),
         })
     }
 
+    pub fn columns(&self) -> &Vec<String> {
+        &self.columns
+    }
+
     pub fn len(&self) -> usize {
-        self.rows.len()
+        self.length
     }
+}
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+impl Stream for SqliteRowsIterator {
+    type Item = Result<Row>;
 
-    pub fn columns(&self) -> Vec<&str> {
-        self.columns.iter().map(|n| n.as_str()).collect()
-    }
-
-    pub fn column_count(&self) -> usize {
-        self.column_count
+    fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let next = self.iterator.next();
+        if let Some(row) = next {
+            Poll::Ready(Some(Ok(row)))
+        } else {
+            Poll::Ready(None)
+        }
     }
 }

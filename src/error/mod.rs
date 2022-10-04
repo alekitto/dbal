@@ -234,6 +234,12 @@ impl Debug for Error {
     }
 }
 
+impl Default for Error {
+    fn default() -> Self {
+        Error::new(ErrorKind::UnknownError, "unknown error")
+    }
+}
+
 impl<T> From<T> for Error
 where
     T: Into<Box<dyn std::error::Error + Send + Sync>> + 'static,

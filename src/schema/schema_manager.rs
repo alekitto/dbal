@@ -40,12 +40,12 @@ async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
     }
 }
 
-fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
+async fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
     schema_manager: &SM,
-    result: Box<dyn StatementResult>,
+    result: StatementResult,
 ) -> Result<HashMap<String, Vec<Row>>> {
     let mut data: HashMap<String, Vec<Row>> = HashMap::new();
-    for row in result.fetch_all() {
+    for row in result.fetch_all().await? {
         let table_name = schema_manager
             .get_portable_table_definition(&row)?
             .get_name();
@@ -534,7 +534,7 @@ pub trait SchemaManager: Sync {
     /// Selects names of tables in the specified database.
     /// # Abstract
     #[allow(unused_variables)]
-    fn select_table_names(&self, database_name: &str) -> AsyncResult<Box<dyn StatementResult>> {
+    fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -546,7 +546,7 @@ pub trait SchemaManager: Sync {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<Box<dyn StatementResult>> {
+    ) -> AsyncResult<StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -557,7 +557,7 @@ pub trait SchemaManager: Sync {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<Box<dyn StatementResult>> {
+    ) -> AsyncResult<StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -568,7 +568,7 @@ pub trait SchemaManager: Sync {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<Box<dyn StatementResult>> {
+    ) -> AsyncResult<StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -593,6 +593,7 @@ pub trait SchemaManager: Sync {
                 self,
                 self.select_table_columns(&database_name, None).await?,
             )
+            .await
         })
     }
 
@@ -608,6 +609,7 @@ pub trait SchemaManager: Sync {
                 self,
                 self.select_index_columns(&database_name, None).await?,
             )
+            .await
         })
     }
 
@@ -627,6 +629,7 @@ pub trait SchemaManager: Sync {
                     self.select_foreign_key_columns(&database_name, None)
                         .await?,
                 )
+                .await
             }
         })
     }
@@ -1366,10 +1369,10 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn list_tables(&self) -> AsyncResult<Vec<Table>>;
             fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
             fn normalize_name(&self, name: &str) -> String;
-            fn select_table_names(&self, database_name: &str) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
+            fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
+            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
             fn quote_string_literal(&self, str: &str) -> String;
             fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
@@ -1493,10 +1496,10 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn list_tables(&self) -> AsyncResult<Vec<Table>>;
             fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
             fn normalize_name(&self, name: &str) -> String;
-            fn select_table_names(&self, database_name: &str) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
-            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<Box<dyn StatementResult>>;
+            fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
+            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
             fn quote_string_literal(&self, str: &str) -> String;
             fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;

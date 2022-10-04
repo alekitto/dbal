@@ -1,9 +1,9 @@
 use super::driver::Driver;
-use super::rows::Rows;
-use super::statement_result::StatementResult;
+use crate::driver::mysql::rows::MySQLRowsIterator;
+use crate::driver::statement_result::StatementResult;
 use crate::error::Error;
 use crate::parameter_type::ParameterType;
-use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result};
+use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Rows};
 use mysql_async::prelude::*;
 use mysql_async::{Params, Value};
 use std::collections::HashMap;
@@ -89,10 +89,7 @@ impl<'conn> Statement<'conn> {
         })
     }
 
-    async fn internal_query(
-        &'conn self,
-        params: Vec<(ParameterIndex, Parameter)>,
-    ) -> Result<(Rows, usize)> {
+    async fn internal_query(&'conn self, params: Vec<(ParameterIndex, Parameter)>) -> Result<Rows> {
         let params = Params::try_from(Parameters::Vec(params));
         let mut connection = self.connection.connection.lock().await;
 
@@ -103,11 +100,16 @@ impl<'conn> Statement<'conn> {
             .run(connection.deref_mut())
             .await?;
 
-        let rows = Rows::new(result).await?;
-        let column_count = rows.column_count();
-        self.row_count.store(rows.len(), Ordering::SeqCst);
+        let columns = result
+            .columns()
+            .map(|cols| cols.iter().map(|col| col.name_str().to_string()).collect())
+            .unwrap_or_else(Vec::new);
 
-        Ok((rows, column_count))
+        let last_insert_id = result.last_insert_id().map(|id| id.to_string());
+        let iterator = Box::pin(MySQLRowsIterator::new(result).await?);
+        self.row_count.store(iterator.len(), Ordering::SeqCst);
+
+        Ok(Rows::new(columns, iterator.len(), last_insert_id, iterator))
     }
 
     async fn internal_execute(
@@ -147,29 +149,17 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<Box<dyn crate::driver::StatementResult>> {
+    fn query(&self, params: Parameters) -> AsyncResult<StatementResult> {
         let params = Vec::from(params);
 
-        Box::pin(async move {
-            let result = self.internal_query(params).await;
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+        Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
-    ) -> AsyncResult<'conn, Box<dyn crate::driver::StatementResult>> {
-        Box::pin(async move {
-            let result = self.internal_query(params).await;
-            let (rows, column_count) = result?;
-
-            Ok(Box::new(StatementResult::new(column_count, rows))
-                as Box<dyn crate::driver::StatementResult>)
-        })
+    ) -> AsyncResult<'conn, StatementResult> {
+        Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
     fn execute(&self, params: Parameters) -> AsyncResult<usize> {

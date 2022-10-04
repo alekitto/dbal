@@ -248,9 +248,8 @@ mod tests {
     use crate::driver::sqlite::driver::{Driver, DriverConnection};
     use crate::driver::sqlite::ConnectionOptions;
     use crate::driver::statement::Statement;
-    use crate::driver::statement_result::StatementResult;
     use crate::params;
-    use crate::{Row, Value};
+    use crate::{Result, Row, Value};
     use std::fs::remove_file;
 
     #[test]
@@ -293,15 +292,19 @@ mod tests {
         assert_eq!(result.is_ok(), true);
     }
 
-    #[test]
-    fn can_fetch_statements() {
-        let connection = tokio_test::block_on(Driver::create(ConnectionOptions::new_from_memory()))
+    #[tokio::test]
+    async fn can_fetch_statements() -> Result<()> {
+        let connection = Driver::create(ConnectionOptions::new_from_memory())
+            .await
             .expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
-        let result = tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
+        let result = statement
+            .query(params![])
+            .await
+            .expect("Execution succeeds");
 
-        let rows = result.fetch_all();
+        let rows = result.fetch_all().await?;
 
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -310,27 +313,34 @@ mod tests {
         );
 
         // Re-execute
-        let mut result =
-            tokio_test::block_on(statement.query(params![])).expect("Execution succeeds");
+        let mut result = statement
+            .query(params![])
+            .await
+            .expect("Execution succeeds");
 
-        let row = result.fetch_one();
+        let row = result.fetch_one().await?;
         assert_eq!(
-            &Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
+            Row::new(vec!["1".to_string()], vec![Value::Int(1)]),
             row.unwrap(),
         );
 
-        let row = result.fetch_one();
+        let row = result.fetch_one().await?;
         assert_eq!(row.is_none(), true);
+
+        Ok(())
     }
 
-    #[test]
-    fn builtin_udf_should_be_added() {
-        let connection = tokio_test::block_on(Driver::create(ConnectionOptions::new_from_memory()))
+    #[tokio::test]
+    async fn builtin_udf_should_be_added() -> Result<()> {
+        let connection = Driver::create(ConnectionOptions::new_from_memory())
+            .await
             .expect("Must be connected");
 
-        let statement = tokio_test::block_on(connection.query("SELECT sqrt(2)", params![]))
+        let statement = connection
+            .query("SELECT sqrt(2)", params![])
+            .await
             .expect("Query must succeed");
-        let rows = statement.fetch_all();
+        let rows = statement.fetch_all().await?;
         assert_eq!(
             rows.get(0).unwrap(),
             &Row::new(
@@ -339,45 +349,55 @@ mod tests {
             )
         );
 
-        let statement = tokio_test::block_on(connection.query("SELECT mod(17, 3)", params![]))
+        let statement = connection
+            .query("SELECT mod(17, 3)", params![])
+            .await
             .expect("Query must succeed");
-        let rows = statement.fetch_all();
+        let rows = statement.fetch_all().await?;
         assert_eq!(
             rows.get(0).unwrap(),
             &Row::new(vec!["mod(17, 3)".to_string()], vec![Value::Int(2)])
         );
 
-        let statement = tokio_test::block_on(connection.query(
-            "SELECT LOCATE('3', 'W3Schools.com') AS MatchPosition",
-            params![],
-        ))
-        .expect("Query must succeed");
-        let rows = statement.fetch_all();
+        let statement = connection
+            .query(
+                "SELECT LOCATE('3', 'W3Schools.com') AS MatchPosition",
+                params![],
+            )
+            .await
+            .expect("Query must succeed");
+        let rows = statement.fetch_all().await?;
         assert_eq!(
             rows.get(0).unwrap(),
             &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(2)])
         );
 
-        let statement = tokio_test::block_on(connection.query(
-            "SELECT LOCATE('o', 'W3Schools.com', 3) AS MatchPosition",
-            params![],
-        ))
-        .expect("Query must succeed");
-        let rows = statement.fetch_all();
+        let statement = connection
+            .query(
+                "SELECT LOCATE('o', 'W3Schools.com', 3) AS MatchPosition",
+                params![],
+            )
+            .await
+            .expect("Query must succeed");
+        let rows = statement.fetch_all().await?;
         assert_eq!(
             rows.get(0).unwrap(),
             &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(4)])
         );
 
-        let statement = tokio_test::block_on(connection.query(
-            "SELECT LOCATE('3', 'W3Schools.com', 3) AS MatchPosition",
-            params![],
-        ))
-        .expect("Query must succeed");
-        let rows = statement.fetch_all();
+        let statement = connection
+            .query(
+                "SELECT LOCATE('3', 'W3Schools.com', 3) AS MatchPosition",
+                params![],
+            )
+            .await
+            .expect("Query must succeed");
+        let rows = statement.fetch_all().await?;
         assert_eq!(
             rows.get(0).unwrap(),
             &Row::new(vec!["MatchPosition".to_string()], vec![Value::Int(0)])
         );
+
+        Ok(())
     }
 }

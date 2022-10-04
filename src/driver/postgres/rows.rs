@@ -1,20 +1,15 @@
-use crate::{rows, Result, Row, Value};
-use futures::TryStreamExt;
-use std::error::Error;
+use crate::{Error, Result, Row, Value};
+use futures::{Stream, StreamExt};
 use std::io::Read;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio_postgres::types::{FromSql, Kind, Type};
 use tokio_postgres::RowStream;
-
-pub struct Rows {
-    columns: Vec<String>,
-    column_count: usize,
-    rows: Vec<Row>,
-}
 
 fn simple_type_from_sql(
     ty: &Type,
     raw: &[u8],
-) -> core::result::Result<Value, Box<dyn Error + Sync + Send>> {
+) -> core::result::Result<Value, Box<dyn std::error::Error + Sync + Send>> {
     Ok(match *ty {
         Type::CHAR => Value::Int(<i8 as FromSql>::from_sql(ty, raw)? as i64),
         Type::INT2 => Value::Int(<i16 as FromSql>::from_sql(ty, raw)? as i64),
@@ -62,7 +57,7 @@ impl<'a> FromSql<'a> for Value {
     fn from_sql(
         ty: &Type,
         raw: &'a [u8],
-    ) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {
+    ) -> core::result::Result<Self, Box<dyn std::error::Error + Sync + Send>> {
         let item = match ty.kind() {
             Kind::Simple => simple_type_from_sql(ty, raw)?,
             _ => {
@@ -74,7 +69,9 @@ impl<'a> FromSql<'a> for Value {
         Ok(item)
     }
 
-    fn from_sql_null(_: &Type) -> core::result::Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql_null(
+        _: &Type,
+    ) -> core::result::Result<Self, Box<dyn std::error::Error + Sync + Send>> {
         Ok(Value::NULL)
     }
 
@@ -83,68 +80,70 @@ impl<'a> FromSql<'a> for Value {
     }
 }
 
-impl rows::Rows for Rows {
-    fn len(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn get(&self, index: usize) -> Option<&Row> {
-        self.rows.get(index)
-    }
-
-    fn to_vec(self) -> Vec<Row> {
-        self.rows
-    }
+pub struct PostgreSQLRowsIterator {
+    row_stream: Pin<Box<RowStream>>,
+    first_row: Option<tokio_postgres::Row>,
+    columns: Vec<String>,
 }
 
-impl Rows {
-    pub(super) async fn new(row_stream: RowStream) -> Result<Rows> {
-        let mut result = Vec::new();
-        let mut columns = Option::None;
+impl PostgreSQLRowsIterator {
+    pub async fn new(row_stream: RowStream) -> Result<Self> {
+        let mut row_stream = Box::pin(row_stream);
+        let first_row = row_stream.next().await;
+        let first_row = if let Some(result) = first_row {
+            Some(result?)
+        } else {
+            None
+        };
 
-        let rows: Vec<tokio_postgres::Row> = row_stream.try_collect().await?;
-        for row in rows {
-            let mut data_vector: Vec<Value> = Vec::new();
-            for i in 0..row.len() {
-                if columns.is_none() {
-                    let mut c = vec![];
-                    for column in row.columns() {
-                        c.push(column.name().to_string());
-                    }
-
-                    let _ = columns.insert(c);
-                }
-
-                let value: Value = row.get(i);
-                data_vector.push(value);
+        let columns = if let Some(row) = &first_row {
+            let mut c = vec![];
+            for column in row.columns() {
+                c.push(column.name().to_string());
             }
 
-            result.push(Row::new(columns.as_ref().unwrap().clone(), data_vector));
-        }
-
-        let columns = columns.unwrap_or_default();
-        let column_count = columns.len();
+            c
+        } else {
+            vec![]
+        };
 
         Ok(Self {
+            row_stream,
+            first_row,
             columns,
-            column_count,
-            rows: result,
         })
     }
 
-    pub fn columns(&self) -> Vec<&str> {
-        self.columns.iter().map(|n| n.as_str()).collect()
+    pub fn columns(&self) -> &Vec<String> {
+        &self.columns
     }
 
-    pub fn column_count(&self) -> usize {
-        self.column_count
-    }
+    fn psql_row_to_row(&self, psql_row: tokio_postgres::Row) -> Row {
+        let mut data_vector: Vec<Value> = Vec::new();
+        for i in 0..psql_row.len() {
+            let value: Value = psql_row.get(i);
+            data_vector.push(value);
+        }
 
-    pub fn len(&self) -> usize {
-        self.rows.len()
+        Row::new(self.columns.clone(), data_vector)
     }
+}
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+impl Stream for PostgreSQLRowsIterator {
+    type Item = Result<Row>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if let Some(first_row) = self.first_row.take() {
+            return Poll::Ready(Some(Ok(self.psql_row_to_row(first_row))));
+        }
+
+        match Pin::new(&mut self.row_stream).poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(result)) => Poll::Ready(Some(match result {
+                Ok(row) => Ok(self.psql_row_to_row(row)),
+                Err(e) => Err(Error::from(e)),
+            })),
+        }
     }
 }

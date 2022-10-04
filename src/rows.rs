@@ -1,6 +1,9 @@
 use crate::error::Error;
 use crate::{Result, Value};
+use futures::{Stream, TryStreamExt};
 use std::cmp::Ordering;
+use std::future::Future;
+use std::pin::Pin;
 
 pub enum ColumnIndex {
     Name(String),
@@ -76,44 +79,64 @@ impl Row {
     }
 }
 
+pub struct Rows {
+    columns: Vec<String>,
+    length: usize,
+    last_insert_id: Option<String>,
+    iterator: Pin<Box<dyn Stream<Item = Result<Row>> + Send>>,
+}
+
 /// Represents a row collection, collected from an executed statements
 /// It contains all the raw data from the executed query, being countable
 /// and iterable safely
-pub trait Rows: Sized {
+impl Rows {
+    pub fn new(
+        columns: Vec<String>,
+        length: usize,
+        last_insert_id: Option<String>,
+        iterator: Pin<Box<dyn Stream<Item = Result<Row>> + Send>>,
+    ) -> Self {
+        Self {
+            columns,
+            length,
+            last_insert_id,
+            iterator,
+        }
+    }
+
     /// Returns the length of number of rows in the rows collection.
-    fn len(&self) -> usize;
+    pub fn len(&self) -> usize {
+        self.length
+    }
 
     /// Whether the rows collection is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
     }
 
-    /// Returns an [`Option`] with a reference to the n-th row if exists
-    /// or [`None`] if the index is out-of-bounds.
-    fn get(&self, index: usize) -> Option<&Row>;
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
 
-    fn to_vec(self) -> Vec<Row>;
-
-    fn into_iterator(self) -> RowsIterator<Self> {
+    pub fn into_iterator(self) -> RowsIterator {
         RowsIterator::new(self)
     }
+
+    pub fn last_insert_id(&self) -> &Option<String> {
+        &self.last_insert_id
+    }
 }
 
-pub struct RowsIterator<R: Rows> {
-    rows: R,
+pub struct RowsIterator {
+    rows: Rows,
     length: usize,
-    position: usize,
 }
 
-impl<R: Rows> RowsIterator<R> {
-    fn new(rows: R) -> Self {
+impl RowsIterator {
+    fn new(rows: Rows) -> Self {
         let length = rows.len();
 
-        Self {
-            rows,
-            length,
-            position: 0,
-        }
+        Self { rows, length }
     }
 
     /// Advances the iterator and returns the next value.
@@ -122,36 +145,22 @@ impl<R: Rows> RowsIterator<R> {
     /// implementations may choose to resume iteration, and so calling `next()`
     /// again may or may not eventually start returning [`Some(&Row)`] again at some
     /// point.
-    pub fn next(&mut self) -> Option<&Row> {
-        if self.position >= self.length {
-            return None;
-        }
-
-        let result = self.rows.get(self.position);
-        self.position += 1;
-
-        result
+    pub fn next(&mut self) -> impl Future<Output = Result<Option<Row>>> + '_ {
+        self.rows.iterator.try_next()
     }
 
-    pub fn to_vec(self) -> Vec<Row> {
-        self.rows.to_vec()
-    }
-}
-
-impl<T: Rows> Rows for Box<T> {
-    delegate::delegate! {
-        to(**self) {
-            fn len(&self) -> usize;
-            fn is_empty(&self) -> bool;
-            fn get(&self, index: usize) -> Option<&Row>;
-        }
-        to(*self) {
-            fn to_vec(self) -> Vec<Row>;
-        }
+    pub async fn to_vec(self) -> Result<Vec<Row>> {
+        self.rows.iterator.try_collect().await
     }
 
-    fn into_iterator(self) -> RowsIterator<Self> {
-        RowsIterator::new(self)
+    /// Returns the length of number of rows in the rows collection.
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    /// Whether the rows collection is empty.
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
     }
 }
 

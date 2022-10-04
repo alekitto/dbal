@@ -128,6 +128,8 @@ impl Connection {
                 .await
                 .ok()?
                 .fetch_one()
+                .await
+                .ok()?
                 .and_then(|row| row.get(0).cloned().ok())
                 .and_then(|v| match v {
                     Value::String(res) => Some(res),
@@ -215,7 +217,7 @@ impl Connection {
         &self,
         sql: St,
         params: Parameters<'_>,
-    ) -> Result<Box<dyn StatementResult>> {
+    ) -> Result<StatementResult> {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         driver.query(sql, params).await
     }
@@ -226,9 +228,8 @@ impl Connection {
         sql: St,
         params: Parameters<'_>,
     ) -> Result<Vec<Row>> {
-        self.query(sql, params)
-            .await
-            .map(|result| result.fetch_all())
+        let statement_result = self.query(sql, params).await?;
+        Ok(statement_result.fetch_all().await?)
     }
 
     /// Converts a value from database scalar format into runtime type format,
@@ -308,10 +309,9 @@ impl Connection {
 
 #[cfg(test)]
 mod tests {
-    use crate::driver::statement_result::StatementResult;
     use crate::event::ConnectionEvent;
     use crate::rows::ColumnIndex;
-    use crate::{params, r#type, Connection, EventDispatcher, Row, Value};
+    use crate::{params, r#type, Connection, EventDispatcher, Result, Row, Value};
     use lazy_static::lazy_static;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
@@ -368,7 +368,7 @@ mod tests {
                         .query("SELECT 1", params![])
                         .await
                         .unwrap();
-                    let rows = result.fetch_all();
+                    let rows = result.fetch_all().await?;
 
                     CALLED.store(true, Ordering::SeqCst);
                     let _ = M_RESULT.lock().unwrap().insert(rows);
@@ -400,7 +400,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
-    async fn can_convert_type_to_runtime() {
+    async fn can_convert_type_to_runtime() -> Result<()> {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         let connection = connection.connect().await.expect("Connection failed");
         assert_eq!(connection.is_connected(), true);
@@ -409,7 +409,7 @@ mod tests {
             .query("SELECT 1", params![])
             .await
             .expect("Query failed");
-        let row = result.fetch_one().expect("One row is expected");
+        let row = result.fetch_one().await?.expect("One row is expected");
 
         let value = row.get(0).expect("At least one column is expected");
         let v_int = connection
@@ -421,6 +421,8 @@ mod tests {
 
         assert_eq!(v_int, Value::Int(1));
         assert_eq!(v_string, Value::String("1".to_string()));
+
+        Ok(())
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]

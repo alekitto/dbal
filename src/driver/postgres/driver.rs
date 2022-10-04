@@ -191,9 +191,7 @@ impl<'conn> Connection<'conn> for Driver {
     }
 
     fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
-        let statement = super::statement::Statement::new(self, sql)?;
-
-        Ok(Box::new(statement))
+        Ok(Box::new(super::statement::Statement::new(self, sql)))
     }
 }
 
@@ -202,9 +200,8 @@ mod tests {
     use crate::driver::connection::{Connection, DriverConnection};
     use crate::driver::postgres::driver::Driver;
     use crate::driver::postgres::ConnectionOptions;
-    use crate::driver::statement_result::StatementResult;
     use crate::rows::ColumnIndex;
-    use crate::{params, Row, Value};
+    use crate::{params, Result, Value};
     use url::Url;
 
     #[tokio::test]
@@ -231,7 +228,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn can_fetch_rows() {
+    async fn can_fetch_rows() -> Result<()> {
         let connection = Driver::create(ConnectionOptions::build_from_url(
             &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
         ))
@@ -241,8 +238,10 @@ mod tests {
         let statement = connection.query("SELECT 1 + 1", params![]).await;
         assert_eq!(statement.is_ok(), true);
         let mut statement = statement.unwrap();
-        let row = statement.fetch_one().unwrap();
+        let row = statement.fetch_one().await?.unwrap();
 
         assert_eq!(row.get(ColumnIndex::Position(0)).unwrap(), &Value::Int(2));
+
+        Ok(())
     }
 }

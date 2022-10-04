@@ -1,12 +1,9 @@
-use crate::{rows, Result, Row, Value};
+use crate::{Result, Row, Value};
+use futures::Stream;
 use mysql_async::prelude::{ConvIr, FromValue};
 use mysql_async::{BinaryProtocol, FromValueError, QueryResult};
-
-pub struct Rows {
-    columns: Vec<String>,
-    column_count: usize,
-    rows: Vec<Row>,
-}
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 pub struct IrValue {
     value: mysql_async::Value,
@@ -52,61 +49,49 @@ impl FromValue for Value {
     type Intermediate = IrValue;
 }
 
-impl rows::Rows for Rows {
-    fn len(&self) -> usize {
-        self.rows.len()
+pub struct MySQLRowsIterator {
+    length: usize,
+    columns: Vec<String>,
+    iter: Box<dyn Iterator<Item = mysql_async::Row> + Send>,
+}
+
+impl MySQLRowsIterator {
+    pub async fn new(rows: QueryResult<'_, '_, BinaryProtocol>) -> Result<MySQLRowsIterator> {
+        let columns = if let Some(cols) = rows.columns() {
+            cols.iter().map(|col| col.name_str().to_string()).collect()
+        } else {
+            vec![]
+        };
+
+        let stream = rows.collect_and_drop().await?;
+        let length = stream.len();
+
+        Ok(Self {
+            length,
+            columns,
+            iter: Box::new(stream.into_iter()),
+        })
     }
 
-    fn get(&self, index: usize) -> Option<&Row> {
-        self.rows.get(index)
-    }
-
-    fn to_vec(self) -> Vec<Row> {
-        self.rows
+    pub fn len(&self) -> usize {
+        self.length
     }
 }
 
-impl Rows {
-    pub(super) async fn new(rows: QueryResult<'_, '_, BinaryProtocol>) -> Result<Rows> {
-        let mut result = Vec::new();
-        let columns = rows
-            .columns()
-            .map(|cols| cols.iter().map(|col| col.name_str().to_string()).collect())
-            .unwrap_or_else(Vec::new);
+impl Stream for MySQLRowsIterator {
+    type Item = Result<Row>;
 
-        rows.for_each_and_drop(|row| {
+    fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(if let Some(row) = self.iter.next() {
             let mut data_vector: Vec<Value> = Vec::new();
             for i in 0..row.len() {
                 let value: Value = row.get(i).unwrap();
                 data_vector.push(value);
             }
 
-            result.push(Row::new(columns.clone(), data_vector));
+            Some(Ok(Row::new(self.columns.clone(), data_vector)))
+        } else {
+            None
         })
-        .await?;
-
-        let column_count = columns.len();
-
-        Ok(Self {
-            columns,
-            column_count,
-            rows: result,
-        })
-    }
-
-    pub fn columns(&self) -> Vec<&str> {
-        self.columns.iter().map(|n| n.as_str()).collect()
-    }
-
-    pub fn column_count(&self) -> usize {
-        self.column_count
-    }
-
-    pub fn len(&self) -> usize {
-        self.rows.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }

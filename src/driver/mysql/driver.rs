@@ -15,7 +15,7 @@ use url::Url;
 use version_compare::{compare_to, Cmp};
 
 pub struct Driver {
-    pub(super) connection: Arc<Mutex<Conn>>,
+    pub(super) connection: Mutex<Conn>,
 }
 
 impl Debug for Driver {
@@ -87,10 +87,8 @@ impl DriverConnection<ConnectionOptions> for Driver {
 
         let opts = Opts::from(opts_builder);
         async move {
-            let connection = Conn::new(opts).await?;
-
             Ok(Self {
-                connection: Arc::new(Mutex::new(connection)),
+                connection: Mutex::new(Conn::new(opts).await?),
             })
         }
     }

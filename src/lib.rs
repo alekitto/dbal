@@ -1,6 +1,6 @@
 #![feature(decl_macro)]
 #![feature(type_alias_impl_trait)]
-#![feature(is_some_with)]
+#![feature(is_some_and)]
 
 extern crate creed_derive;
 ///! Extensible Database Abstraction Layer Library

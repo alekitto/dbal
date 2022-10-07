@@ -1,13 +1,14 @@
 use crate::platform::DatabasePlatform;
+use crate::r#type::IntoType;
 use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
 use crate::schema::{CheckConstraint, IntoIdentifier};
-use crate::Value;
-use std::any::TypeId;
+use crate::{Result, Value};
+use creed::r#type::TypePtr;
 
 #[derive(Clone)]
 pub struct ColumnData {
     pub name: String,
-    pub r#type: TypeId,
+    pub r#type: TypePtr,
     pub default: Value,
     pub notnull: bool,
     pub unique: bool,
@@ -30,7 +31,7 @@ pub struct ColumnData {
 #[derive(Clone, IntoIdentifier)]
 pub struct Column {
     asset: AbstractAsset,
-    r#type: TypeId,
+    r#type: TypePtr,
     default: Value,
     notnull: bool,
     unique: bool,
@@ -50,13 +51,14 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn new(name: String, r#type: TypeId) -> Self {
+    pub fn new<I: IntoType>(name: &str, r#type: I) -> Result<Self> {
+        let r#type = r#type.into_type()?;
         let mut asset = AbstractAsset::default();
         asset.set_name(name);
         let default = Value::NULL;
         let notnull = false;
 
-        Self {
+        Ok(Self {
             asset,
             r#type,
             default,
@@ -75,23 +77,39 @@ impl Column {
             charset: None,
             check: None,
             jsonb: None,
-        }
+        })
     }
 
-    pub fn get_type(&self) -> TypeId {
-        self.r#type
+    pub fn get_type(&self) -> TypePtr {
+        self.r#type.clone()
     }
 
     pub fn get_comment(&self) -> &Option<String> {
         &self.comment
     }
 
+    pub fn set_notnull(&mut self, notnull: bool) {
+        self.notnull = notnull;
+    }
+
     pub fn is_notnull(&self) -> bool {
         self.notnull
     }
 
+    pub fn set_autoincrement(&mut self, autoincrement: Option<bool>) {
+        self.autoincrement = autoincrement;
+    }
+
     pub fn is_autoincrement(&self) -> bool {
         self.autoincrement.unwrap_or(false)
+    }
+
+    pub fn set_length(&mut self, length: Option<usize>) {
+        self.length = length;
+    }
+
+    pub fn get_length(&self) -> Option<usize> {
+        self.length
     }
 
     pub(crate) fn generate_column_data(&self, platform: &dyn DatabasePlatform) -> ColumnData {
@@ -99,7 +117,7 @@ impl Column {
 
         ColumnData {
             name,
-            r#type: self.r#type,
+            r#type: self.r#type.clone(),
             default: self.default.clone(),
             notnull: self.notnull,
             unique: self.unique,

@@ -2,7 +2,7 @@ use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
 use crate::platform::{default, CreateFlags, DatabasePlatform};
 use crate::r#type;
-use crate::r#type::{IntoType, Type, TypeManager};
+use crate::r#type::{IntoType, TypeManager, TypePtr};
 use crate::schema::{
     Asset, Column, ColumnData, ColumnDiff, Comparator, ForeignKeyConstraint,
     ForeignKeyReferentialAction, Identifier, Index, IndexOptions, IntoIdentifier, Schema,
@@ -99,7 +99,7 @@ pub fn filter_asset_names<A: Asset + Clone>(connection: &Connection, assets: Vec
 pub fn extract_type_from_comment<I: IntoType>(
     comment: Option<String>,
     current_type: I,
-) -> Result<Arc<Box<dyn Type + Sync + Send>>> {
+) -> Result<TypePtr> {
     let type_regex = Regex::new("(\\(CRType:([^)].*)\\))").unwrap();
     let current_type = current_type.into_type();
     comment
@@ -128,6 +128,9 @@ pub trait SchemaManager: Sync {
     /// Gets the database connection.
     fn get_connection(&self) -> &Connection;
 
+    /// As &dyn SchemaManager
+    fn as_dyn(&self) -> &dyn SchemaManager;
+
     /// Gets the database platform instance.
     ///
     /// # Errors
@@ -144,11 +147,11 @@ pub trait SchemaManager: Sync {
         table: &Table,
         create_flags: Option<CreateFlags>,
     ) -> Result<Vec<String>> {
-        default::get_create_table_sql(self, table, create_flags)
+        default::get_create_table_sql(self.as_dyn(), table, create_flags)
     }
 
     fn get_create_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
-        default::get_create_tables_sql(self, tables)
+        default::get_create_tables_sql(self.as_dyn(), tables)
     }
 
     /// Returns the SQL used to create a table.
@@ -161,7 +164,7 @@ pub trait SchemaManager: Sync {
         columns: &[ColumnData],
         options: &TableOptions,
     ) -> Result<Vec<String>> {
-        default::_get_create_table_sql(self, name, columns, options)
+        default::_get_create_table_sql(self.as_dyn(), name, columns, options)
     }
 
     fn get_create_temporary_table_snippet_sql(&self) -> Result<String> {
@@ -177,8 +180,8 @@ pub trait SchemaManager: Sync {
     }
 
     /// Returns the SQL to create an index on a table on this platform.
-    fn get_create_index_sql(&self, index: &Index, table: &Identifier) -> Result<String> {
-        default::get_create_index_sql(self, index, table)
+    fn get_create_index_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String> {
+        default::get_create_index_sql(self.as_dyn(), index, table)
     }
 
     /// Adds additional flags for index generation.
@@ -187,13 +190,17 @@ pub trait SchemaManager: Sync {
     }
 
     /// Returns the SQL to create an unnamed primary key constraint.
-    fn get_create_primary_key_sql(&self, index: &Index, table: &Identifier) -> Result<String> {
-        default::get_create_primary_key_sql(self, index, table)
+    fn get_create_primary_key_sql(
+        &self,
+        index: &Index,
+        table: &dyn IntoIdentifier,
+    ) -> Result<String> {
+        default::get_create_primary_key_sql(self.as_dyn(), index, table)
     }
 
     /// Returns the SQL to create a named schema.
     fn get_create_schema_sql(&self, schema_name: &str) -> Result<String> {
-        default::get_create_schema_sql(self.get_platform()?, schema_name)
+        default::get_create_schema_sql(self.get_platform()?.as_dyn(), schema_name)
     }
 
     /// Returns the SQL to create a unique constraint on a table on this platform.
@@ -202,7 +209,11 @@ pub trait SchemaManager: Sync {
         constraint: &UniqueConstraint,
         table_name: &Identifier,
     ) -> Result<String> {
-        default::get_create_unique_constraint_sql(self.get_platform()?, constraint, table_name)
+        default::get_create_unique_constraint_sql(
+            self.get_platform()?.as_dyn(),
+            constraint,
+            table_name,
+        )
     }
 
     /// Returns the SQL to create a new foreign key.
@@ -211,16 +222,16 @@ pub trait SchemaManager: Sync {
         foreign_key: &ForeignKeyConstraint,
         table: &Identifier,
     ) -> Result<String> {
-        default::get_create_foreign_key_sql(self, foreign_key, table)
+        default::get_create_foreign_key_sql(self.as_dyn(), foreign_key, table)
     }
 
     fn get_create_view_sql(&self, view: &View) -> Result<String> {
-        default::get_create_view_sql(self.get_platform()?, view)
+        default::get_create_view_sql(self.get_platform()?.as_dyn(), view)
     }
 
     /// Returns the SQL to create a new database.
     fn get_create_database_sql(&self, name: &Identifier) -> Result<String> {
-        default::get_create_database_sql(self.get_platform()?, name)
+        default::get_create_database_sql(self.get_platform()?.as_dyn(), name)
     }
 
     /// Gets the SQL query to retrieve the databases list.
@@ -292,7 +303,7 @@ pub trait SchemaManager: Sync {
     }
 
     fn get_comment_on_table_sql(&self, table_name: &Identifier, comment: &str) -> Result<String> {
-        default::get_comment_on_table_sql(self.get_platform()?, table_name, comment)
+        default::get_comment_on_table_sql(self.get_platform()?.as_dyn(), table_name, comment)
     }
 
     fn get_comment_on_column_sql(
@@ -301,12 +312,17 @@ pub trait SchemaManager: Sync {
         column: &Column,
         comment: &str,
     ) -> Result<String> {
-        default::get_comment_on_column_sql(self.get_platform()?, table_name, column, comment)
+        default::get_comment_on_column_sql(
+            self.get_platform()?.as_dyn(),
+            table_name,
+            column,
+            comment,
+        )
     }
 
     /// Returns the SQL to create inline comment on a column.
     fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String> {
-        default::get_inline_column_comment_sql(self.get_platform()?, comment)
+        default::get_inline_column_comment_sql(self.get_platform()?.as_dyn(), comment)
     }
 
     /// Gets the SQL statements for altering an existing table.
@@ -326,32 +342,32 @@ pub trait SchemaManager: Sync {
 
     /// Returns the SQL snippet to drop an existing database.
     fn get_drop_database_sql(&self, name: &str) -> Result<String> {
-        default::get_drop_database_sql(self, name)
+        default::get_drop_database_sql(self.as_dyn(), name)
     }
 
     /// Returns the SQL snippet to drop a schema.
     fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String> {
-        default::get_drop_schema_sql(self, schema_name)
+        default::get_drop_schema_sql(self.as_dyn(), schema_name)
     }
 
     /// Returns the SQL snippet to drop an existing table.
     fn get_drop_table_sql(&self, table_name: &Identifier) -> Result<String> {
-        default::get_drop_table_sql(self.get_platform()?, table_name)
+        default::get_drop_table_sql(self.as_dyn(), table_name)
     }
 
     fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
-        default::get_drop_tables_sql(self, tables)
+        default::get_drop_tables_sql(self.as_dyn(), tables)
     }
 
     /// Returns the SQL to safely drop a temporary table WITHOUT implicitly committing an open transaction.
     fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String> {
-        default::get_drop_temporary_table_sql(self, table)
+        default::get_drop_temporary_table_sql(self.as_dyn(), table)
     }
 
     /// Returns the SQL to drop an index from a table.
     #[allow(unused_variables)]
     fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String> {
-        default::get_drop_index_sql(self.get_platform()?, index)
+        default::get_drop_index_sql(self.get_platform()?.as_dyn(), index)
     }
 
     /// Returns the SQL to drop a unique constraint.
@@ -360,7 +376,7 @@ pub trait SchemaManager: Sync {
         name: &Identifier,
         table_name: &Identifier,
     ) -> Result<String> {
-        default::get_drop_unique_constraint_sql(self, name, table_name)
+        default::get_drop_unique_constraint_sql(self.as_dyn(), name, table_name)
     }
 
     /// Returns the SQL to drop a constraint.
@@ -372,7 +388,7 @@ pub trait SchemaManager: Sync {
         constraint: &Identifier,
         table_name: &Identifier,
     ) -> Result<String> {
-        default::get_drop_constraint_sql(self.get_platform()?, constraint, table_name)
+        default::get_drop_constraint_sql(self.get_platform()?.as_dyn(), constraint, table_name)
     }
 
     /// Returns the SQL to drop a foreign key.
@@ -381,16 +397,16 @@ pub trait SchemaManager: Sync {
         foreign_key: &dyn IntoIdentifier,
         table_name: &dyn IntoIdentifier,
     ) -> Result<String> {
-        default::get_drop_foreign_key_sql(self.get_platform()?, foreign_key, table_name)
+        default::get_drop_foreign_key_sql(self.get_platform()?.as_dyn(), foreign_key, table_name)
     }
 
     /// Returns the SQL snippet to drop an existing sequence.
     fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String> {
-        default::get_drop_sequence_sql(self.get_platform()?, sequence)
+        default::get_drop_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
     fn get_drop_view_sql(&self, name: &Identifier) -> Result<String> {
-        default::get_drop_view_sql(self.get_platform()?, name)
+        default::get_drop_view_sql(self.get_platform()?.as_dyn(), name)
     }
 
     /// Lists the available databases for this connection.
@@ -506,7 +522,11 @@ pub trait SchemaManager: Sync {
         Box::pin(async move {
             let columns = self.list_table_columns(&name, None).await?;
 
-            let foreign_keys = if self.get_platform()?.supports_foreign_key_constraints() {
+            let foreign_keys = if self
+                .get_platform()?
+                .as_dyn()
+                .supports_foreign_key_constraints()
+            {
                 self.list_table_foreign_keys(&name).await?
             } else {
                 vec![]
@@ -621,7 +641,11 @@ pub trait SchemaManager: Sync {
     ) -> AsyncResult<HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
-            if !self.get_platform()?.supports_foreign_key_constraints() {
+            if !self
+                .get_platform()?
+                .as_dyn()
+                .supports_foreign_key_constraints()
+            {
                 Ok(HashMap::new())
             } else {
                 fetch_all_associative_grouped(
@@ -677,17 +701,17 @@ pub trait SchemaManager: Sync {
     /// Obtains DBMS specific SQL code portion needed to declare a generic type
     /// column to be used in statements like CREATE TABLE.
     fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String> {
-        default::get_column_declaration_sql(self, name, column)
+        default::get_column_declaration_sql(self.as_dyn(), name, column)
     }
 
     /// Adds condition for partial index.
     fn get_partial_index_sql(&self, index: &Index) -> Result<String> {
-        default::get_partial_index_sql(self.get_platform()?, index)
+        default::get_partial_index_sql(self.get_platform()?.as_dyn(), index)
     }
 
     /// Gets the comment of a passed column modified by potential doctrine type comment hints.
     fn get_column_comment(&self, column: &Column) -> Result<String> {
-        default::get_column_comment(self.get_platform()?, column)
+        default::get_column_comment(self.get_platform()?.as_dyn(), column)
     }
 
     /// Drops a database.
@@ -892,28 +916,28 @@ pub trait SchemaManager: Sync {
         &self,
         diff: &mut TableDiff,
     ) -> Result<Vec<String>> {
-        default::get_pre_alter_table_index_foreign_key_sql(self, diff)
+        default::get_pre_alter_table_index_foreign_key_sql(self.as_dyn(), diff)
     }
 
     /// # Protected
     fn get_post_alter_table_index_foreign_key_sql(&self, diff: &TableDiff) -> Result<Vec<String>> {
-        default::get_post_alter_table_index_foreign_key_sql(self, diff)
+        default::get_post_alter_table_index_foreign_key_sql(self.as_dyn(), diff)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set a CHECK constraint
     /// declaration to be used in statements like CREATE TABLE.
     fn get_check_declaration_sql(&self, definition: &[ColumnData]) -> Result<String> {
-        default::get_check_declaration_sql(self, definition)
+        default::get_check_declaration_sql(self.as_dyn(), definition)
     }
 
     fn get_check_field_declaration_sql(&self, definition: &ColumnData) -> Result<String> {
-        default::get_check_field_declaration_sql(self, definition)
+        default::get_check_field_declaration_sql(self.as_dyn(), definition)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set an index
     /// declaration to be used in statements like CREATE TABLE.
     fn get_index_field_declaration_list_sql(&self, index: &Index) -> Result<String> {
-        default::get_index_field_declaration_list_sql(self.get_platform()?, index)
+        default::get_index_field_declaration_list_sql(self.get_platform()?.as_dyn(), index)
     }
 
     #[allow(unused_variables)]
@@ -936,17 +960,17 @@ pub trait SchemaManager: Sync {
         index: &Index,
         table_name: &Identifier,
     ) -> Result<Vec<String>> {
-        default::get_rename_index_sql(self, old_index_name, index, table_name)
+        default::get_rename_index_sql(self.as_dyn(), old_index_name, index, table_name)
     }
 
     /// Compares the definitions of the given columns in the context of this platform.
     fn columns_equal(&self, column1: &Column, column2: &Column) -> Result<bool> {
-        default::columns_equal(self, column1, column2)
+        default::columns_equal(self.as_dyn(), column1, column2)
     }
 
     /// Gets declaration of a number of columns in bulk.
     fn get_column_declaration_list_sql(&self, columns: &[ColumnData]) -> Result<String> {
-        default::get_column_declaration_list_sql(self, columns)
+        default::get_column_declaration_list_sql(self.as_dyn(), columns)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set a unique
@@ -956,19 +980,19 @@ pub trait SchemaManager: Sync {
         name: &str,
         constraint: &UniqueConstraint,
     ) -> Result<String> {
-        default::get_unique_constraint_declaration_sql(self, name, constraint)
+        default::get_unique_constraint_declaration_sql(self.as_dyn(), name, constraint)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set an index
     /// declaration to be used in statements like CREATE TABLE.
     fn get_index_declaration_sql(&self, name: &str, index: &Index) -> Result<String> {
-        default::get_index_declaration_sql(self, name, index)
+        default::get_index_declaration_sql(self.as_dyn(), name, index)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set the COLLATION
     /// of a column declaration to be used in statements like CREATE TABLE.
     fn get_column_collation_declaration_sql(&self, collation: &str) -> Result<String> {
-        default::get_column_collation_declaration_sql(self.get_platform()?, collation)
+        default::get_column_collation_declaration_sql(self.get_platform()?.as_dyn(), collation)
     }
 
     /// Obtain DBMS specific SQL code portion needed to set the FOREIGN KEY constraint
@@ -977,7 +1001,7 @@ pub trait SchemaManager: Sync {
         &self,
         foreign_key: &ForeignKeyConstraint,
     ) -> Result<String> {
-        default::get_foreign_key_declaration_sql(self, foreign_key)
+        default::get_foreign_key_declaration_sql(self.as_dyn(), foreign_key)
     }
 
     /// Returns the FOREIGN KEY query section dealing with non-standard options
@@ -986,7 +1010,7 @@ pub trait SchemaManager: Sync {
         &self,
         foreign_key: &ForeignKeyConstraint,
     ) -> Result<String> {
-        default::get_advanced_foreign_key_options_sql(self, foreign_key)
+        default::get_advanced_foreign_key_options_sql(self.as_dyn(), foreign_key)
     }
 
     /// Returns the given referential action in uppercase if valid, otherwise throws an exception.
@@ -1003,7 +1027,7 @@ pub trait SchemaManager: Sync {
         &self,
         foreign_key: &ForeignKeyConstraint,
     ) -> Result<String> {
-        default::get_foreign_key_base_declaration_sql(self.get_platform()?, foreign_key)
+        default::get_foreign_key_base_declaration_sql(self.get_platform()?.as_dyn(), foreign_key)
     }
 
     /// Obtains DBMS specific SQL code portion needed to set an index
@@ -1019,7 +1043,7 @@ pub trait SchemaManager: Sync {
         diff: &TableDiff,
         column_sql: Vec<String>,
     ) -> Result<(bool, Vec<String>)> {
-        default::on_schema_alter_table_add_column(self.get_platform()?, column, diff, column_sql)
+        default::on_schema_alter_table_add_column(self.as_dyn(), column, diff, column_sql)
     }
 
     /// # Protected
@@ -1029,7 +1053,7 @@ pub trait SchemaManager: Sync {
         diff: &TableDiff,
         column_sql: Vec<String>,
     ) -> Result<(bool, Vec<String>)> {
-        default::on_schema_alter_table_remove_column(self.get_platform()?, column, diff, column_sql)
+        default::on_schema_alter_table_remove_column(self.as_dyn(), column, diff, column_sql)
     }
 
     /// # Protected
@@ -1039,12 +1063,7 @@ pub trait SchemaManager: Sync {
         diff: &TableDiff,
         column_sql: Vec<String>,
     ) -> Result<(bool, Vec<String>)> {
-        default::on_schema_alter_table_change_column(
-            self.get_platform()?,
-            column_diff,
-            diff,
-            column_sql,
-        )
+        default::on_schema_alter_table_change_column(self.as_dyn(), column_diff, diff, column_sql)
     }
 
     /// # Protected
@@ -1056,7 +1075,7 @@ pub trait SchemaManager: Sync {
         column_sql: Vec<String>,
     ) -> Result<(bool, Vec<String>)> {
         default::on_schema_alter_table_rename_column(
-            self.get_platform()?,
+            self.as_dyn(),
             old_column_name,
             column,
             diff,
@@ -1070,7 +1089,7 @@ pub trait SchemaManager: Sync {
         diff: &TableDiff,
         sql: Vec<String>,
     ) -> Result<(bool, Vec<String>)> {
-        default::on_schema_alter_table(self.get_platform()?, diff, sql)
+        default::on_schema_alter_table(self.as_dyn(), diff, sql)
     }
 
     fn get_portable_databases_list(&self, databases: Vec<Row>) -> Result<Vec<Identifier>> {
@@ -1203,7 +1222,7 @@ pub trait SchemaManager: Sync {
             }
         }
 
-        let event_manager = self.get_platform()?.get_event_manager();
+        let event_manager = self.get_platform()?.as_dyn().get_event_manager();
 
         let mut indexes = HashMap::new();
         for (index_key, data) in result {
@@ -1245,7 +1264,7 @@ pub trait SchemaManager: Sync {
         let mut list = HashMap::new();
         for view in rows {
             if let Some(view) = self.get_portable_view_definition(&view)? {
-                let view_name = view.get_quoted_name(&platform);
+                let view_name = view.get_quoted_name(platform.as_dyn());
                 list.insert(view_name.to_lowercase(), view);
             }
         }
@@ -1328,9 +1347,9 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn _get_create_table_sql(&self, name: &Identifier, columns: &[ColumnData], options: &TableOptions) -> Result<Vec<String>>;
             fn get_create_temporary_table_snippet_sql(&self) -> Result<String>;
             fn get_create_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
-            fn get_create_index_sql(&self, index: &Index, table: &Identifier) -> Result<String>;
+            fn get_create_index_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
-            fn get_create_primary_key_sql(&self, index: &Index, table: &Identifier) -> Result<String>;
+            fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
             fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &Identifier) -> Result<String>;
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &Identifier) -> Result<String>;
@@ -1442,6 +1461,10 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn create_schema(&self) -> AsyncResult<Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
         }
+    }
+
+    fn as_dyn(&self) -> &dyn SchemaManager {
+        self
     }
 }
 
@@ -1455,9 +1478,9 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn _get_create_table_sql(&self, name: &Identifier, columns: &[ColumnData], options: &TableOptions) -> Result<Vec<String>>;
             fn get_create_temporary_table_snippet_sql(&self) -> Result<String>;
             fn get_create_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
-            fn get_create_index_sql(&self, index: &Index, table: &Identifier) -> Result<String>;
+            fn get_create_index_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
-            fn get_create_primary_key_sql(&self, index: &Index, table: &Identifier) -> Result<String>;
+            fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
             fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &Identifier) -> Result<String>;
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &Identifier) -> Result<String>;
@@ -1570,40 +1593,20 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
         }
     }
+
+    fn as_dyn(&self) -> &dyn SchemaManager {
+        self
+    }
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
-    use crate::driver::connection::tests::MockConnection;
-    use crate::schema::{Column, Comparator, SchemaManager};
-    use crate::{Connection, EventDispatcher, Row, SchemaDropTableEvent};
-
-    pub struct MockSchemaManager<'a> {
-        connection: &'a Connection,
-    }
-
-    impl<'a> MockSchemaManager<'a> {
-        pub fn new(connection: &'a Connection) -> Self {
-            Self { connection }
-        }
-    }
-
-    impl<'a> SchemaManager for MockSchemaManager<'a> {
-        fn get_connection(&self) -> &'a Connection {
-            self.connection
-        }
-
-        fn get_portable_table_column_definition(
-            &self,
-            table_column: &Row,
-        ) -> crate::Result<Column> {
-            todo!()
-        }
-
-        fn create_comparator(&self) -> Box<dyn Comparator + Send + '_> {
-            todo!()
-        }
-    }
+mod tests {
+    use crate::schema::{
+        ForeignKeyReferentialAction, Index, IntoIdentifier, SchemaManager, Table, UniqueConstraint,
+    };
+    use crate::tests::{create_connection, MockConnection};
+    use crate::{Connection, EventDispatcher, SchemaDropTableEvent};
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn can_overwrite_drop_table_sql_via_event_listener() {
@@ -1626,5 +1629,99 @@ pub(crate) mod tests {
         let d = schema_manager.get_drop_table_sql(&"table".into()).unwrap();
 
         assert_eq!("-- DROP SCHEMA table", d);
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    pub async fn returns_foreign_key_referential_action_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let tests = [
+            (ForeignKeyReferentialAction::Cascade, "CASCADE"),
+            (ForeignKeyReferentialAction::SetNull, "SET NULL"),
+            (ForeignKeyReferentialAction::NoAction, "NO ACTION"),
+            (ForeignKeyReferentialAction::Restrict, "RESTRICT"),
+            (ForeignKeyReferentialAction::SetDefault, "SET DEFAULT"),
+        ];
+
+        for (action, expected) in tests {
+            assert_eq!(
+                schema_manager
+                    .get_foreign_key_referential_action_sql(&action)
+                    .unwrap(),
+                expected
+            )
+        }
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    pub async fn create_with_no_columns() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let table = Table::new("test".into_identifier());
+        let result = schema_manager.get_create_table_sql(&table, None);
+
+        assert_eq!(result.is_err(), true);
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    pub async fn generates_partial_indexes_sql_only_when_supporting_partial_indexes() {
+        let r#where = "test IS NULL AND test2 IS NOT NULL";
+        let mut index_def = Index::new(
+            "name",
+            &["test", "test2"],
+            false,
+            false,
+            &[],
+            HashMap::default(),
+        );
+        index_def.r#where = Some(r#where.clone().into());
+        let unique_constraint =
+            UniqueConstraint::new("name", &["test", "test2"], &[], HashMap::default());
+
+        let expected = format!(" WHERE {}", r#where);
+        let mut indexes = vec![];
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        indexes.push(
+            schema_manager
+                .get_index_declaration_sql("name", &index_def)
+                .unwrap(),
+        );
+        let unique_constraint_sql = schema_manager
+            .get_unique_constraint_declaration_sql("name", &unique_constraint)
+            .unwrap();
+
+        assert_eq!(
+            unique_constraint_sql.ends_with(&expected),
+            false,
+            "WHERE clause should NOT be present"
+        );
+
+        indexes.push(
+            schema_manager
+                .get_create_index_sql(&index_def, &"table")
+                .unwrap(),
+        );
+        for index in indexes {
+            if schema_manager.get_platform().unwrap().get_name() == "postgresql" {
+                assert_eq!(
+                    index.ends_with(&expected),
+                    true,
+                    "WHERE clause should be present"
+                );
+            } else {
+                assert_eq!(
+                    index.ends_with(&expected),
+                    false,
+                    "WHERE clause should NOT be present"
+                );
+            }
+        }
     }
 }

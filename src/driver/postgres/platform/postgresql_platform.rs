@@ -35,6 +35,10 @@ impl DatabasePlatform for PostgreSQLPlatform {
         self.ev.clone()
     }
 
+    fn as_dyn(&self) -> &dyn DatabasePlatform {
+        self
+    }
+
     fn get_substring_expression(
         &self,
         string: &str,
@@ -273,4 +277,54 @@ impl DatabasePlatform for PostgreSQLPlatform {
     fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a> {
         Box::new(PostgreSQLSchemaManager::new(connection))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::postgres::PostgreSQLPlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::tests::common_platform_tests;
+    use crate::EventDispatcher;
+    use std::sync::Arc;
+
+    pub fn create_postgresql_platform() -> PostgreSQLPlatform {
+        PostgreSQLPlatform::new(Arc::new(EventDispatcher::new()))
+    }
+
+    #[test]
+    pub fn quote_identifier() {
+        let platform = create_postgresql_platform();
+        let c = '"';
+
+        assert_eq!(platform.quote_identifier("test"), format!("{}test{}", c, c));
+        assert_eq!(
+            platform.quote_identifier("test.test"),
+            format!("{}test{}.{}test{}", c, c, c, c)
+        );
+        assert_eq!(
+            platform.quote_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    #[test]
+    pub fn quote_single_identifier() {
+        let platform = create_postgresql_platform();
+        let c = '"';
+
+        assert_eq!(
+            platform.quote_single_identifier("test"),
+            format!("{}test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier("test.test"),
+            format!("{}test.test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    common_platform_tests!(create_postgresql_platform());
 }

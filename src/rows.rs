@@ -149,7 +149,7 @@ impl RowsIterator {
         self.rows.iterator.try_next()
     }
 
-    pub async fn to_vec(self) -> Result<Vec<Row>> {
+    pub async fn into_vec(self) -> Result<Vec<Row>> {
         self.rows.iterator.try_collect().await
     }
 

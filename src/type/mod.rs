@@ -35,7 +35,8 @@ pub use integer_type::IntegerType;
 pub use json_type::JsonType;
 use lazy_static::lazy_static;
 pub use simple_array_type::SimpleArrayType;
-use std::any::TypeId;
+use std::any::{type_name, TypeId};
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 pub use string_type::StringType;
 pub use text_type::TextType;
@@ -57,6 +58,74 @@ pub const SIMPLE_ARRAY: &str = "simple_array";
 pub const STRING: &str = "string";
 pub const TEXT: &str = "text";
 pub const TIME: &str = "time";
+
+pub trait AsTypeId {
+    fn type_id(&self) -> TypeId;
+}
+
+#[derive(Clone)]
+pub struct TypePtr {
+    t: Arc<Box<dyn Type + Send + Sync>>,
+    type_id: TypeId,
+    type_name: &'static str,
+}
+
+impl Debug for TypePtr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TypePtr")
+            .field("type_id", &self.type_id)
+            .field("type_name", &self.type_name)
+            .finish()
+    }
+}
+
+impl PartialEq for TypePtr {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_id == other.type_id
+    }
+}
+
+impl TypePtr {
+    fn new<T: Type + Send + Sync + 'static>() -> Self {
+        Self {
+            t: Arc::new(T::default()),
+            type_id: TypeId::of::<T>(),
+            type_name: type_name::<T>(),
+        }
+    }
+
+    delegate::delegate! {
+        to(**(self.t)) {
+            pub fn convert_to_database_value(
+                &self,
+                value: Value,
+                platform: &dyn DatabasePlatform,
+            ) -> Result<Value>;
+            pub fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value>;
+            pub fn get_name(&self) -> &'static str;
+            pub fn requires_sql_comment_hint(&self, platform: &dyn DatabasePlatform) -> bool;
+            pub fn get_sql_declaration(
+                &self,
+                column: &ColumnData,
+                platform: &dyn DatabasePlatform,
+            ) -> Result<String>;
+            pub fn get_binding_type(&self) -> ParameterType;
+            pub fn get_mapped_database_types(&self, platform: &dyn DatabasePlatform) -> Vec<String>;
+        }
+    }
+}
+
+impl AsTypeId for TypePtr {
+    fn type_id(&self) -> TypeId {
+        self.type_id
+    }
+}
+
+impl AsTypeId for TypeId {
+    fn type_id(&self) -> TypeId {
+        *self
+    }
+}
 
 pub trait Type {
     fn default() -> Box<dyn Type + Sync + Send>
@@ -105,51 +174,36 @@ pub trait Type {
 }
 
 pub trait IntoType {
-    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>>;
+    fn into_type(self) -> Result<TypePtr>;
 }
 
 impl IntoType for &str {
-    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
+    fn into_type(self) -> Result<TypePtr> {
         TypeManager::get_instance().get_type_by_name(self)
     }
 }
 
 impl IntoType for &String {
-    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
+    fn into_type(self) -> Result<TypePtr> {
         TypeManager::get_instance().get_type_by_name(self)
     }
 }
 
 impl IntoType for TypeId {
-    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
+    fn into_type(self) -> Result<TypePtr> {
         TypeManager::get_instance().get_type(self)
     }
 }
 
-impl IntoType for Arc<Box<dyn Type + Send + Sync>> {
-    fn into_type(self) -> Result<Arc<Box<dyn Type + Send + Sync>>> {
-        Ok(self)
+impl<T: Type + Send + Sync + 'static> IntoType for T {
+    fn into_type(self) -> Result<TypePtr> {
+        TypeManager::get_instance().get_type(TypePtr::new::<Self>())
     }
 }
 
-impl<T: Type + ?Sized> Type for Box<T> {
-    fn default() -> Box<dyn Type + Sync + Send>
-    where
-        Self: Sized,
-    {
-        unreachable!()
-    }
-
-    delegate! {
-        to (**self) {
-            fn convert_to_database_value(&self, value: Value, platform: &dyn DatabasePlatform)-> Result<Value>;
-            fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value>;
-            fn get_name(&self) -> &'static str;
-            fn requires_sql_comment_hint(&self, platform: &dyn DatabasePlatform) -> bool;
-            fn get_sql_declaration(&self, column: &ColumnData, platform: &dyn DatabasePlatform) -> Result<String>;
-            fn get_binding_type(&self) -> ParameterType;
-            fn get_mapped_database_types(&self, platform: &dyn DatabasePlatform) -> Vec<String>;
-        }
+impl IntoType for TypePtr {
+    fn into_type(self) -> Result<TypePtr> {
+        Ok(self)
     }
 }
 
@@ -175,7 +229,7 @@ impl<T: Type + ?Sized> Type for &mut T {
 }
 
 pub struct TypeManager {
-    type_map: DashMap<TypeId, Arc<Box<dyn Type + Sync + Send>>>,
+    type_map: DashMap<TypeId, TypePtr>,
 }
 
 lazy_static! {
@@ -185,54 +239,41 @@ lazy_static! {
 impl TypeManager {
     fn new() -> Self {
         let type_map = DashMap::new();
-        type_map.insert(TypeId::of::<BigintType>(), Arc::new(BigintType::default()));
-        type_map.insert(TypeId::of::<BinaryType>(), Arc::new(BinaryType::default()));
-        type_map.insert(TypeId::of::<BlobType>(), Arc::new(BlobType::default()));
-        type_map.insert(
-            TypeId::of::<BooleanType>(),
-            Arc::new(BooleanType::default()),
-        );
-        type_map.insert(TypeId::of::<DateType>(), Arc::new(DateType::default()));
-        type_map.insert(
-            TypeId::of::<DateTimeType>(),
-            Arc::new(DateTimeType::default()),
-        );
+        type_map.insert(TypeId::of::<BigintType>(), TypePtr::new::<BigintType>());
+        type_map.insert(TypeId::of::<BinaryType>(), TypePtr::new::<BinaryType>());
+        type_map.insert(TypeId::of::<BlobType>(), TypePtr::new::<BlobType>());
+        type_map.insert(TypeId::of::<BooleanType>(), TypePtr::new::<BooleanType>());
+        type_map.insert(TypeId::of::<DateType>(), TypePtr::new::<DateType>());
+        type_map.insert(TypeId::of::<DateTimeType>(), TypePtr::new::<DateTimeType>());
         type_map.insert(
             TypeId::of::<DateTimeTzType>(),
-            Arc::new(DateTimeTzType::default()),
+            TypePtr::new::<DateTimeTzType>(),
         );
-        type_map.insert(
-            TypeId::of::<DecimalType>(),
-            Arc::new(DecimalType::default()),
-        );
-        type_map.insert(TypeId::of::<FloatType>(), Arc::new(FloatType::default()));
-        type_map.insert(TypeId::of::<GuidType>(), Arc::new(GuidType::default()));
-        type_map.insert(
-            TypeId::of::<IntegerType>(),
-            Arc::new(IntegerType::default()),
-        );
-        type_map.insert(TypeId::of::<JsonType>(), Arc::new(JsonType::default()));
+        type_map.insert(TypeId::of::<DecimalType>(), TypePtr::new::<DecimalType>());
+        type_map.insert(TypeId::of::<FloatType>(), TypePtr::new::<FloatType>());
+        type_map.insert(TypeId::of::<GuidType>(), TypePtr::new::<GuidType>());
+        type_map.insert(TypeId::of::<IntegerType>(), TypePtr::new::<IntegerType>());
+        type_map.insert(TypeId::of::<JsonType>(), TypePtr::new::<JsonType>());
         type_map.insert(
             TypeId::of::<SimpleArrayType>(),
-            Arc::new(SimpleArrayType::default()),
+            TypePtr::new::<SimpleArrayType>(),
         );
-        type_map.insert(TypeId::of::<StringType>(), Arc::new(StringType::default()));
-        type_map.insert(TypeId::of::<TextType>(), Arc::new(TextType::default()));
-        type_map.insert(TypeId::of::<TimeType>(), Arc::new(TimeType::default()));
+        type_map.insert(TypeId::of::<StringType>(), TypePtr::new::<StringType>());
+        type_map.insert(TypeId::of::<TextType>(), TypePtr::new::<TextType>());
+        type_map.insert(TypeId::of::<TimeType>(), TypePtr::new::<TimeType>());
 
         Self { type_map }
     }
 
-    pub fn register<T: Type + 'static>(&self) {
-        self.type_map
-            .insert(TypeId::of::<T>(), Arc::new(T::default()));
+    pub fn register<T: Type + Send + Sync + 'static>(&self) {
+        self.type_map.insert(TypeId::of::<T>(), TypePtr::new::<T>());
     }
 
     pub fn get_instance() -> &'static Self {
         &TYPE_MANAGER_INSTANCE
     }
 
-    pub fn get_type_by_name(&self, type_name: &str) -> Result<Arc<Box<dyn Type + Sync + Send>>> {
+    pub fn get_type_by_name(&self, type_name: &str) -> Result<TypePtr> {
         self.type_map
             .iter()
             .find(|t| t.get_name() == type_name)
@@ -240,11 +281,12 @@ impl TypeManager {
             .ok_or_else(|| Error::new(ErrorKind::UnknownType, format!("You have requested a non-existent type {}. Please register it in the type manager before trying to use it", type_name)))
     }
 
-    pub fn get_type(&self, r#type: TypeId) -> Result<Arc<Box<dyn Type + Sync + Send>>> {
+    pub fn get_type<T: AsTypeId>(&self, r#type: T) -> Result<TypePtr> {
+        let type_id = r#type.type_id();
         self.type_map
-            .get(&r#type)
+            .get(&type_id)
             .map(|r| r.value().clone())
-            .ok_or_else(|| Error::unknown_type(r#type))
+            .ok_or_else(|| Error::unknown_type(type_id))
     }
 
     pub fn get_types(&self) -> Result<Vec<TypeId>> {

@@ -36,6 +36,3 @@ pub use unique_constraint::UniqueConstraint;
 pub use view::View;
 
 pub use ::creed_derive::IntoIdentifier;
-
-#[cfg(test)]
-pub(crate) use schema_manager::tests;

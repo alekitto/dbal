@@ -1,15 +1,14 @@
 use super::sqlite_platform::AbstractSQLitePlatform;
 use crate::driver::sqlite::platform::AbstractSQLiteSchemaManager;
 use crate::error::ErrorKind;
-use crate::platform::{default, CreateFlags, DateIntervalUnit, TrimMode};
-use crate::r#type::{BigintType, DateTimeType, DateType, IntegerType, StringType, TimeType};
+use crate::platform::{default, CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode};
+use crate::r#type::{IntoType, BIGINT, DATE, DATETIME, INTEGER, STRING, TIME};
 use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
 use crate::{Error, Result, TransactionIsolationLevel};
 use itertools::Itertools;
-use std::any::TypeId;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry::Occupied;
 use std::collections::HashMap;
@@ -311,8 +310,8 @@ pub fn get_list_views_sql() -> Result<String> {
     Ok("SELECT name, sql FROM sqlite_master WHERE type='view' AND sql NOT NULL".to_string())
 }
 
-pub fn get_advanced_foreign_key_options_sql<T: AbstractSQLiteSchemaManager + ?Sized>(
-    this: &T,
+pub fn get_advanced_foreign_key_options_sql(
+    this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
     let mut query = default::get_advanced_foreign_key_options_sql(this, foreign_key)?;
@@ -330,10 +329,7 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractSQLiteSchemaManager + ?Si
     Ok(query)
 }
 
-pub fn get_truncate_table_sql<T: AbstractSQLitePlatform + ?Sized>(
-    this: &T,
-    table_name: &Identifier,
-) -> String {
+pub fn get_truncate_table_sql(this: &dyn DatabasePlatform, table_name: &Identifier) -> String {
     format!("DELETE FROM {}", table_name.get_quoted_name(this))
 }
 
@@ -425,10 +421,10 @@ fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Ind
         if changed {
             new_indexes.push(Index::new(
                 index.get_name(),
-                index_columns,
+                &index_columns,
                 index.is_unique(),
                 index.is_primary(),
-                index.get_flags().clone(),
+                index.get_flags(),
                 index.get_options().clone(),
             ));
         } else {
@@ -599,8 +595,8 @@ pub fn get_drop_tables_sql<T: AbstractSQLiteSchemaManager + Sync>(
     Ok(sql)
 }
 
-pub fn get_create_table_sql<T: SchemaManager + Sync + ?Sized>(
-    this: &T,
+pub fn get_create_table_sql(
+    this: &dyn SchemaManager,
     table: &Table,
     create_flags: Option<CreateFlags>,
 ) -> Result<Vec<String>> {
@@ -624,17 +620,15 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
     diff: &mut TableDiff,
 ) -> Result<Option<Vec<String>>> {
     let mut changed_columns = vec![];
+    let integer_type = INTEGER.into_type()?;
+    let bigint_type = BIGINT.into_type()?;
 
     // Suppress changes on integer type autoincrement columns.
     for column_diff in diff.changed_columns.drain(..) {
-        if column_diff.column.is_autoincrement()
-            && column_diff.column.get_type() == TypeId::of::<IntegerType>()
-        {
+        if column_diff.column.is_autoincrement() && column_diff.column.get_type() == integer_type {
             if let Some(from_column) = &column_diff.from_column {
                 let from_column_type = from_column.get_type();
-                if from_column_type == TypeId::of::<IntegerType>()
-                    || from_column_type == TypeId::of::<BigintType>()
-                {
+                if from_column_type == integer_type || from_column_type == bigint_type {
                     continue;
                 }
             }
@@ -680,17 +674,17 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             if definition.column_definition.is_some()
                 || definition.autoincrement.unwrap_or(false)
                 || definition.unique
-                || (r#type == TypeId::of::<DateTimeType>()
+                || (r#type == DATETIME.into_type()?
                     && definition.default == platform.get_current_timestamp_sql().into())
-                || (r#type == TypeId::of::<DateType>()
+                || (r#type == DATE.into_type()?
                     && definition.default == platform.get_current_date_sql().into())
-                || (r#type == TypeId::of::<TimeType>()
+                || (r#type == TIME.into_type()?
                     && definition.default == platform.get_current_time_sql().into())
             {
                 return Ok(None);
             }
 
-            if r#type == TypeId::of::<StringType>() {
+            if r#type == STRING.into_type()? {
                 definition.length = Some(definition.length.unwrap_or(255));
             }
 

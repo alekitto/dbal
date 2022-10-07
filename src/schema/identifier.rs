@@ -8,13 +8,13 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new<S: Into<String>>(identifier: S, quote: bool) -> Self {
-        let identifier = identifier.into();
+    pub fn new<S: AsRef<str>>(identifier: S, quote: bool) -> Self {
+        let identifier = identifier.as_ref();
         let mut asset = AbstractAsset::default();
         asset.set_name(identifier);
 
         if quote && !asset.is_quoted() {
-            asset.set_name(format!(r#""{}""#, asset.get_name()));
+            asset.set_name(&format!(r#""{}""#, asset.get_name()));
         }
 
         Self { asset }
@@ -29,6 +29,12 @@ pub trait IntoIdentifier {
 impl IntoIdentifier for str {
     fn into_identifier(&self) -> Identifier {
         Identifier::from(self)
+    }
+}
+
+impl IntoIdentifier for &str {
+    fn into_identifier(&self) -> Identifier {
+        Identifier::from(*self)
     }
 }
 

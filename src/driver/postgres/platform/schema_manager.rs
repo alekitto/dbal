@@ -19,6 +19,10 @@ pub trait AbstractPostgreSQLSchemaManager: SchemaManager {}
 
 impl AbstractPostgreSQLSchemaManager for PostgreSQLSchemaManager<'_> {}
 impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
+    fn as_dyn(&self) -> &dyn SchemaManager {
+        self
+    }
+
     #[inline]
     fn get_list_databases_sql(&self) -> Result<String> {
         postgresql::get_list_databases_sql()
@@ -26,17 +30,17 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
 
     #[inline]
     fn get_list_sequences_sql(&self, database: &str) -> Result<String> {
-        postgresql::get_list_sequences_sql(self, database)
+        postgresql::get_list_sequences_sql(self.as_dyn(), database)
     }
 
     #[inline]
     fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
-        postgresql::get_list_table_columns_sql(self, table)
+        postgresql::get_list_table_columns_sql(self.as_dyn(), table)
     }
 
     #[inline]
     fn get_list_table_indexes_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
-        postgresql::get_list_table_indexes_sql(self, table)
+        postgresql::get_list_table_indexes_sql(self.as_dyn(), table)
     }
 
     #[inline]
@@ -51,7 +55,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
 
     #[inline]
     fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
-        postgresql::get_list_table_foreign_keys_sql(self, table)
+        postgresql::get_list_table_foreign_keys_sql(self.as_dyn(), table)
     }
 
     #[inline]
@@ -59,7 +63,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
     where
         Self: Sync,
     {
-        postgresql::get_alter_table_sql(self, diff)
+        postgresql::get_alter_table_sql(self.as_dyn(), diff)
     }
 
     #[inline]
@@ -69,27 +73,32 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         column: &Column,
         comment: &str,
     ) -> Result<String> {
-        postgresql::get_comment_on_column_sql(self.get_platform()?, table_name, column, comment)
+        postgresql::get_comment_on_column_sql(
+            self.get_platform()?.as_dyn(),
+            table_name,
+            column,
+            comment,
+        )
     }
 
     #[inline]
     fn get_column_collation_declaration_sql(&self, collation: &str) -> Result<String> {
-        postgresql::get_column_collation_declaration_sql(self.get_platform()?, collation)
+        postgresql::get_column_collation_declaration_sql(self.get_platform()?.as_dyn(), collation)
     }
 
     #[inline]
     fn get_create_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        postgresql::get_create_sequence_sql(self.get_platform()?, sequence)
+        postgresql::get_create_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
     #[inline]
     fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String> {
-        postgresql::get_alter_sequence_sql(self.get_platform()?, sequence)
+        postgresql::get_alter_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
     #[inline]
     fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String> {
-        postgresql::get_drop_sequence_sql(self.get_platform()?, sequence)
+        postgresql::get_drop_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
     #[inline]
@@ -102,12 +111,12 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         &self,
         foreign_key: &ForeignKeyConstraint,
     ) -> Result<String> {
-        postgresql::get_advanced_foreign_key_options_sql(self, foreign_key)
+        postgresql::get_advanced_foreign_key_options_sql(self.as_dyn(), foreign_key)
     }
 
     #[inline]
     fn get_list_table_constraints_sql(&self, table: &str) -> Result<String> {
-        postgresql::get_list_table_constraints_sql(self, table)
+        postgresql::get_list_table_constraints_sql(self.as_dyn(), table)
     }
 
     fn get_drop_foreign_key_sql(
@@ -115,7 +124,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         foreign_key: &dyn IntoIdentifier,
         table_name: &dyn IntoIdentifier,
     ) -> Result<String> {
-        postgresql::get_drop_foreign_key_sql(self, foreign_key, table_name)
+        postgresql::get_drop_foreign_key_sql(self.as_dyn(), foreign_key, table_name)
     }
 
     fn _get_create_table_sql(
@@ -124,7 +133,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         columns: &[ColumnData],
         options: &TableOptions,
     ) -> Result<Vec<String>> {
-        postgresql::_get_create_table_sql(self, name, columns, options)
+        postgresql::_get_create_table_sql(self.as_dyn(), name, columns, options)
     }
 
     fn get_rename_index_sql(
@@ -133,7 +142,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         index: &Index,
         table_name: &Identifier,
     ) -> Result<Vec<String>> {
-        postgresql::get_rename_index_sql(self, old_index_name, index, table_name)
+        postgresql::get_rename_index_sql(self.as_dyn(), old_index_name, index, table_name)
     }
 
     fn get_connection(&self) -> &'a Connection {

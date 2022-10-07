@@ -34,6 +34,10 @@ impl DatabasePlatform for SQLitePlatform {
         self.ev.clone()
     }
 
+    fn as_dyn(&self) -> &dyn DatabasePlatform {
+        self
+    }
+
     fn get_regexp_expression(&self) -> Result<String> {
         sqlite::get_regexp_expression()
     }
@@ -239,4 +243,54 @@ impl DatabasePlatform for SQLitePlatform {
     fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a> {
         Box::new(SQLiteSchemaManager::new(connection))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::sqlite::SQLitePlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::tests::common_platform_tests;
+    use crate::EventDispatcher;
+    use std::sync::Arc;
+
+    fn create_sqlite_platform() -> SQLitePlatform {
+        SQLitePlatform::new(Arc::new(EventDispatcher::new()))
+    }
+
+    #[test]
+    pub fn quote_identifier() {
+        let platform = create_sqlite_platform();
+        let c = '"';
+
+        assert_eq!(platform.quote_identifier("test"), format!("{}test{}", c, c));
+        assert_eq!(
+            platform.quote_identifier("test.test"),
+            format!("{}test{}.{}test{}", c, c, c, c)
+        );
+        assert_eq!(
+            platform.quote_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    #[test]
+    pub fn quote_single_identifier() {
+        let platform = create_sqlite_platform();
+        let c = '"';
+
+        assert_eq!(
+            platform.quote_single_identifier("test"),
+            format!("{}test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier("test.test"),
+            format!("{}test.test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    common_platform_tests!(create_sqlite_platform());
 }

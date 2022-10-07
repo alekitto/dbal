@@ -78,3 +78,6 @@ pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use value::Value;
+
+#[cfg(test)]
+pub(crate) mod tests;

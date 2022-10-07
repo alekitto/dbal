@@ -40,7 +40,7 @@ impl StatementResult {
     /// and returned into the vector.
     /// Consequently, if the statement has been fetched fully, an empty vector is returned.
     pub fn fetch_all(self) -> impl Future<Output = Result<Vec<Row>>> {
-        self.rows.to_vec()
+        self.rows.into_vec()
     }
 
     /// Returns the ID of the last inserted row, or the last value from a sequence object,

@@ -1,16 +1,14 @@
-use crate::driver::postgres::platform::postgresql_platform::AbstractPostgreSQLPlatform;
-use crate::driver::postgres::platform::AbstractPostgreSQLSchemaManager;
 use crate::error::ErrorKind;
 use crate::platform::{default, DateIntervalUnit};
-use crate::r#type::{BinaryType, BlobType, Type, TypeManager};
+use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
 use crate::schema::{
     Asset, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier, Index, IntoIdentifier,
     Sequence, TableDiff, TableOptions,
 };
-use crate::util::PlatformBox;
 use crate::{Error, Result, TransactionIsolationLevel, Value};
+use creed::platform::DatabasePlatform;
+use creed::schema::SchemaManager;
 use itertools::Itertools;
-use std::any::TypeId;
 
 // const TRUE_BOOLEAN_LITERALS: [&str; 6] = ["t", "true", "y", "yes", "on", "1"];
 const FALSE_BOOLEAN_LITERALS: [&str; 6] = ["f", "false", "n", "no", "off", "0"];
@@ -34,8 +32,8 @@ pub fn get_regex_expression() -> Result<String> {
     Ok("SIMILAR TO".to_string())
 }
 
-pub fn get_locate_expression<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_locate_expression(
+    this: &dyn DatabasePlatform,
     str: &str,
     substr: &str,
     start_pos: Option<usize>,
@@ -81,10 +79,7 @@ pub fn get_list_databases_sql() -> Result<String> {
     Ok("SELECT datname FROM pg_database".to_string())
 }
 
-pub fn get_list_sequences_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    database: &str,
-) -> Result<String> {
+pub fn get_list_sequences_sql(this: &dyn SchemaManager, database: &str) -> Result<String> {
     Ok(format!(
         "SELECT sequence_name AS relname,
                sequence_schema AS schemaname,
@@ -119,10 +114,7 @@ pub fn get_list_views_sql() -> Result<String> {
         .to_string())
 }
 
-pub fn get_list_table_foreign_keys_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    table: &str,
-) -> Result<String> {
+pub fn get_list_table_foreign_keys_sql(this: &dyn SchemaManager, table: &str) -> Result<String> {
     Ok(format!("SELECT quote_ident(r.conname) as conname, pg_catalog.pg_get_constraintdef(r.oid, true) as condef
                   FROM pg_catalog.pg_constraint r
                   WHERE r.conrelid =
@@ -136,10 +128,7 @@ pub fn get_list_table_foreign_keys_sql<T: AbstractPostgreSQLSchemaManager + ?Siz
     ))
 }
 
-pub fn get_list_table_constraints_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    table: &str,
-) -> Result<String> {
+pub fn get_list_table_constraints_sql(this: &dyn SchemaManager, table: &str) -> Result<String> {
     let table = this.quote_string_literal(&Identifier::new(table, false).get_name());
 
     Ok(format!(
@@ -160,10 +149,7 @@ WHERE oid IN (
     ))
 }
 
-pub fn get_list_table_indexes_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    table: &str,
-) -> Result<String> {
+pub fn get_list_table_indexes_sql(this: &dyn SchemaManager, table: &str) -> Result<String> {
     Ok(format!(
         r#"SELECT quote_ident(relname) as relname, pg_index.indisunique, pg_index.indisprimary,
                   pg_index.indkey, pg_index.indrelid,
@@ -179,8 +165,8 @@ pub fn get_list_table_indexes_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     ))
 }
 
-fn get_table_where_clause<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
+fn get_table_where_clause(
+    this: &dyn SchemaManager,
     table: &str,
     class_alias: &str,
     namespace_alias: &str,
@@ -210,10 +196,7 @@ fn get_table_where_clause<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     ))
 }
 
-pub fn get_list_table_columns_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    table: &str,
-) -> Result<String> {
+pub fn get_list_table_columns_sql(this: &dyn SchemaManager, table: &str) -> Result<String> {
     Ok(format!(
         r#"
 SELECT
@@ -252,8 +235,8 @@ SELECT
     ))
 }
 
-pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
+pub fn get_advanced_foreign_key_options_sql(
+    this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
     let mut query = "".to_string();
@@ -288,10 +271,7 @@ pub fn get_advanced_foreign_key_options_sql<T: AbstractPostgreSQLSchemaManager +
     Ok(query)
 }
 
-pub fn get_alter_table_sql<T: AbstractPostgreSQLSchemaManager + Sync + ?Sized>(
-    this: &T,
-    diff: &mut TableDiff,
-) -> Result<Vec<String>> {
+pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Result<Vec<String>> {
     let mut sql = vec![];
     let mut comments_sql = vec![];
     let mut column_sql = vec![];
@@ -521,15 +501,15 @@ pub fn get_alter_table_sql<T: AbstractPostgreSQLSchemaManager + Sync + ?Sized>(
 /// to database as there actually is no difference at database level.
 fn is_unchanged_binary_column(column_diff: &ColumnDiff) -> bool {
     let column_type = column_diff.column.get_type();
-    if TypeId::of::<BinaryType>() != column_type && TypeId::of::<BlobType>() != column_type {
+    let binary_type = BINARY.into_type().unwrap();
+    let blob_type = BLOB.into_type().unwrap();
+    if binary_type != column_type && blob_type != column_type {
         return false;
     }
 
     if let Some(from_column) = &column_diff.from_column {
         let from_column_type = from_column.get_type();
-        if TypeId::of::<BinaryType>() != from_column_type
-            && TypeId::of::<BlobType>() != from_column_type
-        {
+        if binary_type != from_column_type && blob_type != from_column_type {
             return false;
         }
 
@@ -543,8 +523,8 @@ fn is_unchanged_binary_column(column_diff: &ColumnDiff) -> bool {
     }
 }
 
-pub fn get_rename_index_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
+pub fn get_rename_index_sql(
+    this: &dyn SchemaManager,
     old_index_name: &Identifier,
     index: &Index,
     table_name: &Identifier,
@@ -565,7 +545,7 @@ pub fn get_rename_index_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
 }
 
 pub fn get_comment_on_column_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     table_name: &Identifier,
     column: &Column,
     comment: &str,
@@ -577,16 +557,19 @@ pub fn get_comment_on_column_sql(
     };
     Ok(format!(
         "COMMENT ON COLUMN {}.{} IS {}",
-        table_name.get_quoted_name(&platform),
-        column.get_quoted_name(&platform),
+        table_name.get_quoted_name(platform),
+        column.get_quoted_name(platform),
         comment
     ))
 }
 
-pub fn get_create_sequence_sql(platform: PlatformBox, sequence: &Sequence) -> Result<String> {
+pub fn get_create_sequence_sql(
+    platform: &dyn DatabasePlatform,
+    sequence: &Sequence,
+) -> Result<String> {
     Ok(format!(
         "CREATE SEQUENCE {} INCREMENT BY {} MINVALUE {} START {} {}",
-        sequence.get_quoted_name(&platform),
+        sequence.get_quoted_name(platform),
         sequence.get_allocation_size(),
         sequence.get_initial_value(),
         sequence.get_initial_value(),
@@ -594,10 +577,13 @@ pub fn get_create_sequence_sql(platform: PlatformBox, sequence: &Sequence) -> Re
     ))
 }
 
-pub fn get_alter_sequence_sql(platform: PlatformBox, sequence: &Sequence) -> Result<String> {
+pub fn get_alter_sequence_sql(
+    platform: &dyn DatabasePlatform,
+    sequence: &Sequence,
+) -> Result<String> {
     Ok(format!(
         "ALTER SEQUENCE {} INCREMENT BY {} {}",
-        sequence.get_quoted_name(&platform),
+        sequence.get_quoted_name(platform),
         sequence.get_allocation_size(),
         get_sequence_cache_sql(sequence)
     ))
@@ -614,14 +600,14 @@ pub fn get_sequence_cache_sql(sequence: &Sequence) -> String {
 }
 
 pub fn get_drop_sequence_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     sequence: &dyn IntoIdentifier,
 ) -> Result<String> {
     default::get_drop_sequence_sql(platform, sequence).map(|sql| sql + " CASCADE")
 }
 
-pub fn get_drop_foreign_key_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
+pub fn get_drop_foreign_key_sql(
+    this: &dyn SchemaManager,
     foreign_key: &dyn IntoIdentifier,
     table_name: &dyn IntoIdentifier,
 ) -> Result<String> {
@@ -631,8 +617,8 @@ pub fn get_drop_foreign_key_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
     )
 }
 
-pub fn _get_create_table_sql<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
+pub fn _get_create_table_sql(
+    this: &dyn SchemaManager,
     name: &Identifier,
     columns: &[ColumnData],
     options: &TableOptions,
@@ -767,8 +753,8 @@ pub fn get_sequence_next_val_sql(sequence: &str) -> Result<String> {
     Ok(format!("SELECT NEXTVAL({})", sequence))
 }
 
-pub fn get_set_transaction_isolation_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_set_transaction_isolation_sql(
+    this: &dyn DatabasePlatform,
     level: TransactionIsolationLevel,
 ) -> Result<String> {
     Ok(format!(
@@ -860,8 +846,8 @@ pub fn get_empty_identity_insert_sql(
     )
 }
 
-pub fn get_truncate_table_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_truncate_table_sql(
+    this: &dyn DatabasePlatform,
     table_name: &Identifier,
     cascade: bool,
 ) -> String {
@@ -881,8 +867,8 @@ pub fn get_blob_type_declaration_sql() -> Result<String> {
     Ok("BYTEA".to_string())
 }
 
-pub fn get_default_value_declaration_sql<T: AbstractPostgreSQLPlatform + ?Sized>(
-    this: &T,
+pub fn get_default_value_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     if column.autoincrement.unwrap_or(false) {
@@ -893,7 +879,7 @@ pub fn get_default_value_declaration_sql<T: AbstractPostgreSQLPlatform + ?Sized>
 }
 
 pub fn get_column_collation_declaration_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     collation: &str,
 ) -> Result<String> {
     Ok(format!(
@@ -911,10 +897,7 @@ pub fn get_json_type_declaration_sql(column: &ColumnData) -> Result<String> {
     .to_string())
 }
 
-fn get_old_column_comment<T: AbstractPostgreSQLSchemaManager + ?Sized>(
-    this: &T,
-    column_diff: &ColumnDiff,
-) -> Option<String> {
+fn get_old_column_comment(this: &dyn SchemaManager, column_diff: &ColumnDiff) -> Option<String> {
     column_diff
         .from_column
         .as_ref()

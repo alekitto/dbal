@@ -28,26 +28,24 @@ pub struct ForeignKeyConstraint {
 
 impl ForeignKeyConstraint {
     pub fn new<LC, FC, FT>(
-        local_columns: Vec<LC>,
-        foreign_columns: Vec<FC>,
+        local_columns: &[LC],
+        foreign_columns: &[FC],
         foreign_table: FT,
         options: HashMap<String, Value>,
         on_update: Option<ForeignKeyReferentialAction>,
         on_delete: Option<ForeignKeyReferentialAction>,
     ) -> Self
     where
-        LC: AsRef<str> + Clone,
-        FC: AsRef<str> + Clone,
+        LC: AsRef<str>,
+        FC: AsRef<str>,
         FT: AsRef<str>,
     {
         let local_columns = local_columns
             .iter()
-            .cloned()
             .map(|c| Identifier::new(c, false))
             .collect();
         let foreign_columns = foreign_columns
             .iter()
-            .cloned()
             .map(|c| Identifier::new(c, false))
             .collect();
         let foreign_table = Identifier::new(foreign_table, false);

@@ -608,7 +608,7 @@ pub fn get_partial_index_sql(platform: &dyn DatabasePlatform, index: &Index) -> 
 
 pub fn get_create_index_sql_flags(index: &Index) -> String {
     if index.is_unique() {
-        "UNIQUE".to_string()
+        "UNIQUE ".to_string()
     } else {
         "".to_string()
     }
@@ -639,9 +639,9 @@ pub fn get_create_schema_sql(platform: &dyn DatabasePlatform, schema_name: &str)
 pub fn get_create_unique_constraint_sql(
     platform: &dyn DatabasePlatform,
     constraint: &UniqueConstraint,
-    table_name: &Identifier,
+    table_name: &dyn IntoIdentifier,
 ) -> Result<String> {
-    let table = table_name.get_quoted_name(platform);
+    let table = table_name.into_identifier().get_quoted_name(platform);
     let query = format!(
         "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({})",
         table,
@@ -699,9 +699,11 @@ pub fn get_string_literal_quote_character() -> &'static str {
 pub fn get_create_foreign_key_sql(
     this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
-    table: &Identifier,
+    table: &dyn IntoIdentifier,
 ) -> Result<String> {
-    let table = table.get_quoted_name(&this.get_platform()?);
+    let table = table
+        .into_identifier()
+        .get_quoted_name(&this.get_platform()?);
     Ok(format!(
         "ALTER TABLE {} ADD {}",
         table,

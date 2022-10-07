@@ -155,7 +155,7 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
 #[cfg(test)]
 mod tests {
     use crate::r#type::{INTEGER, STRING};
-    use crate::schema::{Column, Index, Table};
+    use crate::schema::{Column, ForeignKeyConstraint, Index, Table, UniqueConstraint};
     use crate::tests::create_connection;
     use std::collections::HashMap;
 
@@ -252,5 +252,69 @@ mod tests {
             .unwrap();
 
         assert_eq!(sql, "CREATE UNIQUE INDEX index_name ON test (test, test2)");
+    }
+
+    #[tokio::test]
+    pub async fn generates_foreign_key_creation_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let fk = ForeignKeyConstraint::new(
+            &["fk_name_id"],
+            &["id"],
+            "other_table",
+            HashMap::default(),
+            None,
+            None,
+        );
+        let sql = schema_manager
+            .get_create_foreign_key_sql(&fk, &"test")
+            .unwrap();
+        assert_eq!(
+            sql,
+            "ALTER TABLE test ADD FOREIGN KEY (fk_name_id) REFERENCES other_table (id)"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_generates_constraint_creation_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let idx = UniqueConstraint::new("constraint_name", &["test"], &[], HashMap::default());
+        let sql = schema_manager
+            .get_create_unique_constraint_sql(&idx, &"test")
+            .unwrap();
+        assert_eq!(
+            sql,
+            "ALTER TABLE test ADD CONSTRAINT constraint_name UNIQUE (test)"
+        );
+
+        let pk = Index::new(
+            "constraint_name",
+            &["test"],
+            true,
+            true,
+            &[],
+            HashMap::default(),
+        );
+        let sql = schema_manager.get_create_index_sql(&pk, &"test").unwrap();
+        assert_eq!(sql, "ALTER TABLE test ADD PRIMARY KEY (test)");
+
+        let fk = ForeignKeyConstraint::new(
+            &["fk_name"],
+            &["id"],
+            "foreign",
+            HashMap::default(),
+            None,
+            None,
+        );
+        let sql = schema_manager
+            .get_create_foreign_key_sql(&fk, &"test")
+            .unwrap();
+        assert_eq!(
+            sql,
+            "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES foreign (id)"
+        );
     }
 }

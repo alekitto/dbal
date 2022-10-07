@@ -43,3 +43,15 @@ impl ToSqlStatementList for Result<Vec<String>> {
         self
     }
 }
+
+// #[cfg(test)]
+// pub(crate) macro collection {
+//     // map-like
+//     ($($k:expr => $v:expr),* $(,)?) => {{
+//         core::convert::From::from([$(($k, $v),)*])
+//     }},
+//     // set-like
+//     ($($v:expr),* $(,)?) => {{
+//         core::convert::From::from([$($v,)*])
+//     }}
+// }

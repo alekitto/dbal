@@ -10,14 +10,14 @@ pub struct Sequence {
 }
 
 impl Sequence {
-    pub fn new(
-        name: String,
+    pub fn new<S: AsRef<str>>(
+        name: S,
         allocation_size: Option<usize>,
         initial_value: Option<usize>,
         cache: Option<usize>,
     ) -> Self {
         let mut asset = AbstractAsset::default();
-        asset.set_name(name);
+        asset.set_name(name.as_ref());
 
         Self {
             asset,

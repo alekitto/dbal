@@ -5,15 +5,15 @@ mod keyword;
 mod lock_mode;
 mod trim_mode;
 
-use crate::r#type::{Type, TypeManager};
+use crate::r#type::{TypeManager, TypePtr};
 use crate::schema::{ColumnData, Identifier};
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 pub use create_flags::CreateFlags;
 use creed::schema::SchemaManager;
 pub use date_interval_unit::DateIntervalUnit;
-pub(crate) use keyword::KeywordList;
+pub use keyword::{KeywordList, Keywords};
 pub use lock_mode::LockMode;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::fmt::Debug;
 use std::sync::Arc;
 pub use trim_mode::TrimMode;
@@ -24,7 +24,8 @@ pub(crate) macro platform_debug($platform:ident) {
             &self,
             f: &mut std::fmt::Formatter<'_>,
         ) -> core::result::Result<(), core::fmt::Error> {
-            write!(f, "{} {{}}", core::any::type_name::<Self>())
+            f.debug_struct(core::any::type_name::<Self>())
+                .finish_non_exhaustive()
         }
     }
 }
@@ -36,6 +37,9 @@ pub trait DatabasePlatform: Debug {
     /// Load Type Mappings.
     /// # Internal - Only to be used by DatabasePlatform hierarchy
     fn _initialize_type_mappings(&self);
+
+    /// As &dyn DatabasePlatform
+    fn as_dyn(&self) -> &dyn DatabasePlatform;
 
     /// Load Type Mappings.
     /// # Internal - Only to be used by DatabasePlatform hierarchy
@@ -56,17 +60,17 @@ pub trait DatabasePlatform: Debug {
     /// Returns the SQL snippet used to declare a column that can
     /// store characters in the ASCII character set.
     fn get_ascii_string_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_ascii_string_type_declaration_sql(self, column)
+        default::get_ascii_string_type_declaration_sql(self.as_dyn(), column)
     }
 
     /// Returns the SQL snippet used to declare a VARCHAR column type.
     fn get_string_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_string_type_declaration_sql(self, column)
+        default::get_string_type_declaration_sql(self.as_dyn(), column)
     }
 
     /// Returns the SQL snippet used to declare a BINARY/VARBINARY column type.
     fn get_binary_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_binary_type_declaration_sql(self, column)
+        default::get_binary_type_declaration_sql(self.as_dyn(), column)
     }
 
     /// Returns the SQL snippet to declare a GUID/UUID column.
@@ -74,7 +78,7 @@ pub trait DatabasePlatform: Debug {
     /// By default this maps directly to a CHAR(36) and only maps to more
     /// special datatypes when the underlying databases support this datatype.
     fn get_guid_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_guid_type_declaration_sql(self, column)
+        default::get_guid_type_declaration_sql(self.as_dyn(), column)
     }
 
     /// Returns the SQL snippet to declare a JSON column.
@@ -82,7 +86,7 @@ pub trait DatabasePlatform: Debug {
     /// By default this maps directly to a CLOB and only maps to more
     /// special datatypes when the underlying databases support this datatype.
     fn get_json_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_json_type_declaration_sql(self, column)
+        default::get_json_type_declaration_sql(self.as_dyn(), column)
     }
 
     #[allow(unused_variables)]
@@ -148,9 +152,8 @@ pub trait DatabasePlatform: Debug {
     where
         Self: Sized,
     {
-        let type_manager = TypeManager::get_instance();
-        let r#type = type_manager.get_type(type_id)?;
-        self._add_type_mapping(db_type, r#type.type_id());
+        let _ = TypeManager::get_instance().get_type(type_id)?;
+        self._add_type_mapping(db_type, type_id);
 
         Ok(())
     }
@@ -161,11 +164,6 @@ pub trait DatabasePlatform: Debug {
     /// Checks if a database type is currently supported by this platform.
     fn has_type_mapping_for(&self, db_type: &str) -> bool {
         self.get_type_mapping(db_type).is_ok()
-    }
-
-    /// Gets the character used for identifier quoting.
-    fn get_identifier_quote_character(&self) -> char {
-        default::get_identifier_quote_character()
     }
 
     /// Returns the regular expression operator.
@@ -256,82 +254,82 @@ pub trait DatabasePlatform: Debug {
 
     /// Returns the SQL to add the number of given seconds to a date.
     fn get_date_add_seconds_expression(&self, date: &str, seconds: i64) -> Result<String> {
-        default::get_date_add_seconds_expression(self, date, seconds)
+        default::get_date_add_seconds_expression(self.as_dyn(), date, seconds)
     }
 
     /// Returns the SQL to subtract the number of given seconds from a date.
     fn get_date_sub_seconds_expression(&self, date: &str, seconds: i64) -> Result<String> {
-        default::get_date_sub_seconds_expression(self, date, seconds)
+        default::get_date_sub_seconds_expression(self.as_dyn(), date, seconds)
     }
 
     /// Returns the SQL to add the number of given minutes to a date.
     fn get_date_add_minutes_expression(&self, date: &str, minutes: i64) -> Result<String> {
-        default::get_date_add_minutes_expression(self, date, minutes)
+        default::get_date_add_minutes_expression(self.as_dyn(), date, minutes)
     }
 
     /// Returns the SQL to subtract the number of given minutes from a date.
     fn get_date_sub_minutes_expression(&self, date: &str, minutes: i64) -> Result<String> {
-        default::get_date_sub_minutes_expression(self, date, minutes)
+        default::get_date_sub_minutes_expression(self.as_dyn(), date, minutes)
     }
 
     /// Returns the SQL to add the number of given hours to a date.
     fn get_date_add_hour_expression(&self, date: &str, hours: i64) -> Result<String> {
-        default::get_date_add_hour_expression(self, date, hours)
+        default::get_date_add_hour_expression(self.as_dyn(), date, hours)
     }
 
     /// Returns the SQL to subtract the number of given hours to a date.
     fn get_date_sub_hour_expression(&self, date: &str, hours: i64) -> Result<String> {
-        default::get_date_sub_hour_expression(self, date, hours)
+        default::get_date_sub_hour_expression(self.as_dyn(), date, hours)
     }
 
     /// Returns the SQL to add the number of given days to a date.
     fn get_date_add_days_expression(&self, date: &str, days: i64) -> Result<String> {
-        default::get_date_add_days_expression(self, date, days)
+        default::get_date_add_days_expression(self.as_dyn(), date, days)
     }
 
     /// Returns the SQL to subtract the number of given days to a date.
     fn get_date_sub_days_expression(&self, date: &str, days: i64) -> Result<String> {
-        default::get_date_sub_days_expression(self, date, days)
+        default::get_date_sub_days_expression(self.as_dyn(), date, days)
     }
 
     /// Returns the SQL to add the number of given weeks to a date.
     fn get_date_add_weeks_expression(&self, date: &str, weeks: i64) -> Result<String> {
-        default::get_date_add_weeks_expression(self, date, weeks)
+        default::get_date_add_weeks_expression(self.as_dyn(), date, weeks)
     }
 
     /// Returns the SQL to subtract the number of given weeks from a date.
     fn get_date_sub_weeks_expression(&self, date: &str, weeks: i64) -> Result<String> {
-        default::get_date_sub_weeks_expression(self, date, weeks)
+        default::get_date_sub_weeks_expression(self.as_dyn(), date, weeks)
     }
 
     /// Returns the SQL to add the number of given months to a date.
     fn get_date_add_month_expression(&self, date: &str, months: i64) -> Result<String> {
-        default::get_date_add_month_expression(self, date, months)
+        default::get_date_add_month_expression(self.as_dyn(), date, months)
     }
 
     /// Returns the SQL to subtract the number of given months to a date.
     fn get_date_sub_month_expression(&self, date: &str, months: i64) -> Result<String> {
-        default::get_date_sub_month_expression(self, date, months)
+        default::get_date_sub_month_expression(self.as_dyn(), date, months)
     }
 
     /// Returns the SQL to add the number of given quarters to a date.
     fn get_date_add_quarters_expression(&self, date: &str, quarters: i64) -> Result<String> {
-        default::get_date_add_quarters_expression(self, date, quarters)
+        default::get_date_add_quarters_expression(self.as_dyn(), date, quarters)
     }
 
     /// Returns the SQL to subtract the number of given quarters from a date.
     fn get_date_sub_quarters_expression(&self, date: &str, quarters: i64) -> Result<String> {
-        default::get_date_sub_quarters_expression(self, date, quarters)
+        default::get_date_sub_quarters_expression(self.as_dyn(), date, quarters)
     }
 
     /// Returns the SQL to add the number of given years to a date.
     fn get_date_add_years_expression(&self, date: &str, years: i64) -> Result<String> {
-        default::get_date_add_years_expression(self, date, years)
+        default::get_date_add_years_expression(self.as_dyn(), date, years)
     }
 
     /// Returns the SQL to subtract the number of given years from a date.
     fn get_date_sub_years_expression(&self, date: &str, years: i64) -> Result<String> {
-        default::get_date_sub_years_expression(self, date, years)
+        default::get_date_sub_years_expression(self.as_dyn(), date, years)
     }
 
     /// Returns the SQL for a date arithmetic expression.
@@ -390,18 +388,18 @@ pub trait DatabasePlatform: Debug {
     /// This defaults to the ANSI SQL "FOR UPDATE", which is an exclusive lock (Write). Some database
     /// vendors allow to lighten this constraint up to be a real read lock.
     fn get_read_lock_sql(&self) -> Result<String> {
-        default::get_read_lock_sql(self)
+        default::get_read_lock_sql(self.as_dyn())
     }
 
     /// Returns the SQL snippet to append to any SELECT statement which obtains an exclusive lock on the rows.
     ///
     /// The semantics of this lock mode should equal the SELECT .. FOR UPDATE of the ANSI SQL standard.
     fn get_write_lock_sql(&self) -> Result<String> {
-        default::get_write_lock_sql(self)
+        default::get_write_lock_sql(self.as_dyn())
     }
 
     /// Gets the comment to append to a column comment that helps parsing this type in reverse engineering.
-    fn get_creed_type_comment(&self, creed_type: &dyn Type) -> String {
+    fn get_creed_type_comment(&self, creed_type: &TypePtr) -> String {
         default::get_creed_type_comment(creed_type)
     }
 
@@ -413,12 +411,12 @@ pub trait DatabasePlatform: Debug {
     /// you SHOULD use them. In general, they end up causing way more
     /// problems than they solve.
     fn quote_identifier(&self, identifier: &str) -> String {
-        default::quote_identifier(self, identifier)
+        default::quote_identifier(self.as_dyn(), identifier)
     }
 
     /// Quotes a single identifier (no dot chain separation).
     fn quote_single_identifier(&self, str: &str) -> String {
-        default::quote_single_identifier(self, str)
+        default::quote_single_identifier(str)
     }
 
     /// Quotes a literal string.
@@ -426,7 +424,7 @@ pub trait DatabasePlatform: Debug {
     /// It is only meant to escape this platform's string literal
     /// quote character inside the given literal string.
     fn quote_string_literal(&self, str: &str) -> String {
-        default::quote_string_literal(self, str)
+        default::quote_string_literal(self.as_dyn(), str)
     }
 
     /// Gets the character used for string literal quoting.
@@ -442,7 +440,7 @@ pub trait DatabasePlatform: Debug {
     /// Obtains DBMS specific SQL code portion needed to set a default value
     /// declaration to be used in statements like CREATE TABLE.
     fn get_default_value_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_default_value_declaration_sql(self, column)
+        default::get_default_value_declaration_sql(self.as_dyn(), column)
     }
 
     /// Obtains SQL code portion needed to create a custom column,
@@ -490,7 +488,7 @@ pub trait DatabasePlatform: Debug {
     /// # Note
     /// If the input is not a boolean the original input might be returned.
     fn convert_booleans_to_database_value(&self, item: Value) -> Result<Value> {
-        default::convert_booleans_to_database_value(self, item)
+        default::convert_booleans_to_database_value(self.as_dyn(), item)
     }
 
     /// Returns the SQL specific for the platform to get the current date.
@@ -534,7 +532,7 @@ pub trait DatabasePlatform: Debug {
 
     /// Obtains DBMS specific SQL to be used to create datetime with timezone offset columns.
     fn get_date_time_tz_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-        default::get_date_time_tz_type_declaration_sql(self, column)
+        default::get_date_time_tz_type_declaration_sql(self.as_dyn(), column)
     }
 
     /// Obtains DBMS specific SQL to be used to create date columns in statements
@@ -702,7 +700,7 @@ pub trait DatabasePlatform: Debug {
     /// following the foreign keys.
     #[allow(unused_variables)]
     fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String {
-        default::get_truncate_table_sql(self, table_name)
+        default::get_truncate_table_sql(self.as_dyn(), table_name)
     }
 
     /// This is for test reasons, many vendors have special requirements for dummy statements.
@@ -727,7 +725,7 @@ pub trait DatabasePlatform: Debug {
 
     /// Escapes metacharacters in a string intended to be used with a LIKE operator.
     fn escape_string_for_like(&self, input_string: &str, escape_char: &str) -> Result<String> {
-        default::escape_string_for_like(self, input_string, escape_char)
+        default::escape_string_for_like(self.as_dyn(), input_string, escape_char)
     }
 
     fn get_like_wildcard_characters(&self) -> &'static str {
@@ -741,6 +739,7 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for &mut P {
     delegate::delegate! {
         to(**self) {
             fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn as_dyn(&self) -> &dyn DatabasePlatform;
             fn _initialize_type_mappings(&self);
             fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
             fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
@@ -762,6 +761,7 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Box<P> {
     delegate::delegate! {
         to(**self) {
             fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn as_dyn(&self) -> &dyn DatabasePlatform;
             fn _initialize_type_mappings(&self);
             fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
             fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
@@ -783,6 +783,7 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
     delegate::delegate! {
         to(**self) {
             fn get_event_manager(&self) -> Arc<EventDispatcher>;
+            fn as_dyn(&self) -> &dyn DatabasePlatform;
             fn _initialize_type_mappings(&self);
             fn _add_type_mapping(&self, db_type: &str, type_id: TypeId);
             fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
@@ -796,102 +797,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
             fn get_current_database_expression(&self) -> String;
             fn create_reserved_keywords_list(&self) -> KeywordList;
             fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
-        }
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use crate::platform::keyword::Keywords;
-    use crate::platform::{DatabasePlatform, KeywordList};
-    use crate::schema::tests::MockSchemaManager;
-    use crate::schema::{ColumnData, SchemaManager};
-    use crate::{Connection, EventDispatcher, Result};
-    use std::any::TypeId;
-    use std::fmt::{Debug, Formatter};
-    use std::sync::Arc;
-
-    pub struct MockPlatform {
-        pub ev: Arc<EventDispatcher>,
-    }
-
-    pub(super) struct MockKeywords {}
-    impl Keywords for MockKeywords {
-        fn get_name(&self) -> &'static str {
-            "Mock"
-        }
-
-        fn get_keywords(&self) -> &[&'static str] {
-            &["TABLE"]
-        }
-    }
-
-    static MOCK_KEYWORDS: MockKeywords = MockKeywords {};
-
-    impl Debug for MockPlatform {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            write!(f, "MockPlatform {{}}")
-        }
-    }
-
-    impl DatabasePlatform for MockPlatform {
-        fn get_event_manager(&self) -> Arc<EventDispatcher> {
-            self.ev.clone()
-        }
-
-        fn _initialize_type_mappings(&self) {
-            todo!()
-        }
-
-        fn _add_type_mapping(&self, db_type: &str, type_id: TypeId) {
-            todo!()
-        }
-
-        fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
-            todo!()
-        }
-
-        fn get_name(&self) -> String {
-            todo!()
-        }
-
-        fn get_type_mapping(&self, db_type: &str) -> Result<TypeId> {
-            todo!()
-        }
-
-        fn get_current_database_expression(&self) -> String {
-            todo!()
-        }
-
-        fn create_reserved_keywords_list(&self) -> KeywordList {
-            KeywordList::new(&MOCK_KEYWORDS)
-        }
-
-        fn create_schema_manager<'a>(
-            &self,
-            connection: &'a Connection,
-        ) -> Box<dyn SchemaManager + 'a> {
-            Box::new(MockSchemaManager::new(connection))
         }
     }
 }

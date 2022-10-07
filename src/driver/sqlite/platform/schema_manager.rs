@@ -20,6 +20,10 @@ pub trait AbstractSQLiteSchemaManager: SchemaManager {}
 impl AbstractSQLiteSchemaManager for SQLiteSchemaManager<'_> {}
 
 impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
+    fn as_dyn(&self) -> &dyn SchemaManager {
+        self
+    }
+
     #[inline(always)]
     fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
         sqlite::get_list_table_columns_sql(self, table)
@@ -86,7 +90,7 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         sqlite::get_create_tables_sql(self, tables)
     }
 
-    fn get_create_primary_key_sql(&self, _: &Index, _: &Identifier) -> Result<String> {
+    fn get_create_primary_key_sql(&self, _: &Index, _: &dyn IntoIdentifier) -> Result<String> {
         Err(Error::platform_feature_unsupported(
             "Sqlite platform does not support alter primary key.",
         ))

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[derive(Clone, IntoIdentifier)]
 pub struct Index {
     asset: AbstractAsset,
-    columns: HashMap<String, Identifier>,
+    columns: Vec<Identifier>,
     flags: Vec<String>,
     options: HashMap<String, Value>,
     is_unique: bool,
@@ -16,20 +16,20 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new(
-        name: String,
-        columns: Vec<String>,
+    pub fn new<S: AsRef<str>, C: AsRef<str>>(
+        name: S,
+        columns: &[C],
         is_unique: bool,
         is_primary: bool,
-        flags: Vec<String>,
+        flags: &[String],
         options: HashMap<String, Value>,
     ) -> Self {
         let mut asset = AbstractAsset::default();
-        asset.set_name(name);
+        asset.set_name(name.as_ref());
 
         let mut this = Self {
             asset,
-            columns: HashMap::default(),
+            columns: vec![],
             flags: vec![],
             options,
             is_unique,
@@ -38,11 +38,11 @@ impl Index {
         };
 
         for column in columns {
-            this.add_column(&column);
+            this.add_column(column.as_ref());
         }
 
         for flag in flags {
-            this.add_flag(&flag);
+            this.add_flag(flag.as_ref());
         }
 
         this
@@ -69,12 +69,12 @@ impl Index {
     }
 
     pub fn get_columns(&self) -> Vec<String> {
-        self.columns.keys().cloned().collect()
+        self.columns.iter().map(|c| c.get_name()).collect()
     }
 
-    pub fn get_quoted_columns<T: DatabasePlatform + ?Sized>(&self, platform: &T) -> Vec<String> {
+    pub fn get_quoted_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
         self.columns
-            .values()
+            .iter()
             .map(|c| c.get_quoted_name(platform))
             .collect()
     }
@@ -109,9 +109,10 @@ impl Index {
 
     /// Adds a new column to the index.
     fn add_column(&mut self, column: &str) {
-        let _ = self
-            .columns
-            .insert(column.to_string(), Identifier::new(column, false));
+        let identifier = Identifier::new(column, false);
+        if self.columns.iter().all(|i| i != &identifier) {
+            self.columns.push(identifier);
+        }
     }
 
     pub fn is_primary(&self) -> bool {
@@ -126,7 +127,7 @@ impl Index {
     fn spans_columns(&self, column_names: &[String]) -> bool {
         self.columns.iter().enumerate().all(|(index, column)| {
             column_names.get(index).is_some_and(|column_name| {
-                self.trim_quotes(&column.1.get_name().to_lowercase())
+                self.trim_quotes(&column.get_name().to_lowercase())
                     == self.trim_quotes(&column_name.to_lowercase())
             })
         })
@@ -206,10 +207,10 @@ impl IndexOptions {
 
         Index::new(
             self.name,
-            self.columns,
+            &self.columns,
             self.unique,
             self.primary,
-            self.flags,
+            &self.flags,
             options,
         )
     }

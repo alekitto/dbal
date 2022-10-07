@@ -1,7 +1,9 @@
-use crate::schema::asset::{impl_asset, Asset};
+use crate::schema::asset::{generate_identifier_name, impl_asset, Asset};
 use crate::schema::{
     Column, ForeignKeyConstraint, Identifier, Index, IntoIdentifier, UniqueConstraint,
 };
+use crate::{Error, Result, Value};
+use regex::Regex;
 use std::collections::HashMap;
 
 #[derive(Clone, Default)]
@@ -43,9 +45,9 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(name: Identifier) -> Self {
+    pub fn new<I: IntoIdentifier>(name: I) -> Self {
         Self {
-            name,
+            name: name.into_identifier(),
             columns: vec![],
             indices: vec![],
             primary_key_name: None,
@@ -119,8 +121,46 @@ impl Table {
             .find(|&column| column.get_name() == name)
     }
 
+    fn get_column_mut(&mut self, name: &dyn IntoIdentifier) -> Option<&mut Column> {
+        let name = name.into_identifier().get_name();
+        self.columns
+            .iter_mut()
+            .find(|column| column.get_name() == name)
+    }
+
     pub fn add_index(&mut self, index: Index) {
         self.indices.push(index);
+    }
+
+    pub fn add_unique_index<S: AsRef<str> + IntoIdentifier + Clone>(
+        &mut self,
+        column_names: &[S],
+        index_name: Option<&str>,
+        options: HashMap<String, Value>,
+    ) -> Result<()> {
+        let index_name = if let Some(index_name) = index_name {
+            index_name.to_string()
+        } else {
+            let mut names = vec![self.get_name()];
+            names.extend(column_names.iter().map(|c| c.as_ref().to_string()));
+            generate_identifier_name(names, "uniq", Some(self.get_max_identifier_length()))
+        };
+
+        self.add_index(self.create_index(
+            column_names,
+            &index_name,
+            true,
+            false,
+            vec![],
+            options,
+        )?);
+
+        Ok(())
+    }
+
+    fn get_max_identifier_length(&self) -> usize {
+        // TODO
+        65
     }
 
     pub fn add_indices<T: Iterator<Item = Index>>(&mut self, indices: T) {
@@ -145,6 +185,36 @@ impl Table {
     pub fn get_index(&self, index_name: &dyn IntoIdentifier) -> Option<&Index> {
         let name = index_name.into_identifier().get_name();
         self.indices.iter().find(|i| i.get_name() == name)
+    }
+
+    /// Sets the Primary Key.
+    pub fn set_primary_key<S: AsRef<str> + IntoIdentifier + Clone>(
+        &mut self,
+        column_names: &[S],
+        index_name: Option<&str>,
+    ) -> Result<()> {
+        let index_name = index_name.unwrap_or("primary");
+        self.add_index(self.create_index(
+            column_names,
+            index_name,
+            true,
+            true,
+            vec![],
+            HashMap::default(),
+        )?);
+
+        for column_name in column_names {
+            if let Some(column) = self.get_column_mut(column_name) {
+                column.set_notnull(true);
+            } else {
+                return Err(Error::column_does_not_exist(
+                    column_name.as_ref(),
+                    &self.get_name(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_unique_constraints(&self) -> &Vec<UniqueConstraint> {
@@ -247,6 +317,52 @@ impl Table {
 
     pub fn set_alter(&mut self, alter: bool) {
         self.alter = alter;
+    }
+
+    /// Normalizes a given identifier.
+    /// Trims quotes and lowercases the given identifier.
+    fn normalize_identifier(&self, identifier: &str) -> String {
+        if identifier.is_empty() {
+            "".to_string()
+        } else {
+            self.trim_quotes(identifier)
+        }
+    }
+
+    fn create_index<S: AsRef<str> + IntoIdentifier + Clone>(
+        &self,
+        column_names: &[S],
+        index_name: &str,
+        is_unique: bool,
+        is_primary: bool,
+        flags: Vec<String>,
+        options: HashMap<String, Value>,
+    ) -> Result<Index> {
+        let regex = Regex::new("[^a-zA-Z0-9_]+").unwrap();
+        if regex.is_match(&self.normalize_identifier(index_name)) {
+            Err(Error::index_definition_invalid("name"))
+        } else {
+            for column_name in column_names {
+                if !self.has_column(column_name) {
+                    return Err(Error::column_does_not_exist(
+                        column_name.as_ref(),
+                        &self.get_name(),
+                    ));
+                }
+            }
+
+            Ok(Index::new(
+                index_name,
+                &column_names
+                    .iter()
+                    .map(|n| n.as_ref().to_owned())
+                    .collect::<Vec<_>>(),
+                is_unique,
+                is_primary,
+                &flags,
+                options,
+            ))
+        }
     }
 }
 

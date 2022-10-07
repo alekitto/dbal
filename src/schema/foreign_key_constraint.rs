@@ -36,19 +36,19 @@ impl ForeignKeyConstraint {
         on_delete: Option<ForeignKeyReferentialAction>,
     ) -> Self
     where
-        LC: Into<String> + Clone,
-        FC: Into<String> + Clone,
-        FT: Into<String>,
+        LC: AsRef<str> + Clone,
+        FC: AsRef<str> + Clone,
+        FT: AsRef<str>,
     {
         let local_columns = local_columns
             .iter()
             .cloned()
-            .map(|c| Identifier::new(c.into(), false))
+            .map(|c| Identifier::new(c, false))
             .collect();
         let foreign_columns = foreign_columns
             .iter()
             .cloned()
-            .map(|c| Identifier::new(c.into(), false))
+            .map(|c| Identifier::new(c, false))
             .collect();
         let foreign_table = Identifier::new(foreign_table, false);
 
@@ -67,10 +67,7 @@ impl ForeignKeyConstraint {
         &self.local_columns
     }
 
-    pub fn get_quoted_local_columns<T: DatabasePlatform + ?Sized>(
-        &self,
-        platform: &T,
-    ) -> Vec<String> {
+    pub fn get_quoted_local_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
         self.local_columns
             .iter()
             .map(|c| c.get_quoted_name(platform))
@@ -85,10 +82,7 @@ impl ForeignKeyConstraint {
         &self.foreign_columns
     }
 
-    pub fn get_quoted_foreign_columns<T: DatabasePlatform + ?Sized>(
-        &self,
-        platform: &T,
-    ) -> Vec<String> {
+    pub fn get_quoted_foreign_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
         self.foreign_columns
             .iter()
             .map(|c| c.get_quoted_name(platform))
@@ -103,10 +97,7 @@ impl ForeignKeyConstraint {
         &self.foreign_table
     }
 
-    pub fn get_quoted_foreign_table_name<T: DatabasePlatform + ?Sized>(
-        &self,
-        platform: &T,
-    ) -> String {
+    pub fn get_quoted_foreign_table_name(&self, platform: &dyn DatabasePlatform) -> String {
         self.foreign_table.get_quoted_name(platform)
     }
 

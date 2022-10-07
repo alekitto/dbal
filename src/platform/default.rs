@@ -3,13 +3,14 @@ use crate::event::{
     SchemaAlterTableAddColumnEvent, SchemaAlterTableRemoveColumnEvent, SchemaCreateTableEvent,
     SchemaDropTableEvent,
 };
-use crate::r#type::{Type, TypeManager};
+use crate::r#type::{
+    IntoType, TypeManager, TypePtr, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
+};
 use crate::schema::{
     Asset, CheckConstraint, Column, ColumnData, ColumnDiff, ForeignKeyConstraint,
     ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, SchemaManager, Table,
     TableDiff, TableOptions, UniqueConstraint, View,
 };
-use crate::util::PlatformBox;
 use crate::{
     Error, Result, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
     SchemaAlterTableRenameColumnEvent, SchemaCreateTableColumnEvent, TransactionIsolationLevel,
@@ -17,33 +18,32 @@ use crate::{
 };
 use itertools::Itertools;
 use regex::Regex;
-use std::any::TypeId;
 
-pub fn get_ascii_string_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_ascii_string_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     this.get_string_type_declaration_sql(column)
 }
 
-pub fn get_string_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_string_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     let fixed = column.fixed.unwrap_or(false);
     this.get_varchar_type_declaration_sql_snippet(column.length, fixed)
 }
 
-pub fn get_binary_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_binary_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     let fixed = column.fixed.unwrap_or(false);
     this.get_binary_type_declaration_sql_snippet(column.length, fixed)
 }
 
-pub fn get_guid_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_guid_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     let mut column = column.clone();
@@ -53,8 +53,8 @@ pub fn get_guid_type_declaration_sql<T: DatabasePlatform + ?Sized>(
     this.get_string_type_declaration_sql(&column)
 }
 
-pub fn get_json_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_json_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     this.get_clob_type_declaration_sql(column)
@@ -109,128 +109,128 @@ pub fn get_concat_expression(strings: Vec<&str>) -> Result<String> {
     Ok(strings.join(" || "))
 }
 
-pub fn get_date_add_seconds_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_seconds_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     seconds: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", seconds, DateIntervalUnit::Second)
 }
 
-pub fn get_date_sub_seconds_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_seconds_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     seconds: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", seconds, DateIntervalUnit::Second)
 }
 
-pub fn get_date_add_minutes_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_minutes_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     minutes: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", minutes, DateIntervalUnit::Minute)
 }
 
-pub fn get_date_sub_minutes_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_minutes_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     minutes: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", minutes, DateIntervalUnit::Minute)
 }
 
-pub fn get_date_add_hour_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_hour_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     hours: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", hours, DateIntervalUnit::Hour)
 }
 
-pub fn get_date_sub_hour_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_hour_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     hours: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", hours, DateIntervalUnit::Hour)
 }
 
-pub fn get_date_add_days_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_days_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     days: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", days, DateIntervalUnit::Day)
 }
 
-pub fn get_date_sub_days_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_days_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     days: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", days, DateIntervalUnit::Day)
 }
 
-pub fn get_date_add_weeks_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_weeks_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     weeks: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", weeks, DateIntervalUnit::Week)
 }
 
-pub fn get_date_sub_weeks_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_weeks_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     weeks: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", weeks, DateIntervalUnit::Week)
 }
 
-pub fn get_date_add_month_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_month_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     months: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", months, DateIntervalUnit::Month)
 }
 
-pub fn get_date_sub_month_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_month_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     months: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", months, DateIntervalUnit::Month)
 }
 
-pub fn get_date_add_quarters_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_quarters_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     quarters: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", quarters, DateIntervalUnit::Quarter)
 }
 
-pub fn get_date_sub_quarters_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_quarters_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     quarters: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "-", quarters, DateIntervalUnit::Quarter)
 }
 
-pub fn get_date_add_years_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_add_years_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     years: i64,
 ) -> Result<String> {
     this.get_date_arithmetic_interval_expression(date, "+", years, DateIntervalUnit::Year)
 }
 
-pub fn get_date_sub_years_expression<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_sub_years_expression(
+    this: &dyn DatabasePlatform,
     date: &str,
     years: i64,
 ) -> Result<String> {
@@ -258,16 +258,17 @@ pub fn append_lock_hint(from_clause: &str, lock_mode: LockMode) -> Result<String
     }
 }
 
-pub fn get_read_lock_sql<T: DatabasePlatform + ?Sized>(this: &T) -> Result<String> {
+pub fn get_read_lock_sql(this: &dyn DatabasePlatform) -> Result<String> {
     this.get_for_update_sql()
 }
 
-pub fn get_write_lock_sql<T: DatabasePlatform + ?Sized>(this: &T) -> Result<String> {
+pub fn get_write_lock_sql(this: &dyn DatabasePlatform) -> Result<String> {
     this.get_for_update_sql()
 }
 
-pub fn get_drop_table_sql(platform: PlatformBox, table_name: &Identifier) -> Result<String> {
-    let table_arg = table_name.get_quoted_name(&platform);
+pub fn get_drop_table_sql(this: &dyn SchemaManager, table_name: &Identifier) -> Result<String> {
+    let platform = this.get_platform()?;
+    let table_arg = table_name.get_quoted_name(platform.as_dyn());
     let ev = platform
         .get_event_manager()
         .dispatch_sync(SchemaDropTableEvent::new(
@@ -284,25 +285,25 @@ pub fn get_drop_table_sql(platform: PlatformBox, table_name: &Identifier) -> Res
     Ok(format!("DROP TABLE {}", table_arg))
 }
 
-pub fn get_drop_temporary_table_sql<T: SchemaManager + Sync + ?Sized>(
-    this: &T,
+pub fn get_drop_temporary_table_sql(
+    this: &dyn SchemaManager,
     table: &Identifier,
 ) -> Result<String> {
     this.get_drop_table_sql(table)
 }
 
-pub fn get_drop_index_sql(platform: PlatformBox, index: &Identifier) -> Result<String> {
-    let index_name = index.get_quoted_name(&platform);
+pub fn get_drop_index_sql(platform: &dyn DatabasePlatform, index: &Identifier) -> Result<String> {
+    let index_name = index.get_quoted_name(platform);
     Ok(format!("DROP INDEX {}", index_name))
 }
 
 pub fn get_drop_constraint_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     constraint: &Identifier,
     table_name: &Identifier,
 ) -> Result<String> {
-    let constraint = constraint.get_quoted_name(&platform);
-    let table_name = table_name.get_quoted_name(&platform);
+    let constraint = constraint.get_quoted_name(platform);
+    let table_name = table_name.get_quoted_name(platform);
     Ok(format!(
         "ALTER TABLE {} DROP CONSTRAINT {}",
         table_name, constraint
@@ -310,28 +311,28 @@ pub fn get_drop_constraint_sql(
 }
 
 pub fn get_drop_foreign_key_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     foreign_key: &dyn IntoIdentifier,
     table_name: &dyn IntoIdentifier,
 ) -> Result<String> {
-    let foreign_key = foreign_key.into_identifier().get_quoted_name(&platform);
-    let table_name = table_name.into_identifier().get_quoted_name(&platform);
+    let foreign_key = foreign_key.into_identifier().get_quoted_name(platform);
+    let table_name = table_name.into_identifier().get_quoted_name(platform);
     Ok(format!(
         "ALTER TABLE {} DROP FOREIGN KEY {}",
         table_name, foreign_key
     ))
 }
 
-pub fn get_drop_unique_constraint_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_drop_unique_constraint_sql(
+    this: &dyn SchemaManager,
     name: &Identifier,
     table_name: &Identifier,
 ) -> Result<String> {
     this.get_drop_constraint_sql(name, table_name)
 }
 
-pub fn get_create_table_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_create_table_sql(
+    this: &dyn SchemaManager,
     table: &Table,
     create_flags: Option<CreateFlags>,
 ) -> Result<Vec<String>> {
@@ -349,16 +350,16 @@ pub fn get_create_table_sql<T: SchemaManager + ?Sized>(
             if !index.is_primary() {
                 let _ = options
                     .indexes
-                    .insert(index.get_quoted_name(&platform), index.clone());
+                    .insert(index.get_quoted_name(platform.as_dyn()), index.clone());
                 continue;
             }
 
-            options.primary = Some((index.get_quoted_columns(&platform), index.clone()));
+            options.primary = Some((index.get_quoted_columns(platform.as_dyn()), index.clone()));
         }
 
         for unique_constraint in table.get_unique_constraints() {
             options.unique_constraints.insert(
-                unique_constraint.get_quoted_name(&platform),
+                unique_constraint.get_quoted_name(platform.as_dyn()),
                 unique_constraint.clone(),
             );
         }
@@ -388,7 +389,7 @@ pub fn get_create_table_sql<T: SchemaManager + ?Sized>(
             continue;
         }
 
-        let mut column_data = column.generate_column_data(&platform);
+        let mut column_data = column.generate_column_data(platform.as_dyn());
         if let Some(p) = &options.primary {
             if p.0.iter().any(|n| n.eq(&column_data.name)) {
                 column_data.primary = true;
@@ -433,10 +434,7 @@ pub fn get_create_table_sql<T: SchemaManager + ?Sized>(
     Ok(sql)
 }
 
-pub fn get_create_tables_sql<T: SchemaManager + ?Sized>(
-    this: &T,
-    tables: &[Table],
-) -> Result<Vec<String>> {
+pub fn get_create_tables_sql(this: &dyn SchemaManager, tables: &[Table]) -> Result<Vec<String>> {
     let mut sql = vec![];
     for table in tables {
         let mut other_sql = this.get_create_table_sql(table, Some(CreateFlags::CREATE_INDEXES))?;
@@ -452,10 +450,7 @@ pub fn get_create_tables_sql<T: SchemaManager + ?Sized>(
     Ok(sql)
 }
 
-pub fn get_drop_tables_sql<T: SchemaManager + Sync + ?Sized>(
-    this: &T,
-    tables: &[Table],
-) -> Result<Vec<String>> {
+pub fn get_drop_tables_sql(this: &dyn SchemaManager, tables: &[Table]) -> Result<Vec<String>> {
     let mut sql = vec![];
     for table in tables {
         for fk in table.get_foreign_keys() {
@@ -472,32 +467,32 @@ pub fn get_drop_tables_sql<T: SchemaManager + Sync + ?Sized>(
 }
 
 pub fn get_comment_on_table_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     table_name: &Identifier,
     comment: &str,
 ) -> Result<String> {
     Ok(format!(
         "COMMENT ON TABLE {} IS {}",
-        table_name.get_quoted_name(&platform),
+        table_name.get_quoted_name(platform),
         platform.quote_string_literal(comment)
     ))
 }
 
 pub fn get_comment_on_column_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     table_name: &Identifier,
     column: &Column,
     comment: &str,
 ) -> Result<String> {
     Ok(format!(
         "COMMENT ON COLUMN {}.{} IS {}",
-        table_name.get_quoted_name(&platform),
-        column.get_quoted_name(&platform),
+        table_name.get_quoted_name(platform),
+        column.get_quoted_name(platform),
         platform.quote_string_literal(comment)
     ))
 }
 
-pub fn get_inline_column_comment_sql(this: PlatformBox, comment: &str) -> Result<String> {
+pub fn get_inline_column_comment_sql(this: &dyn DatabasePlatform, comment: &str) -> Result<String> {
     if !this.supports_inline_column_comments() {
         Err(Error::platform_feature_unsupported(
             "inline column comment unsupported for this platform",
@@ -507,8 +502,8 @@ pub fn get_inline_column_comment_sql(this: PlatformBox, comment: &str) -> Result
     }
 }
 
-pub fn _get_create_table_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn _get_create_table_sql(
+    this: &dyn SchemaManager,
     name: &Identifier,
     columns: &[ColumnData],
     options: &TableOptions,
@@ -538,7 +533,7 @@ pub fn _get_create_table_sql<T: SchemaManager + ?Sized>(
     let check = this.get_check_declaration_sql(columns)?;
     let query = format!(
         "CREATE TABLE {} ({}{}{})",
-        name.get_quoted_name(&platform),
+        name.get_quoted_name(platform.as_dyn()),
         column_list_sql,
         if check.is_empty() { "" } else { ", " },
         check
@@ -557,7 +552,7 @@ pub fn get_create_temporary_table_snippet_sql() -> Result<String> {
 }
 
 pub fn get_drop_sequence_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     sequence: &dyn IntoIdentifier,
 ) -> Result<String> {
     if !platform.supports_sequences() {
@@ -567,15 +562,15 @@ pub fn get_drop_sequence_sql(
     } else {
         Ok(format!(
             "DROP SEQUENCE {}",
-            sequence.into_identifier().get_quoted_name(&platform)
+            sequence.into_identifier().get_quoted_name(platform)
         ))
     }
 }
 
-pub fn get_create_index_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_create_index_sql(
+    this: &dyn SchemaManager,
     index: &Index,
-    table: &Identifier,
+    table: &dyn IntoIdentifier,
 ) -> Result<String> {
     let platform = this.get_platform()?;
     let columns = index.get_columns();
@@ -587,8 +582,8 @@ pub fn get_create_index_sql<T: SchemaManager + ?Sized>(
     if index.is_primary() {
         this.get_create_primary_key_sql(index, table)
     } else {
-        let table = table.get_quoted_name(&platform);
-        let name = index.get_quoted_name(&platform);
+        let table = table.into_identifier().get_quoted_name(platform.as_dyn());
+        let name = index.get_quoted_name(platform.as_dyn());
 
         Ok(format!(
             "CREATE {}INDEX {} ON {} ({}){}",
@@ -601,7 +596,7 @@ pub fn get_create_index_sql<T: SchemaManager + ?Sized>(
     }
 }
 
-pub fn get_partial_index_sql(platform: PlatformBox, index: &Index) -> Result<String> {
+pub fn get_partial_index_sql(platform: &dyn DatabasePlatform, index: &Index) -> Result<String> {
     Ok(
         if platform.supports_partial_indexes() && index.r#where.is_some() {
             format!(" WHERE {}", index.r#where.as_ref().unwrap())
@@ -619,13 +614,13 @@ pub fn get_create_index_sql_flags(index: &Index) -> String {
     }
 }
 
-pub fn get_create_primary_key_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_create_primary_key_sql(
+    this: &dyn SchemaManager,
     index: &Index,
-    table: &Identifier,
+    table: &dyn IntoIdentifier,
 ) -> Result<String> {
     let platform = this.get_platform()?;
-    let table = table.get_quoted_name(&platform);
+    let table = table.into_identifier().get_quoted_name(platform.as_dyn());
     Ok(format!(
         "ALTER TABLE {} ADD PRIMARY KEY ({})",
         table,
@@ -633,7 +628,7 @@ pub fn get_create_primary_key_sql<T: SchemaManager + ?Sized>(
     ))
 }
 
-pub fn get_create_schema_sql(platform: PlatformBox, schema_name: &str) -> Result<String> {
+pub fn get_create_schema_sql(platform: &dyn DatabasePlatform, schema_name: &str) -> Result<String> {
     if platform.supports_schemas() {
         Err(Error::platform_feature_unsupported("schemas"))
     } else {
@@ -642,25 +637,22 @@ pub fn get_create_schema_sql(platform: PlatformBox, schema_name: &str) -> Result
 }
 
 pub fn get_create_unique_constraint_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     constraint: &UniqueConstraint,
     table_name: &Identifier,
 ) -> Result<String> {
-    let table = table_name.get_quoted_name(&platform);
+    let table = table_name.get_quoted_name(platform);
     let query = format!(
         "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({})",
         table,
-        constraint.get_quoted_name(&platform),
-        constraint.get_quoted_columns(&platform).join(", ")
+        constraint.get_quoted_name(platform),
+        constraint.get_quoted_columns(platform).join(", ")
     );
 
     Ok(query)
 }
 
-pub fn get_drop_schema_sql<T: SchemaManager + ?Sized>(
-    this: &T,
-    schema_name: &str,
-) -> Result<String> {
+pub fn get_drop_schema_sql(this: &dyn SchemaManager, schema_name: &str) -> Result<String> {
     if this.get_platform()?.supports_schemas() {
         Err(Error::platform_feature_unsupported("schemas"))
     } else {
@@ -668,21 +660,21 @@ pub fn get_drop_schema_sql<T: SchemaManager + ?Sized>(
     }
 }
 
-pub fn get_creed_type_comment(creed_type: &dyn Type) -> String {
+pub fn get_creed_type_comment(creed_type: &TypePtr) -> String {
     format!("(CRType:{})", creed_type.get_name())
 }
 
-pub fn get_column_comment(platform: PlatformBox, column: &Column) -> Result<String> {
+pub fn get_column_comment(platform: &dyn DatabasePlatform, column: &Column) -> Result<String> {
     let mut comment = column.get_comment().as_ref().cloned().unwrap_or_default();
     let column_type = TypeManager::get_instance().get_type(column.get_type())?;
-    if column_type.requires_sql_comment_hint(&platform) {
-        comment += &platform.get_creed_type_comment(column_type.as_ref());
+    if column_type.requires_sql_comment_hint(platform.as_dyn()) {
+        comment += &platform.get_creed_type_comment(&column_type);
     }
 
     Ok(comment)
 }
 
-pub fn quote_identifier<T: DatabasePlatform + ?Sized>(this: &T, identifier: &str) -> String {
+pub fn quote_identifier(this: &dyn DatabasePlatform, identifier: &str) -> String {
     identifier
         .split('.')
         .map(|w| this.quote_single_identifier(w))
@@ -690,12 +682,12 @@ pub fn quote_identifier<T: DatabasePlatform + ?Sized>(this: &T, identifier: &str
         .join(".")
 }
 
-pub fn quote_single_identifier<T: DatabasePlatform + ?Sized>(this: &T, str: &str) -> String {
-    let c = this.get_identifier_quote_character();
+pub fn quote_single_identifier(str: &str) -> String {
+    let c = '"';
     format!("{}{}{}", c, str.replace(c, &c.to_string().repeat(2)), c)
 }
 
-pub fn quote_string_literal<T: DatabasePlatform + ?Sized>(this: &T, str: &str) -> String {
+pub fn quote_string_literal(this: &dyn DatabasePlatform, str: &str) -> String {
     let c = this.get_string_literal_quote_character();
     format!("{}{}{}", c, str.replace(c, &c.repeat(2)), c)
 }
@@ -704,8 +696,8 @@ pub fn get_string_literal_quote_character() -> &'static str {
     "'"
 }
 
-pub fn get_create_foreign_key_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_create_foreign_key_sql(
+    this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
     table: &Identifier,
 ) -> Result<String> {
@@ -718,11 +710,12 @@ pub fn get_create_foreign_key_sql<T: SchemaManager + ?Sized>(
 }
 
 pub fn on_schema_alter_table_add_column(
-    platform: PlatformBox,
+    this: &dyn SchemaManager,
     column: &Column,
     diff: &TableDiff,
     mut column_sql: Vec<String>,
 ) -> Result<(bool, Vec<String>)> {
+    let platform = this.get_platform()?;
     let event = platform
         .get_event_manager()
         .dispatch_sync(SchemaAlterTableAddColumnEvent::new(
@@ -737,11 +730,12 @@ pub fn on_schema_alter_table_add_column(
 }
 
 pub fn on_schema_alter_table_remove_column(
-    platform: PlatformBox,
+    this: &dyn SchemaManager,
     column: &Column,
     diff: &TableDiff,
     mut column_sql: Vec<String>,
 ) -> Result<(bool, Vec<String>)> {
+    let platform = this.get_platform()?;
     let event =
         platform
             .get_event_manager()
@@ -757,11 +751,12 @@ pub fn on_schema_alter_table_remove_column(
 }
 
 pub fn on_schema_alter_table_change_column(
-    platform: PlatformBox,
+    this: &dyn SchemaManager,
     column_diff: &ColumnDiff,
     diff: &TableDiff,
     mut column_sql: Vec<String>,
 ) -> Result<(bool, Vec<String>)> {
+    let platform = this.get_platform()?;
     let event =
         platform
             .get_event_manager()
@@ -777,12 +772,13 @@ pub fn on_schema_alter_table_change_column(
 }
 
 pub fn on_schema_alter_table_rename_column(
-    platform: PlatformBox,
+    this: &dyn SchemaManager,
     old_column_name: &str,
     column: &Column,
     diff: &TableDiff,
     mut column_sql: Vec<String>,
 ) -> Result<(bool, Vec<String>)> {
+    let platform = this.get_platform()?;
     let event =
         platform
             .get_event_manager()
@@ -799,10 +795,11 @@ pub fn on_schema_alter_table_rename_column(
 }
 
 pub fn on_schema_alter_table(
-    platform: PlatformBox,
+    this: &dyn SchemaManager,
     diff: &TableDiff,
     mut sql: Vec<String>,
 ) -> Result<(bool, Vec<String>)> {
+    let platform = this.get_platform()?;
     let event = platform
         .get_event_manager()
         .dispatch_sync(SchemaAlterTableEvent::new(diff, platform.clone()))?;
@@ -812,8 +809,8 @@ pub fn on_schema_alter_table(
     Ok((event.is_default_prevented(), sql))
 }
 
-pub fn get_pre_alter_table_index_foreign_key_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_pre_alter_table_index_foreign_key_sql(
+    this: &dyn SchemaManager,
     diff: &TableDiff,
 ) -> Result<Vec<String>> {
     let table_name = diff.get_name();
@@ -841,8 +838,8 @@ pub fn get_pre_alter_table_index_foreign_key_sql<T: SchemaManager + ?Sized>(
     Ok(sql)
 }
 
-pub fn get_post_alter_table_index_foreign_key_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_post_alter_table_index_foreign_key_sql(
+    this: &dyn SchemaManager,
     diff: &TableDiff,
 ) -> Result<Vec<String>> {
     let mut sql = vec![];
@@ -881,8 +878,8 @@ pub fn get_post_alter_table_index_foreign_key_sql<T: SchemaManager + ?Sized>(
     Ok(sql)
 }
 
-pub fn get_rename_index_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_rename_index_sql(
+    this: &dyn SchemaManager,
     old_index_name: &Identifier,
     index: &Index,
     table_name: &Identifier,
@@ -893,8 +890,8 @@ pub fn get_rename_index_sql<T: SchemaManager + ?Sized>(
     ])
 }
 
-pub fn get_column_declaration_list_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_column_declaration_list_sql(
+    this: &dyn SchemaManager,
     columns: &[ColumnData],
 ) -> Result<String> {
     let mut declarations = vec![];
@@ -905,8 +902,8 @@ pub fn get_column_declaration_list_sql<T: SchemaManager + ?Sized>(
     Ok(declarations.join(", "))
 }
 
-pub fn get_column_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_column_declaration_sql(
+    this: &dyn SchemaManager,
     name: &str,
     column: &ColumnData,
 ) -> Result<String> {
@@ -935,8 +932,8 @@ pub fn get_column_declaration_sql<T: SchemaManager + ?Sized>(
         };
 
         let type_decl = TypeManager::get_instance()
-            .get_type(column.r#type)?
-            .get_sql_declaration(column, &platform)?;
+            .get_type(column.r#type.clone())?
+            .get_sql_declaration(column, platform.as_dyn())?;
         let mut comment_decl = "".to_string();
         if platform.supports_inline_column_comments() {
             if let Some(comment) = column.comment.as_ref() {
@@ -962,8 +959,8 @@ pub fn get_decimal_type_declaration_sql(column: &ColumnData) -> Result<String> {
     Ok(format!("NUMERIC({}, {})", precision, scale))
 }
 
-pub fn get_default_value_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_default_value_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     let default = column.default.clone();
@@ -971,31 +968,26 @@ pub fn get_default_value_declaration_sql<T: DatabasePlatform + ?Sized>(
         return Ok((if column.notnull { "" } else { " DEFAULT NULL" }).to_string());
     }
 
-    let t = column.r#type;
-    if t == TypeId::of::<crate::r#type::IntegerType>() {
+    let t = column.r#type.clone();
+    if t == INTEGER.into_type()? {
         return Ok(format!(" DEFAULT {}", default));
     }
 
-    if (t == TypeId::of::<crate::r#type::DateTimeType>()
-        || t == TypeId::of::<crate::r#type::DateTimeTzType>())
+    if (t == DATETIME.into_type()? || t == DATETIMETZ.into_type()?)
         && default == Value::String(this.get_current_timestamp_sql().to_string())
     {
         return Ok(format!(" DEFAULT {}", this.get_current_timestamp_sql()));
     }
 
-    if t == TypeId::of::<crate::r#type::TimeType>()
-        && default == Value::String(this.get_current_time_sql().to_string())
-    {
+    if t == TIME.into_type()? && default == Value::String(this.get_current_time_sql().to_string()) {
         return Ok(format!(" DEFAULT {}", this.get_current_time_sql()));
     }
 
-    if t == TypeId::of::<crate::r#type::DateType>()
-        && default == Value::String(this.get_current_date_sql().to_string())
-    {
+    if t == DATE.into_type()? && default == Value::String(this.get_current_date_sql().to_string()) {
         return Ok(format!(" DEFAULT {}", this.get_current_date_sql()));
     }
 
-    if t == TypeId::of::<crate::r#type::BooleanType>() {
+    if t == BOOLEAN.into_type()? {
         return Ok(format!(" DEFAULT {}", this.convert_boolean(default)?));
     }
 
@@ -1005,8 +997,8 @@ pub fn get_default_value_declaration_sql<T: DatabasePlatform + ?Sized>(
     ))
 }
 
-pub fn get_check_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_check_declaration_sql(
+    this: &dyn SchemaManager,
     definition: &[ColumnData],
 ) -> Result<String> {
     let mut constraints = vec![];
@@ -1021,8 +1013,8 @@ pub fn get_check_declaration_sql<T: SchemaManager + ?Sized>(
     Ok(constraints.join(", "))
 }
 
-pub fn get_check_field_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_check_field_declaration_sql(
+    this: &dyn SchemaManager,
     definition: &ColumnData,
 ) -> Result<String> {
     let column_name = &definition.name;
@@ -1054,13 +1046,13 @@ pub fn get_check_field_declaration_sql<T: SchemaManager + ?Sized>(
     Ok(sql)
 }
 
-pub fn get_unique_constraint_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_unique_constraint_declaration_sql(
+    this: &dyn SchemaManager,
     name: &str,
     constraint: &UniqueConstraint,
 ) -> Result<String> {
     let platform = this.get_platform()?;
-    let columns = constraint.get_quoted_columns(&platform);
+    let columns = constraint.get_quoted_columns(platform.as_dyn());
     let name = Identifier::new(name, false);
 
     if columns.is_empty() {
@@ -1069,7 +1061,7 @@ pub fn get_unique_constraint_declaration_sql<T: SchemaManager + ?Sized>(
         let mut constraint_flags = constraint.get_flags().clone();
         constraint_flags.push("UNIQUE".to_string());
 
-        let constraint_name = name.get_quoted_name(&platform);
+        let constraint_name = name.get_quoted_name(platform.as_dyn());
         let column_list_names = this.get_columns_field_declaration_list_sql(columns.as_slice())?;
 
         Ok(format!(
@@ -1081,8 +1073,8 @@ pub fn get_unique_constraint_declaration_sql<T: SchemaManager + ?Sized>(
     }
 }
 
-pub fn get_index_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_index_declaration_sql(
+    this: &dyn SchemaManager,
     name: &str,
     index: &Index,
 ) -> Result<String> {
@@ -1096,7 +1088,7 @@ pub fn get_index_declaration_sql<T: SchemaManager + ?Sized>(
         Ok(format!(
             "{}INDEX {} ({}){}",
             this.get_create_index_sql_flags(index),
-            name.get_quoted_name(&platform),
+            name.get_quoted_name(platform.as_dyn()),
             this.get_index_field_declaration_list_sql(index)?,
             this.get_partial_index_sql(index)?
         ))
@@ -1112,10 +1104,10 @@ pub fn get_custom_type_declaration_sql(column: &ColumnData) -> Result<String> {
 }
 
 pub fn get_index_field_declaration_list_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     index: &Index,
 ) -> Result<String> {
-    Ok(index.get_quoted_columns(&platform).join(", "))
+    Ok(index.get_quoted_columns(platform).join(", "))
 }
 
 pub fn get_columns_field_declaration_list_sql(columns: &[String]) -> Result<String> {
@@ -1126,8 +1118,8 @@ pub fn get_temporary_table_name(table_name: &str) -> Result<String> {
     Ok(table_name.to_string())
 }
 
-pub fn get_foreign_key_declaration_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_foreign_key_declaration_sql(
+    this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
     Ok(format!(
@@ -1137,8 +1129,8 @@ pub fn get_foreign_key_declaration_sql<T: SchemaManager + ?Sized>(
     ))
 }
 
-pub fn get_advanced_foreign_key_options_sql<T: SchemaManager + ?Sized>(
-    this: &T,
+pub fn get_advanced_foreign_key_options_sql(
+    this: &dyn SchemaManager,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
     let mut query = "".to_string();
@@ -1175,13 +1167,13 @@ pub fn get_foreign_key_referential_action_sql(
 }
 
 pub fn get_foreign_key_base_declaration_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     foreign_key: &ForeignKeyConstraint,
 ) -> Result<String> {
     let sql = if foreign_key.get_name().is_empty() {
         "".to_string()
     } else {
-        format!("CONSTRAINT {} ", foreign_key.get_quoted_name(&platform))
+        format!("CONSTRAINT {} ", foreign_key.get_quoted_name(platform))
     };
 
     if foreign_key.get_local_columns().is_empty() {
@@ -1199,9 +1191,9 @@ pub fn get_foreign_key_base_declaration_sql(
     Ok(format!(
         "{}FOREIGN KEY ({}) REFERENCES {} ({})",
         sql,
-        foreign_key.get_quoted_local_columns(&platform).join(", "),
-        foreign_key.get_quoted_foreign_table_name(&platform),
-        foreign_key.get_quoted_foreign_columns(&platform).join(", "),
+        foreign_key.get_quoted_local_columns(platform).join(", "),
+        foreign_key.get_quoted_foreign_table_name(platform),
+        foreign_key.get_quoted_foreign_columns(platform).join(", "),
     ))
 }
 
@@ -1210,7 +1202,7 @@ pub fn get_column_charset_declaration_sql() -> String {
 }
 
 pub fn get_column_collation_declaration_sql(
-    platform: PlatformBox,
+    platform: &dyn DatabasePlatform,
     collation: &str,
 ) -> Result<String> {
     Ok(if platform.supports_column_collation() {
@@ -1237,8 +1229,8 @@ pub fn convert_from_boolean(item: &Value) -> Value {
     Value::Boolean(bool::from(item))
 }
 
-pub fn convert_booleans_to_database_value<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn convert_booleans_to_database_value(
+    this: &dyn DatabasePlatform,
     item: Value,
 ) -> Result<Value> {
     this.convert_boolean(item)
@@ -1266,30 +1258,33 @@ pub fn get_transaction_isolation_level_sql(level: TransactionIsolationLevel) -> 
     .to_string()
 }
 
-pub fn get_create_view_sql(platform: PlatformBox, view: &View) -> Result<String> {
+pub fn get_create_view_sql(platform: &dyn DatabasePlatform, view: &View) -> Result<String> {
     Ok(format!(
         "CREATE VIEW {} AS {}",
-        view.get_quoted_name(&platform),
+        view.get_quoted_name(platform),
         view.get_sql()
     ))
 }
 
-pub fn get_drop_view_sql(platform: PlatformBox, name: &Identifier) -> Result<String> {
-    Ok(format!("DROP VIEW {}", name.get_quoted_name(&platform)))
+pub fn get_drop_view_sql(platform: &dyn DatabasePlatform, name: &Identifier) -> Result<String> {
+    Ok(format!("DROP VIEW {}", name.get_quoted_name(platform)))
 }
 
-pub fn get_create_database_sql(platform: PlatformBox, name: &Identifier) -> Result<String> {
+pub fn get_create_database_sql(
+    platform: &dyn DatabasePlatform,
+    name: &Identifier,
+) -> Result<String> {
     if platform.supports_create_drop_database() {
         Err(Error::platform_feature_unsupported("sequence next val"))
     } else {
         Ok(format!(
             "CREATE DATABASE {}",
-            name.get_quoted_name(&platform)
+            name.get_quoted_name(platform)
         ))
     }
 }
 
-pub fn get_drop_database_sql<T: SchemaManager + ?Sized>(this: &T, name: &str) -> Result<String> {
+pub fn get_drop_database_sql(this: &dyn SchemaManager, name: &str) -> Result<String> {
     if this.get_platform()?.supports_create_drop_database() {
         Err(Error::platform_feature_unsupported("sequence next val"))
     } else {
@@ -1297,8 +1292,8 @@ pub fn get_drop_database_sql<T: SchemaManager + ?Sized>(this: &T, name: &str) ->
     }
 }
 
-pub fn get_date_time_tz_type_declaration_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn get_date_time_tz_type_declaration_sql(
+    this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
     this.get_date_time_type_declaration_sql(column)
@@ -1356,10 +1351,7 @@ pub fn get_empty_identity_insert_sql(
     )
 }
 
-pub fn get_truncate_table_sql<T: DatabasePlatform + ?Sized>(
-    this: &T,
-    table_name: &Identifier,
-) -> String {
+pub fn get_truncate_table_sql(this: &dyn DatabasePlatform, table_name: &Identifier) -> String {
     format!("TRUNCATE {}", table_name.get_quoted_name(this))
 }
 
@@ -1375,8 +1367,8 @@ pub fn rollback_save_point(savepoint: &str) -> String {
     format!("ROLLBACK TO SAVEPOINT {}", savepoint)
 }
 
-pub fn escape_string_for_like<T: DatabasePlatform + ?Sized>(
-    this: &T,
+pub fn escape_string_for_like(
+    this: &dyn DatabasePlatform,
     input_string: &str,
     escape_char: &str,
 ) -> Result<String> {
@@ -1393,14 +1385,12 @@ pub fn get_like_wildcard_characters() -> &'static str {
     "%_"
 }
 
-pub fn columns_equal<T: SchemaManager + ?Sized>(
-    this: &T,
-    column1: &Column,
-    column2: &Column,
-) -> Result<bool> {
+pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Column) -> Result<bool> {
     let platform = this.get_platform()?;
-    let c1 = this.get_column_declaration_sql("", &column1.generate_column_data(&platform))?;
-    let c2 = this.get_column_declaration_sql("", &column2.generate_column_data(&platform))?;
+    let c1 =
+        this.get_column_declaration_sql("", &column1.generate_column_data(platform.as_dyn()))?;
+    let c2 =
+        this.get_column_declaration_sql("", &column2.generate_column_data(platform.as_dyn()))?;
 
     Ok(if c1 != c2 {
         false

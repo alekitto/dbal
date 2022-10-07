@@ -3,11 +3,12 @@ use crate::driver::statement_result::StatementResult;
 use crate::driver::Driver;
 use crate::event::ConnectionEvent;
 use crate::platform::DatabasePlatform;
-use crate::r#type::{IntoType, Type};
+use crate::r#type::IntoType;
 use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
     Value,
 };
+use creed::schema::SchemaManager;
 use std::io::Read;
 use std::sync::Arc;
 
@@ -103,6 +104,17 @@ impl Connection {
     /// Returns a pointer to the event manager for this connection.
     pub fn get_event_manager(&self) -> Arc<EventDispatcher> {
         self.event_manager.clone()
+    }
+
+    /// Creates a new schema manager.
+    ///
+    /// # Errors
+    ///
+    /// The connection must be connected to the server for this method to succeed.
+    /// Otherwise will return a "Not Connected" Error.
+    pub fn create_schema_manager(&self) -> Result<Box<dyn SchemaManager + '_>> {
+        self.get_platform()
+            .map(|platform| platform.create_schema_manager(self))
     }
 
     /// Returns the database platform.
@@ -229,7 +241,7 @@ impl Connection {
         params: Parameters<'_>,
     ) -> Result<Vec<Row>> {
         let statement_result = self.query(sql, params).await?;
-        Ok(statement_result.fetch_all().await?)
+        statement_result.fetch_all().await
     }
 
     /// Converts a value from database scalar format into runtime type format,
@@ -311,14 +323,11 @@ impl Connection {
 mod tests {
     use crate::event::ConnectionEvent;
     use crate::rows::ColumnIndex;
+    use crate::tests::get_database_dsn;
     use crate::{params, r#type, Connection, EventDispatcher, Result, Row, Value};
     use lazy_static::lazy_static;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
-
-    pub fn get_database_dsn() -> String {
-        std::env::var("DATABASE_DSN").unwrap()
-    }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
@@ -467,10 +476,6 @@ mod tests {
         assert_eq!(connection.is_connected(), false);
 
         let connection = connection.connect().await.expect("Connection failed");
-        let platform = connection
-            .get_platform()
-            .expect("Failed to create platform");
-
         let result = connection.convert_value(&Value::from("{ \"test\": true }"), r#type::JSON);
         assert_eq!(true, result.is_ok());
 

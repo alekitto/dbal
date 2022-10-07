@@ -1,11 +1,11 @@
-use crate::r#type::{BinaryType, DecimalType, GuidType, StringType};
+use crate::r#type::{IntoType, BINARY, GUID, STRING};
 use crate::schema::{
     Asset, Column, Index, Schema, SchemaDiff, SchemaManager, Sequence, Table, TableDiff,
 };
 use crate::{Result, Value};
+use creed::r#type::DECIMAL;
 use creed::schema::ColumnDiff;
 use itertools::Itertools;
-use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 
@@ -438,9 +438,9 @@ pub trait Comparator {
             changed_properties.push("default");
         }
 
-        if properties1.type_id() == TypeId::of::<StringType>()
-            && properties1.type_id() != TypeId::of::<GuidType>()
-            || properties1.type_id() == TypeId::of::<BinaryType>()
+        if properties1.r#type == STRING.into_type().unwrap()
+            && properties1.r#type != GUID.into_type().unwrap()
+            || properties1.r#type == BINARY.into_type().unwrap()
         {
             // check if value of length is set at all, default value assumed otherwise.
             let length1 = properties1.length.unwrap_or(255);
@@ -452,7 +452,7 @@ pub trait Comparator {
             if properties1.fixed != properties2.fixed {
                 changed_properties.push("fixed");
             }
-        } else if properties1.type_id() == TypeId::of::<DecimalType>() {
+        } else if properties1.r#type == DECIMAL.into_type().unwrap() {
             if properties1.precision.unwrap_or(10) != properties2.precision.unwrap_or(10) {
                 changed_properties.push("precision");
             }

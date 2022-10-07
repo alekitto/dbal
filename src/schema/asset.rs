@@ -42,7 +42,7 @@ pub trait Asset: IntoIdentifier {
     fn get_name(&self) -> String;
 
     /// Sets the name of this asset.
-    fn set_name(&mut self, name: String);
+    fn set_name(&mut self, name: &str);
 
     /// Whether the name of this asset is empty
     fn is_empty(&self) -> bool {
@@ -85,7 +85,7 @@ pub trait Asset: IntoIdentifier {
 
     /// Gets the quoted representation of this asset but only if it was defined with one. Otherwise
     /// return the plain unquoted value as inserted.
-    fn get_quoted_name<T: DatabasePlatform + ?Sized>(&self, platform: &T) -> String {
+    fn get_quoted_name(&self, platform: &dyn DatabasePlatform) -> String {
         let keywords = platform.create_reserved_keywords_list();
         self.get_name()
             .split('.')
@@ -114,7 +114,7 @@ impl<A: Asset + ?Sized> Asset for &mut A {
     delegate::delegate! {
         to(**self) {
             fn get_name(&self) -> String;
-            fn set_name(&mut self, name: String);
+            fn set_name(&mut self, name: &str);
             fn get_namespace_name(&self) -> Option<String>;
             fn get_shortest_name(&self, default_namespace_name: &str) -> String;
             fn is_quoted(&self) -> bool;
@@ -134,7 +134,7 @@ impl<A: Asset + ?Sized> Asset for Box<A> {
     delegate::delegate! {
         to(**self) {
             fn get_name(&self) -> String;
-            fn set_name(&mut self, name: String);
+            fn set_name(&mut self, name: &str);
             fn get_namespace_name(&self) -> Option<String>;
             fn get_shortest_name(&self, default_namespace_name: &str) -> String;
             fn is_quoted(&self) -> bool;
@@ -147,7 +147,7 @@ pub(crate) macro impl_asset($t:ident,$e:ident) {
         delegate::delegate! {
             to(self.$e) {
                 fn get_name(&self) -> String;
-                fn set_name(&mut self, name: String);
+                fn set_name(&mut self, name: &str);
                 fn get_namespace_name(&self) -> Option<String>;
                 fn get_shortest_name(&self, default_namespace_name: &str) -> String;
                 fn is_quoted(&self) -> bool;
@@ -165,13 +165,13 @@ impl Asset for AbstractAsset {
         }
     }
 
-    fn set_name(&mut self, name: String) {
-        let name = if self.is_identifier_quoted(&name) {
+    fn set_name(&mut self, name: &str) {
+        let name = if self.is_identifier_quoted(name) {
             self.quoted = true;
-            self.trim_quotes(&name)
+            self.trim_quotes(name)
         } else {
             self.quoted = false;
-            name
+            name.to_string()
         };
 
         if name.contains('.') {

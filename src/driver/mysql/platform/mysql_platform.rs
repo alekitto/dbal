@@ -47,12 +47,14 @@ impl DatabasePlatform for MySQLPlatform {
         self.ev.clone()
     }
 
-    #[inline(always)]
+    fn as_dyn(&self) -> &dyn DatabasePlatform {
+        self
+    }
+
     fn get_boolean_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         mysql::get_boolean_type_declaration_sql()
     }
 
-    #[inline(always)]
     fn get_json_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         match self.variant {
             MySQLVariant::MariaDB => mariadb::get_json_type_declaration_sql(),
@@ -60,22 +62,18 @@ impl DatabasePlatform for MySQLPlatform {
         }
     }
 
-    #[inline(always)]
     fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_integer_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_bigint_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_smallint_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_varchar_type_declaration_sql_snippet(
         &self,
         length: Option<usize>,
@@ -84,7 +82,6 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_varchar_type_declaration_sql_snippet(length, fixed)
     }
 
-    #[inline(always)]
     fn get_binary_type_declaration_sql_snippet(
         &self,
         length: Option<usize>,
@@ -98,12 +95,11 @@ impl DatabasePlatform for MySQLPlatform {
     ///     TEXT       : 2 ^ 16 - 1 = 65535
     ///     MEDIUMTEXT : 2 ^ 24 - 1 = 16777215
     ///     LONGTEXT   : 2 ^ 32 - 1 = 4294967295
-    #[inline(always)]
+
     fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_clob_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_blob_type_declaration_sql(column)
     }
@@ -112,27 +108,22 @@ impl DatabasePlatform for MySQLPlatform {
         "mysql".to_string()
     }
 
-    #[inline(always)]
     fn get_regexp_expression(&self) -> Result<String> {
         mysql::get_regexp_expression()
     }
 
-    #[inline(always)]
     fn get_length_expression(&self, column: &str) -> Result<String> {
         mysql::get_length_expression(column)
     }
 
-    #[inline(always)]
     fn get_concat_expression(&self, strings: Vec<&str>) -> Result<String> {
         mysql::get_concat_expression(strings)
     }
 
-    #[inline(always)]
     fn get_date_diff_expression(&self, date1: &str, date2: &str) -> Result<String> {
         mysql::get_date_diff_expression(date1, date2)
     }
 
-    #[inline(always)]
     fn get_date_arithmetic_interval_expression(
         &self,
         date: &str,
@@ -143,37 +134,30 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_date_arithmetic_interval_expression(date, operator, interval, unit)
     }
 
-    #[inline(always)]
     fn get_current_database_expression(&self) -> String {
         mysql::get_current_database_expression()
     }
 
-    #[inline(always)]
     fn get_read_lock_sql(&self) -> Result<String> {
         mysql::get_read_lock_sql()
     }
 
-    #[inline(always)]
     fn quote_string_literal(&self, str: &str) -> String {
         mysql::quote_string_literal(self, str)
     }
 
-    #[inline(always)]
     fn get_decimal_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_decimal_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_default_value_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_default_value_declaration_sql(self, column)
     }
 
-    #[inline(always)]
     fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
         mysql::get_column_charset_declaration_sql(charset)
     }
 
-    #[inline(always)]
     fn get_set_transaction_isolation_sql(
         &self,
         level: TransactionIsolationLevel,
@@ -181,34 +165,30 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_set_transaction_isolation_sql(self, level)
     }
 
-    #[inline(always)]
     fn get_date_time_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_date_time_type_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_date_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         mysql::get_date_type_declaration_sql()
     }
 
-    #[inline(always)]
     fn get_time_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         mysql::get_time_type_declaration_sql()
     }
 
-    #[inline(always)]
     fn get_float_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_float_declaration_sql(column)
     }
 
-    #[inline(always)]
     fn get_default_transaction_isolation_level(&self) -> TransactionIsolationLevel {
         mysql::get_default_transaction_isolation_level()
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    fn quote_single_identifier(&self, str: &str) -> String {
+        mysql::quote_single_identifier(str)
+    }
+
     fn _initialize_type_mappings(&self) {
         self._add_type_mapping("bigint", TypeId::of::<BigintType>());
         self._add_type_mapping("binary", TypeId::of::<BinaryType>());
@@ -250,27 +230,22 @@ impl DatabasePlatform for MySQLPlatform {
         }
     }
 
-    #[inline(always)]
     fn supports_identity_columns(&self) -> bool {
         true
     }
 
-    #[inline(always)]
     fn supports_column_length_indexes(&self) -> bool {
         true
     }
 
-    #[inline(always)]
     fn supports_inline_column_comments(&self) -> bool {
         true
     }
 
-    #[inline(always)]
     fn supports_column_collation(&self) -> bool {
         true
     }
 
-    #[inline(always)]
     fn modify_limit_query(
         &self,
         query: &str,
@@ -295,4 +270,55 @@ impl DatabasePlatform for MySQLPlatform {
     fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a> {
         Box::new(MySQLSchemaManager::new(connection, self.variant))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::mysql::MySQLPlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::tests::common_platform_tests;
+    use crate::EventDispatcher;
+    use creed::driver::mysql::MySQLVariant;
+    use std::sync::Arc;
+
+    pub fn create_mysql_platform() -> MySQLPlatform {
+        MySQLPlatform::new(MySQLVariant::MySQL, Arc::new(EventDispatcher::new()))
+    }
+
+    #[test]
+    pub fn quote_identifier() {
+        let platform = create_mysql_platform();
+        let c = '`';
+
+        assert_eq!(platform.quote_identifier("test"), format!("{}test{}", c, c));
+        assert_eq!(
+            platform.quote_identifier("test.test"),
+            format!("{}test{}.{}test{}", c, c, c, c)
+        );
+        assert_eq!(
+            platform.quote_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    #[test]
+    pub fn quote_single_identifier() {
+        let platform = create_mysql_platform();
+        let c = '`';
+
+        assert_eq!(
+            platform.quote_single_identifier("test"),
+            format!("{}test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier("test.test"),
+            format!("{}test.test{}", c, c)
+        );
+        assert_eq!(
+            platform.quote_single_identifier(&c.to_string()),
+            format!("{}{}{}{}", c, c, c, c)
+        );
+    }
+
+    common_platform_tests!(create_mysql_platform());
 }

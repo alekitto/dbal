@@ -13,14 +13,14 @@ pub struct UniqueConstraint {
 }
 
 impl UniqueConstraint {
-    fn new(
-        name: String,
-        columns: Vec<String>,
-        flags: Vec<String>,
+    pub fn new<S: AsRef<str>, C: AsRef<str>>(
+        name: S,
+        columns: &[C],
+        flags: &[String],
         options: HashMap<String, Value>,
     ) -> Self {
         let mut asset = AbstractAsset::default();
-        asset.set_name(name);
+        asset.set_name(name.as_ref());
 
         let mut this = Self {
             asset,
@@ -30,11 +30,11 @@ impl UniqueConstraint {
         };
 
         for column in columns {
-            this.add_column(&column);
+            this.add_column(column.as_ref());
         }
 
         for flag in flags {
-            this.add_flag(&flag);
+            this.add_flag(flag);
         }
 
         this
@@ -64,7 +64,7 @@ impl UniqueConstraint {
         self.columns.keys().cloned().collect()
     }
 
-    pub fn get_quoted_columns<T: DatabasePlatform + ?Sized>(&self, platform: &T) -> Vec<String> {
+    pub fn get_quoted_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
         self.columns
             .values()
             .map(|c| c.get_quoted_name(platform))

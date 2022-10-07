@@ -207,7 +207,7 @@ pub trait SchemaManager: Sync {
     fn get_create_unique_constraint_sql(
         &self,
         constraint: &UniqueConstraint,
-        table_name: &Identifier,
+        table_name: &dyn IntoIdentifier,
     ) -> Result<String> {
         default::get_create_unique_constraint_sql(
             self.get_platform()?.as_dyn(),
@@ -220,7 +220,7 @@ pub trait SchemaManager: Sync {
     fn get_create_foreign_key_sql(
         &self,
         foreign_key: &ForeignKeyConstraint,
-        table: &Identifier,
+        table: &dyn IntoIdentifier,
     ) -> Result<String> {
         default::get_create_foreign_key_sql(self.as_dyn(), foreign_key, table)
     }
@@ -1302,8 +1302,8 @@ pub trait SchemaManager: Sync {
         let options = HashMap::new();
 
         Ok(ForeignKeyConstraint::new(
-            local_columns.split(',').collect(),
-            foreign_columns.split(',').collect(),
+            &local_columns.split(',').collect::<Vec<_>>(),
+            &foreign_columns.split(',').collect::<Vec<_>>(),
             string_from_value(connection, foreign_key.get("foreign_table"))?,
             options,
             None,
@@ -1351,8 +1351,8 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
             fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
-            fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &Identifier) -> Result<String>;
-            fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &Identifier) -> Result<String>;
+            fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &dyn IntoIdentifier) -> Result<String>;
+            fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;
             fn get_create_database_sql(&self, name: &Identifier) -> Result<String>;
             fn get_list_databases_sql(&self) -> Result<String>;
@@ -1482,8 +1482,8 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
             fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
-            fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &Identifier) -> Result<String>;
-            fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &Identifier) -> Result<String>;
+            fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &dyn IntoIdentifier) -> Result<String>;
+            fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;
             fn get_create_database_sql(&self, name: &Identifier) -> Result<String>;
             fn get_list_databases_sql(&self) -> Result<String>;

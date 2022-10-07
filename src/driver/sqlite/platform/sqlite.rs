@@ -483,12 +483,12 @@ fn get_foreign_keys_in_altered_table(
 
         if changed {
             new_foreign_keys.push(ForeignKeyConstraint::new(
-                local_columns,
-                constraint
+                &local_columns,
+                &constraint
                     .get_foreign_columns()
                     .iter()
                     .map(|col| col.get_name())
-                    .collect(),
+                    .collect::<Vec<_>>(),
                 constraint.get_foreign_table().get_name(),
                 constraint.get_options(),
                 constraint.on_update,

@@ -1,34 +1,44 @@
 use crate::schema::{Asset, Column, Identifier};
-use std::borrow::Borrow;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ChangedProperty {
+    Type,
+    Precision,
+    Scale,
+    Fixed,
+    Default,
+    NotNull,
+    AutoIncrement,
+    Comment,
+    Length,
+    Unsigned,
+}
 
 /// Represents the change of a column.
 #[derive(Clone)]
 pub struct ColumnDiff {
     old_column_name: String,
     pub column: Column,
-    pub changed_properties: Vec<String>,
+    pub changed_properties: Vec<ChangedProperty>,
     pub from_column: Option<Column>,
 }
 
 impl ColumnDiff {
-    pub fn new<S: Borrow<str>>(
+    pub fn new(
         old_column_name: &str,
         column: &Column,
-        changed_properties: &[S],
+        changed_properties: &[ChangedProperty],
         from_column: Option<Column>,
     ) -> Self {
         Self {
             old_column_name: old_column_name.to_string(),
             column: column.clone(),
-            changed_properties: changed_properties
-                .iter()
-                .map(|c| c.borrow().to_string())
-                .collect(),
+            changed_properties: changed_properties.to_vec(),
             from_column,
         }
     }
 
-    pub fn has_changed(&self, property_name: &str) -> bool {
+    pub fn has_changed(&self, property_name: ChangedProperty) -> bool {
         self.changed_properties.iter().any(|p| property_name.eq(p))
     }
 

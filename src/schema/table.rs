@@ -247,6 +247,19 @@ impl Table {
         self.indices.iter().find(|&index| index.is_primary())
     }
 
+    pub fn get_primary_key_columns(&self) -> Option<Vec<&Column>> {
+        self.indices
+            .iter()
+            .find(|&index| index.is_primary())
+            .map(|i| i.get_columns())
+            .map(|cols| {
+                self.columns
+                    .iter()
+                    .filter(|c| cols.contains(&c.get_name()))
+                    .collect()
+            })
+    }
+
     pub fn get_engine(&self) -> Option<String> {
         self.engine.clone()
     }

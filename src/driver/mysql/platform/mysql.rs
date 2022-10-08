@@ -60,6 +60,49 @@ pub fn build_partition_options(options: &TableOptions) -> String {
     }
 }
 
+fn get_pre_alter_table_alter_index_foreign_key_sql(
+    this: &dyn SchemaManager,
+    diff: &TableDiff,
+) -> Result<Vec<String>> {
+    let mut sql = vec![];
+    let platform = this.get_platform()?;
+    let table = diff.get_name().get_quoted_name(&platform);
+
+    for changed_index in &diff.changed_indexes {
+        if let Some(from_table) = diff.from_table {
+            // Changed primary key
+            if !changed_index.is_primary() {
+                continue;
+            }
+
+            let index_columns = changed_index.get_columns();
+            for column in from_table.get_primary_key_columns().unwrap_or_default() {
+                // Check if an autoincrement column was dropped from the primary key.
+                if !column.is_autoincrement() || index_columns.contains(&column.get_name()) {
+                    continue;
+                }
+
+                let mut column_data = column.generate_column_data(&platform);
+
+                // The autoincrement attribute needs to be removed from the dropped column
+                // before we can drop and recreate the primary key.
+                column_data.autoincrement = Some(false);
+
+                sql.push(format!(
+                    "ALTER TABLE {} MODIFY {}",
+                    &table,
+                    this.get_column_declaration_sql(
+                        &column.get_quoted_name(&platform),
+                        &column_data
+                    )?
+                ));
+            }
+        }
+    }
+
+    Ok(sql)
+}
+
 pub fn modify_limit_query(query: &str, limit: Option<usize>, offset: Option<usize>) -> String {
     let mut query = query.to_string();
     let offset = offset.unwrap_or(0);
@@ -509,7 +552,9 @@ pub fn get_pre_alter_table_index_foreign_key_sql(
         diff.removed_foreign_keys = vec![];
     }
 
-    sql.append(&mut this.get_pre_alter_table_index_foreign_key_sql(diff)?);
+    sql.append(&mut get_pre_alter_table_alter_index_foreign_key_sql(
+        this, diff,
+    )?);
     sql.append(&mut default::get_pre_alter_table_index_foreign_key_sql(
         this.as_dyn(),
         diff,

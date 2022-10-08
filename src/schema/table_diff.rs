@@ -33,9 +33,9 @@ impl<'a> TableDiff<'a>
 where
     Self: 'a,
 {
-    pub fn new(table_name: String, from_table: Option<&'a Table>) -> Self {
+    pub fn new<S: AsRef<str>>(table_name: S, from_table: Option<&'a Table>) -> Self {
         Self {
-            name: table_name,
+            name: table_name.as_ref().to_string(),
             new_name: None,
             added_columns: vec![],
             changed_columns: vec![],

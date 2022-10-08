@@ -145,8 +145,10 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::r#type::{INTEGER, STRING};
-    use crate::schema::{Column, ForeignKeyConstraint, Index, Table, UniqueConstraint};
+    use crate::r#type::{BOOLEAN, INTEGER, STRING};
+    use crate::schema::{
+        ChangedProperty, Column, ColumnDiff, Index, Table, TableDiff, UniqueConstraint,
+    };
     use crate::tests::create_connection;
     use std::collections::HashMap;
 
@@ -158,12 +160,12 @@ mod tests {
         let mut table = Table::new("test");
         let mut id_column = Column::new("id", INTEGER).unwrap();
         id_column.set_notnull(true);
-        id_column.set_autoincrement(Some(true));
+        id_column.set_autoincrement(true);
         table.add_column(id_column);
 
         let mut test_column = Column::new("test", STRING).unwrap();
         test_column.set_notnull(false);
-        test_column.set_length(Some(255));
+        test_column.set_length(255);
         table.add_column(test_column);
 
         table
@@ -186,12 +188,12 @@ mod tests {
         let mut table = Table::new("test");
         let mut foo_column = Column::new("foo", STRING).unwrap();
         foo_column.set_notnull(false);
-        foo_column.set_length(Some(255));
+        foo_column.set_length(255);
         table.add_column(foo_column);
 
         let mut bar_column = Column::new("bar", STRING).unwrap();
         bar_column.set_notnull(false);
-        bar_column.set_length(Some(255));
+        bar_column.set_length(255);
         table.add_column(bar_column);
 
         table
@@ -264,5 +266,65 @@ mod tests {
             sql,
             "ALTER TABLE test ADD CONSTRAINT constraint_name UNIQUE (test)"
         );
+    }
+
+    #[tokio::test]
+    pub async fn generates_table_alteration_sql() {
+        let mut table = Table::new("mytable");
+        let mut id_column = Column::new("id", INTEGER).unwrap();
+        id_column.set_autoincrement(true);
+        table.add_column(id_column);
+        table.add_column(Column::new("foo", INTEGER).unwrap());
+        table.add_column(Column::new("bar", STRING).unwrap());
+        table.add_column(Column::new("bloo", BOOLEAN).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("mytable", Some(&table));
+        table_diff.new_name = "userlist".to_string().into();
+        let mut quota = Column::new("quota", INTEGER).unwrap();
+        quota.set_notnull(false);
+        table_diff.added_columns.push(quota);
+        table_diff
+            .removed_columns
+            .push(Column::new("foo", INTEGER).unwrap());
+
+        let mut baz = Column::new("baz", STRING).unwrap();
+        baz.set_length(255);
+        baz.set_default("def".into());
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bar",
+            &baz,
+            &[
+                ChangedProperty::Type,
+                ChangedProperty::NotNull,
+                ChangedProperty::Default,
+            ],
+            None,
+        ));
+
+        let mut bloo_column = Column::new("bloo", BOOLEAN).unwrap();
+        bloo_column.set_default(false.into());
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bloo",
+            &bloo_column,
+            &[
+                ChangedProperty::Type,
+                ChangedProperty::NotNull,
+                ChangedProperty::Default,
+            ],
+            None,
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        assert_eq!(sql, &[
+            "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id, bar, bloo FROM mytable",
+            "DROP TABLE mytable",
+            "CREATE TABLE mytable (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, baz VARCHAR(255) DEFAULT 'def' NOT NULL, bloo BOOLEAN DEFAULT 0 NOT NULL, quota INTEGER DEFAULT NULL, PRIMARY KEY(id))",
+            "INSERT INTO mytable (id, baz, bloo) SELECT id, bar, bloo FROM __temp__mytable",
+            "DROP TABLE __temp__mytable",
+            "ALTER TABLE mytable RENAME TO userlist",
+        ]);
     }
 }

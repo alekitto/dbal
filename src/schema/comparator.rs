@@ -1,6 +1,7 @@
 use crate::r#type::{IntoType, BINARY, GUID, STRING};
 use crate::schema::{
-    Asset, Column, Index, Schema, SchemaDiff, SchemaManager, Sequence, Table, TableDiff,
+    Asset, ChangedProperty, Column, Index, Schema, SchemaDiff, SchemaManager, Sequence, Table,
+    TableDiff,
 };
 use crate::{Result, Value};
 use creed::r#type::DECIMAL;
@@ -408,26 +409,26 @@ pub trait Comparator {
     ///
     /// If there are differences this method returns the changed properties as a
     /// string vector, otherwise an empty vector gets returned.
-    fn diff_column(&self, column1: &Column, column2: &Column) -> Vec<&'static str> {
+    fn diff_column(&self, column1: &Column, column2: &Column) -> Vec<ChangedProperty> {
         let platform = self.get_schema_manager().get_platform().unwrap();
         let properties1 = column1.generate_column_data(&platform);
         let properties2 = column2.generate_column_data(&platform);
 
         let mut changed_properties = vec![];
         if properties1.r#type != properties2.r#type {
-            changed_properties.push("type");
+            changed_properties.push(ChangedProperty::Type);
         }
 
         if properties1.notnull != properties2.notnull {
-            changed_properties.push("notnull");
+            changed_properties.push(ChangedProperty::NotNull);
         }
 
         if properties1.unsigned != properties2.unsigned {
-            changed_properties.push("unsigned");
+            changed_properties.push(ChangedProperty::Unsigned);
         }
 
         if properties1.autoincrement != properties2.autoincrement {
-            changed_properties.push("autoincrement");
+            changed_properties.push(ChangedProperty::AutoIncrement);
         }
 
         // Null values need to be checked additionally as they tell whether to create or drop a default value.
@@ -435,7 +436,7 @@ pub trait Comparator {
         if (properties1.default == Value::NULL) != (properties2.default == Value::NULL)
             || properties1.default != properties2.default
         {
-            changed_properties.push("default");
+            changed_properties.push(ChangedProperty::Default);
         }
 
         if properties1.r#type == STRING.into_type().unwrap()
@@ -446,19 +447,19 @@ pub trait Comparator {
             let length1 = properties1.length.unwrap_or(255);
             let length2 = properties2.length.unwrap_or(255);
             if length1 != length2 {
-                changed_properties.push("length");
+                changed_properties.push(ChangedProperty::Length);
             }
 
             if properties1.fixed != properties2.fixed {
-                changed_properties.push("fixed");
+                changed_properties.push(ChangedProperty::Fixed);
             }
         } else if properties1.r#type == DECIMAL.into_type().unwrap() {
             if properties1.precision.unwrap_or(10) != properties2.precision.unwrap_or(10) {
-                changed_properties.push("precision");
+                changed_properties.push(ChangedProperty::Precision);
             }
 
             if properties1.scale != properties2.scale {
-                changed_properties.push("scale");
+                changed_properties.push(ChangedProperty::Scale);
             }
         }
 

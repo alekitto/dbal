@@ -55,14 +55,12 @@ impl Column {
         let r#type = r#type.into_type()?;
         let mut asset = AbstractAsset::default();
         asset.set_name(name);
-        let default = Value::NULL;
-        let notnull = false;
 
         Ok(Self {
             asset,
             r#type,
-            default,
-            notnull,
+            default: Value::NULL,
+            notnull: true,
             unique: false,
             length: None,
             precision: None,
@@ -84,6 +82,14 @@ impl Column {
         self.r#type.clone()
     }
 
+    pub fn get_default(&self) -> &Value {
+        &self.default
+    }
+
+    pub fn set_default(&mut self, default: Value) {
+        self.default = default;
+    }
+
     pub fn get_comment(&self) -> &Option<String> {
         &self.comment
     }
@@ -96,16 +102,16 @@ impl Column {
         self.notnull
     }
 
-    pub fn set_autoincrement(&mut self, autoincrement: Option<bool>) {
-        self.autoincrement = autoincrement;
+    pub fn set_autoincrement<T: Into<Option<bool>>>(&mut self, autoincrement: T) {
+        self.autoincrement = autoincrement.into();
     }
 
     pub fn is_autoincrement(&self) -> bool {
         self.autoincrement.unwrap_or(false)
     }
 
-    pub fn set_length(&mut self, length: Option<usize>) {
-        self.length = length;
+    pub fn set_length<S: Into<Option<usize>>>(&mut self, length: S) {
+        self.length = length.into();
     }
 
     pub fn get_length(&self) -> Option<usize> {

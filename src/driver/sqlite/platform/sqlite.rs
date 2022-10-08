@@ -10,7 +10,6 @@ use crate::schema::{
 use crate::{Error, Result, TransactionIsolationLevel};
 use itertools::Itertools;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry::Occupied;
 use std::collections::HashMap;
 
 pub fn get_regexp_expression() -> Result<String> {
@@ -717,13 +716,17 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
 /// Replace the column with the given name with the new column.
 fn replace_column(
     table_name: &str,
-    mut columns: HashMap<String, Column>,
+    mut columns: Vec<Column>,
     column_name: &str,
     column: &Column,
-) -> Result<HashMap<String, Column>> {
+) -> Result<Vec<Column>> {
     let column_name = column_name.to_lowercase();
-    if let Occupied(mut e) = columns.entry(column_name.clone()) {
-        e.insert(column.clone());
+    if let Some((pos, _)) = columns
+        .iter()
+        .find_position(|c| c.get_name().to_lowercase() == column_name)
+    {
+        columns.remove(pos);
+        columns.insert(pos, column.clone());
         Ok(columns)
     } else {
         Err(Error::column_does_not_exist(&column_name, table_name))
@@ -739,17 +742,17 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         Ok(sql)
     } else if let Some(from_table) = diff.from_table {
         let mut column_sql = vec![];
-        let mut columns = HashMap::new();
-        let mut old_column_names = HashMap::new();
-        let mut new_column_names = HashMap::new();
+        let mut columns = vec![];
+        let mut old_column_names = vec![];
+        let mut new_column_names = vec![];
 
         for column in from_table.get_columns() {
             let column_name = column.get_name().to_lowercase();
-            columns.insert(column_name.clone(), column.clone());
+            columns.push(column.clone());
 
             let quoted_name = column.get_quoted_name(&platform);
-            old_column_names.insert(column_name.clone(), quoted_name.clone());
-            new_column_names.insert(column_name, quoted_name);
+            old_column_names.push(quoted_name.clone());
+            new_column_names.push(quoted_name);
         }
 
         for column in &diff.removed_columns {
@@ -761,12 +764,26 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             }
 
             let column_name = column.get_name().to_lowercase();
-            if columns.remove(&column_name).is_none() {
-                continue;
-            }
+            if let Some((pos, _)) = columns
+                .iter()
+                .find_position(|c| c.get_name() == column_name)
+            {
+                columns.remove(pos);
 
-            old_column_names.remove(&column_name);
-            new_column_names.remove(&column_name);
+                if let Some((p, _)) = old_column_names
+                    .iter()
+                    .find_position(|c| *c == &column_name)
+                {
+                    old_column_names.remove(p);
+                }
+
+                if let Some((p, _)) = new_column_names
+                    .iter()
+                    .find_position(|c| *c == &column_name)
+                {
+                    new_column_names.remove(p);
+                }
+            }
         }
 
         for (old_column_name, column) in &diff.renamed_columns {
@@ -784,8 +801,11 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             let old_column_name = old_column_name.to_lowercase();
             columns = replace_column(&diff.name, columns, &old_column_name, column)?;
 
-            if new_column_names.get(&old_column_name).is_some() {
-                new_column_names.insert(old_column_name, column.get_quoted_name(&platform));
+            if let Some((pos, _)) = new_column_names
+                .iter()
+                .find_position(|c| *c == &old_column_name)
+            {
+                new_column_names.splice(pos..=pos, [column.get_quoted_name(&platform)]);
             }
         }
 
@@ -800,11 +820,11 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             let old_column_name = column_diff.get_old_column_name().get_name().to_lowercase();
             columns = replace_column(&diff.name, columns, &old_column_name, &column_diff.column)?;
 
-            if new_column_names.get(&old_column_name).is_some() {
-                new_column_names.insert(
-                    old_column_name,
-                    column_diff.column.get_quoted_name(&platform),
-                );
+            if let Some((pos, _)) = new_column_names
+                .iter()
+                .find_position(|c| *c == &old_column_name)
+            {
+                new_column_names.splice(pos..=pos, [column_diff.column.get_quoted_name(&platform)]);
             }
         }
 
@@ -816,7 +836,7 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 continue;
             }
 
-            columns.insert(column.get_name().to_lowercase(), column.clone());
+            columns.push(column.clone());
         }
 
         let mut sql = vec![];
@@ -825,7 +845,7 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             let data_table = Identifier::new(format!("__temp__{}", from_table.get_name()), false);
             let mut new_table = from_table.template();
             new_table.set_alter(true);
-            new_table.add_columns(columns.into_values());
+            new_table.add_columns(columns.into_iter());
 
             if let Some(primary) = get_primary_index_in_altered_table(diff, from_table) {
                 new_table.add_index(primary);
@@ -834,11 +854,11 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             new_table
                 .add_foreign_keys(get_foreign_keys_in_altered_table(diff, from_table).into_iter());
 
-            let old_columns = old_column_names.into_values().join(", ");
-            let new_columns = new_column_names.into_values().join(", ");
+            let old_columns = old_column_names.join(", ");
+            let new_columns = new_column_names.join(", ");
             let data_table_quoted = data_table.get_quoted_name(&platform);
 
-            let mut sql = this.get_pre_alter_table_index_foreign_key_sql(diff)?;
+            sql = this.get_pre_alter_table_index_foreign_key_sql(diff)?;
             sql.push(format!(
                 "CREATE TEMPORARY TABLE {} AS SELECT {} FROM {}",
                 data_table_quoted,

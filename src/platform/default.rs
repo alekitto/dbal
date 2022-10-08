@@ -18,6 +18,7 @@ use crate::{
 };
 use itertools::Itertools;
 use regex::Regex;
+use std::fmt::Display;
 
 pub fn get_ascii_string_type_declaration_sql(
     this: &dyn DatabasePlatform,
@@ -237,11 +238,17 @@ pub fn get_date_sub_years_expression(
     this.get_date_arithmetic_interval_expression(date, "-", years, DateIntervalUnit::Year)
 }
 
-pub fn get_bit_and_comparison_expression(value1: &str, value2: &str) -> Result<String> {
+pub fn get_bit_and_comparison_expression(
+    value1: &dyn Display,
+    value2: &dyn Display,
+) -> Result<String> {
     Ok(format!("({} & {})", value1, value2))
 }
 
-pub fn get_bit_or_comparison_expression(value1: &str, value2: &str) -> Result<String> {
+pub fn get_bit_or_comparison_expression(
+    value1: &dyn Display,
+    value2: &dyn Display,
+) -> Result<String> {
     Ok(format!("({} | {})", value1, value2))
 }
 

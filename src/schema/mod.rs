@@ -21,7 +21,7 @@ pub(crate) use table::TableOptions;
 
 pub use check_constraint::CheckConstraint;
 pub use column::Column;
-pub use column_diff::ColumnDiff;
+pub use column_diff::{ChangedProperty, ColumnDiff};
 pub use comparator::{Comparator, GenericComparator};
 pub use foreign_key_constraint::{ForeignKeyConstraint, ForeignKeyReferentialAction};
 pub use identifier::{Identifier, IntoIdentifier};

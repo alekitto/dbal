@@ -2,8 +2,8 @@ use crate::error::ErrorKind;
 use crate::platform::{default, DateIntervalUnit};
 use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
 use crate::schema::{
-    Asset, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier, Index, IntoIdentifier,
-    Sequence, TableDiff, TableOptions,
+    Asset, ChangedProperty, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier,
+    Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
 };
 use crate::{Error, Result, TransactionIsolationLevel, Value};
 use creed::platform::DatabasePlatform;
@@ -334,10 +334,10 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
         let old_column_name = column_diff.get_old_column_name().get_quoted_name(&platform);
         let column = &column_diff.column;
 
-        if column_diff.has_changed("type")
-            || column_diff.has_changed("precision")
-            || column_diff.has_changed("scale")
-            || column_diff.has_changed("fixed")
+        if column_diff.has_changed(ChangedProperty::Type)
+            || column_diff.has_changed(ChangedProperty::Precision)
+            || column_diff.has_changed(ChangedProperty::Scale)
+            || column_diff.has_changed(ChangedProperty::Fixed)
         {
             let r#type = TypeManager::get_instance().get_type(column.get_type())?;
             let mut column_data = column.generate_column_data(&platform);
@@ -355,7 +355,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
             ));
         }
 
-        if column_diff.has_changed("default") {
+        if column_diff.has_changed(ChangedProperty::Default) {
             let column_data = column.generate_column_data(&platform);
             let default_clause = if column_data.default == Value::NULL {
                 " DROP DEFAULT".to_string()
@@ -373,7 +373,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
             ));
         }
 
-        if column_diff.has_changed("notnull") {
+        if column_diff.has_changed(ChangedProperty::NotNull) {
             let query = format!(
                 "ALTER {} {} NOT NULL",
                 old_column_name,
@@ -386,7 +386,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
             ));
         }
 
-        if column_diff.has_changed("autoincrement") {
+        if column_diff.has_changed(ChangedProperty::AutoIncrement) {
             if column.is_autoincrement() {
                 let seq_name = format!("{}_{}_seq", diff.name, old_column_name);
 
@@ -419,7 +419,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
         let new_comment = this.get_column_comment(column)?;
         let old_comment = get_old_column_comment(this, column_diff);
 
-        if column_diff.has_changed("comment")
+        if column_diff.has_changed(ChangedProperty::Comment)
             || (column_diff.from_column.is_some() && old_comment != Some(new_comment.clone()))
         {
             comments_sql.push(this.get_comment_on_column_sql(
@@ -429,7 +429,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
             )?);
         }
 
-        if column_diff.has_changed("length") {
+        if column_diff.has_changed(ChangedProperty::Length) {
             let query = format!(
                 "ALTER {} TYPE {}",
                 old_column_name,
@@ -513,13 +513,14 @@ fn is_unchanged_binary_column(column_diff: &ColumnDiff) -> bool {
             return false;
         }
 
-        column_diff.has_changed("type")
-            || column_diff.has_changed("length")
-            || column_diff.has_changed("fixed")
-    } else if column_diff.has_changed("type") {
+        column_diff.has_changed(ChangedProperty::Type)
+            || column_diff.has_changed(ChangedProperty::Length)
+            || column_diff.has_changed(ChangedProperty::Fixed)
+    } else if column_diff.has_changed(ChangedProperty::Type) {
         false
     } else {
-        column_diff.has_changed("length") || column_diff.has_changed("fixed")
+        column_diff.has_changed(ChangedProperty::Length)
+            || column_diff.has_changed(ChangedProperty::Fixed)
     }
 }
 

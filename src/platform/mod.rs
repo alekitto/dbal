@@ -14,7 +14,7 @@ pub use date_interval_unit::DateIntervalUnit;
 pub use keyword::{KeywordList, Keywords};
 pub use lock_mode::LockMode;
 use std::any::TypeId;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::Arc;
 pub use trim_mode::TrimMode;
 
@@ -355,12 +355,20 @@ pub trait DatabasePlatform: Debug {
     }
 
     /// Returns the SQL bit AND comparison expression.
-    fn get_bit_and_comparison_expression(&self, value1: &str, value2: &str) -> Result<String> {
+    fn get_bit_and_comparison_expression(
+        &self,
+        value1: &dyn Display,
+        value2: &dyn Display,
+    ) -> Result<String> {
         default::get_bit_and_comparison_expression(value1, value2)
     }
 
     /// Returns the SQL bit OR comparison expression.
-    fn get_bit_or_comparison_expression(&self, value1: &str, value2: &str) -> Result<String> {
+    fn get_bit_or_comparison_expression(
+        &self,
+        value1: &dyn Display,
+        value2: &dyn Display,
+    ) -> Result<String> {
         default::get_bit_or_comparison_expression(value1, value2)
     }
 
@@ -798,5 +806,30 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
             fn create_reserved_keywords_list(&self) -> KeywordList;
             fn create_schema_manager<'a>(&self, connection: &'a Connection) -> Box<dyn SchemaManager + 'a>;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::create_connection;
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    pub async fn generates_bit_and_comparison_expression_sql() {
+        let connection = create_connection().await.unwrap();
+        let platform = connection.get_platform().unwrap();
+
+        let sql = platform.get_bit_and_comparison_expression(&2, &4).unwrap();
+        assert_eq!(sql, "(2 & 4)");
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    pub async fn generates_bit_or_comparison_expression_sql() {
+        let connection = create_connection().await.unwrap();
+        let platform = connection.get_platform().unwrap();
+
+        let sql = platform.get_bit_or_comparison_expression(&2, &4).unwrap();
+        assert_eq!(sql, "(2 | 4)");
     }
 }

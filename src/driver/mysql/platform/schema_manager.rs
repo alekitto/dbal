@@ -155,8 +155,12 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
 #[cfg(test)]
 mod tests {
     use crate::r#type::{INTEGER, STRING};
-    use crate::schema::{Column, ForeignKeyConstraint, Index, Table, UniqueConstraint};
+    use crate::schema::{
+        ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
+        UniqueConstraint,
+    };
     use crate::tests::create_connection;
+    use creed::r#type::BOOLEAN;
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -167,12 +171,12 @@ mod tests {
         let mut table = Table::new("test");
         let mut id_column = Column::new("id", INTEGER).unwrap();
         id_column.set_notnull(true);
-        id_column.set_autoincrement(Some(true));
+        id_column.set_autoincrement(true);
         table.add_column(id_column);
 
         let mut test_column = Column::new("test", STRING).unwrap();
         test_column.set_notnull(false);
-        test_column.set_length(Some(255));
+        test_column.set_length(255);
         table.add_column(test_column);
 
         table
@@ -193,12 +197,12 @@ mod tests {
         let mut table = Table::new("test");
         let mut foo_column = Column::new("foo", STRING).unwrap();
         foo_column.set_notnull(false);
-        foo_column.set_length(Some(255));
+        foo_column.set_length(255);
         table.add_column(foo_column);
 
         let mut bar_column = Column::new("bar", STRING).unwrap();
         bar_column.set_notnull(false);
-        bar_column.set_length(Some(255));
+        bar_column.set_length(255);
         table.add_column(bar_column);
 
         table
@@ -277,7 +281,7 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn test_generates_constraint_creation_sql() {
+    pub async fn generates_constraint_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
 
@@ -316,5 +320,57 @@ mod tests {
             sql,
             "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES foreign (id)"
         );
+    }
+
+    #[tokio::test]
+    pub async fn generates_table_alteration_sql() {
+        let mut table = Table::new("mytable");
+        let mut id_column = Column::new("id", INTEGER).unwrap();
+        id_column.set_autoincrement(true);
+        table.add_column(id_column);
+        table.add_column(Column::new("foo", INTEGER).unwrap());
+        table.add_column(Column::new("bar", STRING).unwrap());
+        table.add_column(Column::new("bloo", BOOLEAN).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("mytable", Some(&table));
+        table_diff.new_name = "userlist".to_string().into();
+        let mut quota = Column::new("quota", INTEGER).unwrap();
+        quota.set_notnull(false);
+        table_diff.added_columns.push(quota);
+        table_diff
+            .removed_columns
+            .push(Column::new("foo", INTEGER).unwrap());
+
+        let mut baz = Column::new("baz", STRING).unwrap();
+        baz.set_default("def".into());
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bar",
+            &baz,
+            &[
+                ChangedProperty::Type,
+                ChangedProperty::NotNull,
+                ChangedProperty::Default,
+            ],
+            None,
+        ));
+
+        let mut bloo_column = Column::new("bloo", BOOLEAN).unwrap();
+        bloo_column.set_default(false.into());
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bloo",
+            &bloo_column,
+            &[
+                ChangedProperty::Type,
+                ChangedProperty::NotNull,
+                ChangedProperty::Default,
+            ],
+            None,
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        assert_eq!(sql, &["ALTER TABLE mytable RENAME TO userlist, ADD quota INT DEFAULT NULL, DROP foo, CHANGE bar baz VARCHAR(255) DEFAULT 'def' NOT NULL, CHANGE bloo bloo TINYINT(1) DEFAULT 0 NOT NULL"]);
     }
 }

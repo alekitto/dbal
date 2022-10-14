@@ -452,7 +452,7 @@ pub trait DatabasePlatform: Debug {
     }
 
     /// Obtains SQL code portion needed to create a custom column,
-    /// e.g. when a column has the "columnDefinition" keyword.
+    /// e.g. when a column has the "column_definition" set.
     /// Only "AUTOINCREMENT" and "PRIMARY KEY" are added if appropriate.
     fn get_custom_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         default::get_custom_type_declaration_sql(column)

@@ -351,7 +351,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Returns the SQL snippet to drop an existing table.
-    fn get_drop_table_sql(&self, table_name: &Identifier) -> Result<String> {
+    fn get_drop_table_sql(&self, table_name: &dyn IntoIdentifier) -> Result<String> {
         default::get_drop_table_sql(self.as_dyn(), table_name)
     }
 
@@ -1369,7 +1369,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
             fn get_drop_database_sql(&self, name: &str) -> Result<String>;
             fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String>;
-            fn get_drop_table_sql(&self, table_name: &Identifier) -> Result<String>;
+            fn get_drop_table_sql(&self, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>>;
             fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String>;
             fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String>;
@@ -1500,7 +1500,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
             fn get_drop_database_sql(&self, name: &str) -> Result<String>;
             fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String>;
-            fn get_drop_table_sql(&self, table_name: &Identifier) -> Result<String>;
+            fn get_drop_table_sql(&self, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>>;
             fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String>;
             fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String>;
@@ -1601,12 +1601,21 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::r#type::{INTEGER, STRING};
     use crate::schema::{
-        ForeignKeyReferentialAction, Index, IntoIdentifier, SchemaManager, Table, UniqueConstraint,
+        Column, ColumnDiff, ForeignKeyReferentialAction, Index, IntoIdentifier, SchemaManager,
+        Table, TableDiff, UniqueConstraint,
     };
     use crate::tests::{create_connection, MockConnection};
-    use crate::{Connection, EventDispatcher, SchemaDropTableEvent};
+    use crate::{
+        Connection, EventDispatcher, SchemaAlterTableAddColumnEvent,
+        SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
+        SchemaAlterTableRemoveColumnEvent, SchemaCreateTableColumnEvent, SchemaCreateTableEvent,
+        SchemaDropTableEvent,
+    };
+    use creed::SchemaAlterTableRenameColumnEvent;
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn can_overwrite_drop_table_sql_via_event_listener() {
@@ -1626,7 +1635,7 @@ mod tests {
             .get_platform()
             .expect("failed to create platform");
         let schema_manager = platform.create_schema_manager(&connection);
-        let d = schema_manager.get_drop_table_sql(&"table".into()).unwrap();
+        let d = schema_manager.get_drop_table_sql(&"table").unwrap();
 
         assert_eq!("-- DROP SCHEMA table", d);
     }
@@ -1722,6 +1731,192 @@ mod tests {
                     "WHERE clause should NOT be present"
                 );
             }
+        }
+    }
+
+    #[tokio::test]
+    pub async fn get_custom_column_declaration_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let mut column = Column::new("foo", INTEGER).unwrap();
+        column.set_column_definition("MEDIUMINT(6) UNSIGNED".to_string().into());
+
+        let column_data = column.generate_column_data(&schema_manager.get_platform().unwrap());
+        let sql = schema_manager
+            .get_column_declaration_sql("foo", &column_data)
+            .unwrap();
+
+        assert_eq!(sql, "foo MEDIUMINT(6) UNSIGNED");
+    }
+
+    #[derive(Default)]
+    struct SqlDispatchEventListener {
+        on_schema_create_table_calls: usize,
+        on_schema_create_table_column_calls: usize,
+        on_schema_drop_table: usize,
+        on_schema_alter_table: usize,
+        on_schema_alter_table_add_column: usize,
+        on_schema_alter_table_remove_column: usize,
+        on_schema_alter_table_change_column: usize,
+        on_schema_alter_table_rename_column: usize,
+    }
+
+    #[tokio::test]
+    pub async fn get_create_table_sql_dispatch_event() {
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let event_manager = connection.get_event_manager();
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaCreateTableEvent| {
+                listener.lock().unwrap().on_schema_create_table_calls += 1;
+                Ok(())
+            });
+        }
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaCreateTableColumnEvent| {
+                listener.lock().unwrap().on_schema_create_table_column_calls += 1;
+                Ok(())
+            });
+        }
+
+        let mut table = Table::new("test");
+
+        let mut foo_column = Column::new("foo", STRING).unwrap();
+        foo_column.set_notnull(false);
+        foo_column.set_length(255);
+        table.add_column(foo_column);
+        let mut bar_column = Column::new("bar", STRING).unwrap();
+        bar_column.set_notnull(false);
+        bar_column.set_length(255);
+        table.add_column(bar_column);
+
+        schema_manager.get_create_table_sql(&table, None).unwrap();
+
+        assert_eq!(listener.lock().unwrap().on_schema_create_table_calls, 1);
+        assert_eq!(
+            listener.lock().unwrap().on_schema_create_table_column_calls,
+            2
+        );
+    }
+
+    #[tokio::test]
+    pub async fn get_drop_table_sql_dispatch_event() {
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let event_manager = connection.get_event_manager();
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaDropTableEvent| {
+                listener.lock().unwrap().on_schema_drop_table += 1;
+                Ok(())
+            });
+        }
+
+        schema_manager.get_drop_table_sql(&"TABLE").unwrap();
+
+        assert_eq!(listener.lock().unwrap().on_schema_drop_table, 1);
+    }
+
+    #[tokio::test]
+    pub async fn get_alter_table_sql_dispatch_event() {
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let event_manager = connection.get_event_manager();
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaAlterTableEvent| {
+                listener.lock().unwrap().on_schema_alter_table += 1;
+                Ok(())
+            });
+        }
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaAlterTableAddColumnEvent| {
+                listener.lock().unwrap().on_schema_alter_table_add_column += 1;
+                Ok(())
+            });
+        }
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaAlterTableRemoveColumnEvent| {
+                listener.lock().unwrap().on_schema_alter_table_remove_column += 1;
+                Ok(())
+            });
+        }
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaAlterTableChangeColumnEvent| {
+                listener.lock().unwrap().on_schema_alter_table_change_column += 1;
+                Ok(())
+            });
+        }
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaAlterTableRenameColumnEvent| {
+                listener.lock().unwrap().on_schema_alter_table_rename_column += 1;
+                Ok(())
+            });
+        }
+
+        let mut table = Table::new("mytable");
+        table.add_column(Column::new("removed", INTEGER).unwrap());
+        table.add_column(Column::new("changed", INTEGER).unwrap());
+        table.add_column(Column::new("renamed", INTEGER).unwrap());
+
+        let mut table_diff = TableDiff::new("mytable", Some(&table));
+        table_diff
+            .added_columns
+            .push(Column::new("added", INTEGER).unwrap());
+        table_diff
+            .removed_columns
+            .push(Column::new("removed", INTEGER).unwrap());
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "changed",
+            &Column::new("changed2", STRING).unwrap(),
+            &[],
+            None,
+        ));
+        table_diff.renamed_columns.push((
+            "renamed".to_string(),
+            Column::new("renamed2", INTEGER).unwrap(),
+        ));
+
+        schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+
+        {
+            let listener = listener.lock().unwrap();
+            assert_eq!(
+                listener.on_schema_alter_table, 1,
+                "alter table calls count differs"
+            );
+            assert_eq!(
+                listener.on_schema_alter_table_add_column, 1,
+                "alter table add column calls count differs"
+            );
+            assert_eq!(
+                listener.on_schema_alter_table_remove_column, 1,
+                "alter table remove column calls count differs"
+            );
+            assert_eq!(
+                listener.on_schema_alter_table_change_column, 1,
+                "alter table change column calls count differs"
+            );
+            assert_eq!(
+                listener.on_schema_alter_table_rename_column, 1,
+                "alter table rename column calls count differs"
+            );
         }
     }
 }

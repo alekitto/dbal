@@ -110,6 +110,14 @@ impl Column {
         self.autoincrement.unwrap_or(false)
     }
 
+    pub fn get_column_definition(&self) -> &Option<String> {
+        &self.column_definition
+    }
+
+    pub fn set_column_definition(&mut self, def: Option<String>) {
+        self.column_definition = def;
+    }
+
     pub fn set_length<S: Into<Option<usize>>>(&mut self, length: S) {
         self.length = length.into();
     }

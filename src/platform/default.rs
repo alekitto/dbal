@@ -273,9 +273,14 @@ pub fn get_write_lock_sql(this: &dyn DatabasePlatform) -> Result<String> {
     this.get_for_update_sql()
 }
 
-pub fn get_drop_table_sql(this: &dyn SchemaManager, table_name: &Identifier) -> Result<String> {
+pub fn get_drop_table_sql(
+    this: &dyn SchemaManager,
+    table_name: &dyn IntoIdentifier,
+) -> Result<String> {
     let platform = this.get_platform()?;
-    let table_arg = table_name.get_quoted_name(platform.as_dyn());
+    let table_arg = table_name
+        .into_identifier()
+        .get_quoted_name(platform.as_dyn());
     let ev = platform
         .get_event_manager()
         .dispatch_sync(SchemaDropTableEvent::new(

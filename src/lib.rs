@@ -16,7 +16,8 @@
 //!  use creed::{Connection, Result};
 //!
 //!  async fn connect_database(dsn: &str) -> Result<Connection> {
-//!    Connection::create_from_dsn(dsn, None, None).await
+//!    let connection = Connection::create_from_dsn(dsn, None, None)?;
+//!    connection.connect().await
 //!  }
 //!
 //!  connect_database("postgresql://postgres@localhost:5432/database_name"); // Will connect to postgres

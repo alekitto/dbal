@@ -12,6 +12,8 @@ use creed::schema::SchemaManager;
 use std::io::Read;
 use std::sync::Arc;
 
+/// The main database connection struct.
+///
 /// `Connection` is the main entry point for `Creed`.
 /// It serves as a central point of control for the database connection,
 /// handling configuration options, the database platform object,
@@ -39,7 +41,7 @@ impl Connection {
     ///
     /// If the `event_manager` parameter is `None`, a new [`EventDispatcher`] object
     /// is created and used. You can access the event manager through the
-    /// [`get_event_manager`] method.
+    /// [`Connection::get_event_manager`] method.
     pub fn create(
         connection_options: ConnectionOptions,
         configuration: Option<Configuration>,

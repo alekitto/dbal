@@ -511,4 +511,29 @@ mod tests {
             ]
         );
     }
+
+    #[tokio::test]
+    pub async fn test_quoted_name_in_index_sql() {
+        let mut table = Table::new("test");
+        table.add_column(Column::new("column1", STRING).unwrap());
+        table.add_index(Index::new::<_, _, &str>(
+            "`key`",
+            &["column1"],
+            false,
+            false,
+            &[],
+            HashMap::default(),
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (column1 VARCHAR(255) NOT NULL)",
+                "CREATE INDEX \"key\" ON test (column1)",
+            ]
+        );
+    }
 }

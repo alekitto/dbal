@@ -87,6 +87,15 @@ jobs:
           command: test
           args: >
             --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        env:
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+
+      - name: Aggregate code coverage with grcov
+        uses: actions-rs/grcov@v0.1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v3
 
   sqlite:
     name: SQLite
@@ -123,6 +132,14 @@ jobs:
             --test-threads=1
         env:
           DATABASE_DSN: 'sqlite://:memory:'
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+
+      - name: Aggregate code coverage with grcov
+        uses: actions-rs/grcov@v0.1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v3
 
   postgres:
     name: Postgres
@@ -169,6 +186,9 @@ jobs:
             --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
 
 #      - uses: actions-rs/cargo@v1
 #        with:
@@ -178,6 +198,11 @@ jobs:
 #            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
 #        env:
 #          DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal?sslmode=verify-ca&sslrootcert=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
+
+      - name: Aggregate code coverage with grcov
+        uses: actions-rs/grcov@v0.1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v3
 
   mysql:
     name: MySQL
@@ -223,6 +248,14 @@ jobs:
             --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+
+      - name: Aggregate code coverage with grcov
+        uses: actions-rs/grcov@v0.1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v3
 
   mariadb:
     name: MariaDB
@@ -269,3 +302,11 @@ jobs:
             --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+
+      - name: Aggregate code coverage with grcov
+        uses: actions-rs/grcov@v0.1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v3

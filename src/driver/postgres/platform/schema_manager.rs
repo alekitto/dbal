@@ -160,7 +160,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::r#type::{BOOLEAN, INTEGER, STRING};
+    use crate::r#type::{BOOLEAN, INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
         ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
@@ -324,7 +324,7 @@ mod tests {
         let sql = schema_manager
             .get_create_foreign_key_sql(&fk, &"test")
             .unwrap();
-        assert_eq!(sql, "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES foreign (id) NOT DEFERRABLE INITIALLY IMMEDIATE");
+        assert_eq!(sql, "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES \"foreign\" (id) NOT DEFERRABLE INITIALLY IMMEDIATE");
     }
 
     #[tokio::test]
@@ -390,5 +390,99 @@ mod tests {
                 "ALTER TABLE mytable RENAME TO userlist",
             ]
         );
+    }
+
+    #[tokio::test]
+    pub async fn create_table_column_comments() {
+        let mut table = Table::new("test");
+        let mut id_col = Column::new("id", INTEGER).unwrap();
+        id_col.set_comment("This is a comment");
+        table.add_column(id_col);
+
+        table
+            .set_primary_key(&["id"], None)
+            .expect("failed to set primary key");
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (id INT NOT NULL, PRIMARY KEY(id))",
+                "COMMENT ON COLUMN test.id IS 'This is a comment'",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    pub async fn alter_table_column_comments() {
+        let mut table_diff = TableDiff::new("mytable", None);
+        let mut col = Column::new("quota", INTEGER).unwrap();
+        col.set_comment("A comment");
+        table_diff.added_columns.push(col);
+
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "foo",
+            &Column::new("foo", STRING).unwrap(),
+            &[ChangedProperty::Comment],
+            None,
+        ));
+        let mut col = Column::new("baz", STRING).unwrap();
+        col.set_comment("B comment");
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bar",
+            &col,
+            &[ChangedProperty::Comment],
+            None,
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        assert_eq!(
+            sql,
+            &[
+                "ALTER TABLE mytable ADD quota INT NOT NULL",
+                "COMMENT ON COLUMN mytable.quota IS 'A comment'",
+                "COMMENT ON COLUMN mytable.foo IS NULL",
+                "COMMENT ON COLUMN mytable.baz IS 'B comment'",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    pub async fn create_table_column_type_comments() {
+        let mut table = Table::new("test");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.add_column(Column::new("data", SIMPLE_ARRAY).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (id INT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(id))",
+                "COMMENT ON COLUMN test.data IS '(CRType:simple_array)'",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    pub async fn quoted_column_in_primary_key_propagation() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("`quoted`");
+        table.add_column(Column::new("create", STRING).unwrap());
+        table
+            .set_primary_key(&["create"], None)
+            .expect("failed to set primary key");
+
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(sql, &["CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"]);
     }
 }

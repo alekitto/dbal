@@ -1637,7 +1637,7 @@ mod tests {
         let schema_manager = platform.create_schema_manager(&connection);
         let d = schema_manager.get_drop_table_sql(&"table").unwrap();
 
-        assert_eq!("-- DROP SCHEMA table", d);
+        assert_eq!("-- DROP SCHEMA \"table\"", d);
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
@@ -1734,6 +1734,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     pub async fn get_custom_column_declaration_sql() {
         let connection = create_connection().await.unwrap();
@@ -1761,6 +1762,7 @@ mod tests {
         on_schema_alter_table_rename_column: usize,
     }
 
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     pub async fn get_create_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
@@ -1805,6 +1807,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     pub async fn get_drop_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
@@ -1826,6 +1829,7 @@ mod tests {
         assert_eq!(listener.lock().unwrap().on_schema_drop_table, 1);
     }
 
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     pub async fn get_alter_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));

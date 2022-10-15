@@ -81,4 +81,8 @@ impl Type for SimpleArrayType {
     ) -> Result<String> {
         platform.get_clob_type_declaration_sql(column)
     }
+
+    fn requires_sql_comment_hint(&self, _: &dyn DatabasePlatform) -> bool {
+        true
+    }
 }

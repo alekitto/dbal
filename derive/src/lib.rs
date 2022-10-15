@@ -10,13 +10,13 @@ pub fn into_identifier_derive_fn(input: TokenStream) -> TokenStream {
         r#"
 impl ::creed::schema::IntoIdentifier for {} {{
     fn into_identifier(&self) -> ::creed::schema::Identifier {{
-        ::creed::schema::Identifier::new(self.get_name(), false)
+        ::creed::schema::Identifier::new(self.get_name(), self.is_quoted())
     }}
 }}
 
 impl ::creed::schema::IntoIdentifier for &{} {{
     fn into_identifier(&self) -> ::creed::schema::Identifier {{
-        ::creed::schema::Identifier::new(self.get_name(), false)
+        ::creed::schema::Identifier::new(self.get_name(), self.is_quoted())
     }}
 }}
     "#,

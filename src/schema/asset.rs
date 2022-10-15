@@ -14,18 +14,18 @@ pub(crate) struct AbstractAsset {
 /// This is especially important for Oracle, since it does not allow identifiers larger than 30 chars,
 /// however building idents automatically for foreign keys, composite keys or such can easily create
 /// very long names.
-pub(super) fn generate_identifier_name(
-    column_names: Vec<String>,
+pub(super) fn generate_identifier_name<S: AsRef<str>, U: Into<Option<usize>>>(
+    column_names: &[S],
     prefix: &str,
-    max_size: Option<usize>,
+    max_size: U,
 ) -> String {
-    let max_size = max_size.unwrap_or(30);
+    let max_size = max_size.into().unwrap_or(30);
     let hash = column_names
         .iter()
         .map(|name| {
             let hash = Crc::<u32>::new(&CRC_32_ISO_HDLC);
             let mut digest = hash.digest();
-            digest.update(name.as_bytes());
+            digest.update(name.as_ref().as_bytes());
             format!("{:X}", digest.finalize())
         })
         .collect::<Vec<String>>()

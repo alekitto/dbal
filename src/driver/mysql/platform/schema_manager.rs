@@ -449,4 +449,26 @@ mod tests {
         let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
         assert_eq!(sql, &["CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, PRIMARY KEY(`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"]);
     }
+
+    #[tokio::test]
+    pub async fn quoted_column_in_index_propagation() {
+        let mut table = Table::new("`quoted`");
+        table.add_column(Column::new("create", STRING).unwrap());
+        table.add_index(Index::new::<&str, _, &str>(
+            None,
+            &["create"],
+            false,
+            false,
+            &[],
+            HashMap::default(),
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(sql, &[
+            "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, INDEX IDX_22660D028FD6E0FB (`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+        ]);
+    }
 }

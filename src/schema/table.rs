@@ -128,7 +128,17 @@ impl Table {
             .find(|column| column.get_name() == name)
     }
 
-    pub fn add_index(&mut self, index: Index) {
+    pub fn add_index(&mut self, mut index: Index) {
+        if index.get_name().is_empty() {
+            let mut columns = vec![self.get_name()];
+            columns.extend(index.get_columns());
+            index.set_name(&generate_identifier_name(
+                &columns,
+                "idx",
+                self.get_max_identifier_length(),
+            ))
+        }
+
         self.indices.push(index);
     }
 
@@ -143,7 +153,7 @@ impl Table {
         } else {
             let mut names = vec![self.get_name()];
             names.extend(column_names.iter().map(|c| c.as_ref().to_string()));
-            generate_identifier_name(names, "uniq", Some(self.get_max_identifier_length()))
+            generate_identifier_name(&names, "uniq", self.get_max_identifier_length())
         };
 
         self.add_index(self.create_index(

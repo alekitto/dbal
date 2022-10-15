@@ -16,8 +16,8 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new<S: AsRef<str>, C: AsRef<str>>(
-        name: S,
+    pub fn new<S: AsRef<str>, N: Into<Option<S>>, C: AsRef<str>>(
+        name: N,
         columns: &[C],
         is_unique: bool,
         is_primary: bool,
@@ -25,8 +25,13 @@ impl Index {
         options: HashMap<String, Value>,
     ) -> Self {
         let mut asset = AbstractAsset::default();
-        asset.set_name(name.as_ref());
+        let name = if let Some(name) = name.into() {
+            name.as_ref().to_string()
+        } else {
+            "".to_string()
+        };
 
+        asset.set_name(&name);
         let mut this = Self {
             asset,
             columns: vec![],

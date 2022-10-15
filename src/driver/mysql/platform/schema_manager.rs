@@ -154,7 +154,7 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::r#type::{INTEGER, STRING};
+    use crate::r#type::{INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
         ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
@@ -318,7 +318,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             sql,
-            "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES foreign (id)"
+            "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES `foreign` (id)"
         );
     }
 
@@ -371,6 +371,82 @@ mod tests {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
         let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
-        assert_eq!(sql, &["ALTER TABLE mytable RENAME TO userlist, ADD quota INT DEFAULT NULL, DROP foo, CHANGE bar baz VARCHAR(255) DEFAULT 'def' NOT NULL, CHANGE bloo bloo TINYINT(1) DEFAULT 0 NOT NULL"]);
+        assert_eq!(sql, &["ALTER TABLE mytable RENAME TO userlist, ADD quota INT DEFAULT NULL, DROP foo, CHANGE bar baz VARCHAR(255) DEFAULT 'def' NOT NULL, CHANGE bloo bloo TINYINT(1) DEFAULT 0 NOT NULL COMMENT '(CRType:boolean)'"]);
+    }
+
+    #[tokio::test]
+    pub async fn create_table_column_comments() {
+        let mut table = Table::new("test");
+        let mut id_col = Column::new("id", INTEGER).unwrap();
+        id_col.set_comment("This is a comment");
+        table.add_column(id_col);
+
+        table
+            .set_primary_key(&["id"], None)
+            .expect("failed to set primary key");
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(sql, &["CREATE TABLE test (id INT NOT NULL COMMENT 'This is a comment', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"]);
+    }
+
+    #[tokio::test]
+    pub async fn alter_table_column_comments() {
+        let mut table_diff = TableDiff::new("mytable", None);
+        let mut col = Column::new("quota", INTEGER).unwrap();
+        col.set_comment("A comment");
+        table_diff.added_columns.push(col);
+
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "foo",
+            &Column::new("foo", STRING).unwrap(),
+            &[ChangedProperty::Comment],
+            None,
+        ));
+        let mut col = Column::new("baz", STRING).unwrap();
+        col.set_comment("B comment");
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "bar",
+            &col,
+            &[ChangedProperty::Comment],
+            None,
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        assert_eq!(sql, &["ALTER TABLE mytable ADD quota INT NOT NULL COMMENT 'A comment', CHANGE foo foo VARCHAR(255) NOT NULL, CHANGE bar baz VARCHAR(255) NOT NULL COMMENT 'B comment'"]);
+    }
+
+    #[tokio::test]
+    pub async fn create_table_column_type_comments() {
+        let mut table = Table::new("test");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.add_column(Column::new("data", SIMPLE_ARRAY).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+
+        assert_eq!(sql, &[
+            "CREATE TABLE test (id INT NOT NULL, data LONGTEXT NOT NULL COMMENT '(CRType:simple_array)', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+        ]);
+    }
+
+    #[tokio::test]
+    pub async fn quoted_column_in_primary_key_propagation() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("`quoted`");
+        table.add_column(Column::new("create", STRING).unwrap());
+        table
+            .set_primary_key(&["create"], None)
+            .expect("failed to set primary key");
+
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(sql, &["CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, PRIMARY KEY(`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"]);
     }
 }

@@ -156,10 +156,6 @@ impl DatabasePlatform for SQLitePlatform {
         true
     }
 
-    fn supports_inline_column_comments(&self) -> bool {
-        true
-    }
-
     fn get_name(&self) -> String {
         "sqlite".to_string()
     }

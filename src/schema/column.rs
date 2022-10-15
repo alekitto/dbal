@@ -90,6 +90,10 @@ impl Column {
         self.default = default;
     }
 
+    pub fn set_comment<T: AsRef<str>, S: Into<Option<T>>>(&mut self, comment: S) {
+        self.comment = comment.into().map(|c| c.as_ref().to_string());
+    }
+
     pub fn get_comment(&self) -> &Option<String> {
         &self.comment
     }

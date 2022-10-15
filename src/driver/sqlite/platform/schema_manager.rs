@@ -327,4 +327,21 @@ mod tests {
             "ALTER TABLE mytable RENAME TO userlist",
         ]);
     }
+
+    #[tokio::test]
+    pub async fn quoted_column_in_primary_key_propagation() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("`quoted`");
+        let mut col = Column::new("create", STRING).unwrap();
+        col.set_length(255);
+        table.add_column(col);
+        table
+            .set_primary_key(&["create"], None)
+            .expect("failed to set primary key");
+
+        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        assert_eq!(sql, &["CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"]);
+    }
 }

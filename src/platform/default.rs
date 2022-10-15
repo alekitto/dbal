@@ -4,7 +4,7 @@ use crate::event::{
     SchemaDropTableEvent,
 };
 use crate::r#type::{
-    IntoType, TypeManager, TypePtr, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
+    IntoType, TypeManager, TypePtr, BIGINT, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
 };
 use crate::schema::{
     Asset, CheckConstraint, Column, ColumnData, ColumnDiff, ForeignKeyConstraint,
@@ -402,6 +402,13 @@ pub fn get_create_table_sql(
         }
 
         let mut column_data = column.generate_column_data(platform.as_dyn());
+        let comment = this.get_column_comment(column)?;
+        column_data.comment = if comment.is_empty() {
+            None
+        } else {
+            Some(comment)
+        };
+
         if let Some(p) = &options.primary {
             if p.0.iter().any(|n| n.eq(&column_data.name)) {
                 column_data.primary = true;
@@ -983,7 +990,7 @@ pub fn get_default_value_declaration_sql(
     }
 
     let t = column.r#type.clone();
-    if t == INTEGER.into_type()? {
+    if t == INTEGER.into_type()? || t == BIGINT.into_type()? {
         return Ok(format!(" DEFAULT {}", default));
     }
 

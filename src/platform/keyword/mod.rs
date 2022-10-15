@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 #[cfg(feature = "mysql")]
 mod mariadb_keywords;
 #[cfg(feature = "mysql")]
@@ -19,16 +21,25 @@ pub trait Keywords {
 
 pub struct KeywordList {
     keywords: &'static dyn Keywords,
+    keyword_map: BTreeMap<String, &'static str>,
 }
 
 impl KeywordList {
     pub(crate) fn new(keywords: &'static dyn Keywords) -> Self {
-        Self { keywords }
+        let mut keyword_map = BTreeMap::new();
+        for keyword in keywords.get_keywords() {
+            keyword_map.insert(keyword.to_uppercase(), *keyword);
+        }
+
+        Self {
+            keywords,
+            keyword_map,
+        }
     }
 
     /// Checks if the given word is a keyword of this dialect/vendor platform.
     pub fn is_keyword(&self, word: &str) -> bool {
-        self.keywords.get_keywords().iter().any(|w| (*w).eq(word))
+        self.keyword_map.get(&word.to_uppercase()).is_some()
     }
 
     #[cfg(feature = "mysql")]

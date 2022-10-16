@@ -174,13 +174,6 @@ jobs:
           toolchain: nightly
           override: true
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: >
-            --no-default-features
-            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
-
       - run: |
           docker-compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
           docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
@@ -239,13 +232,6 @@ jobs:
           toolchain: nightly
           override: true
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: >
-            --no-default-features
-            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
-
       - run: docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
       - run: sleep 60
 
@@ -295,13 +281,6 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: >
-            --no-default-features
-            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
 
       - run: docker-compose run -d -p 3306:3306 mariadb_${{ matrix.mariadb }}
       - run: sleep 30

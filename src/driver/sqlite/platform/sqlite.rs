@@ -8,6 +8,7 @@ use crate::schema::{
     TableDiff, TableOptions,
 };
 use crate::{Error, Result, TransactionIsolationLevel};
+use creed::schema::IntoIdentifier;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -328,8 +329,17 @@ pub fn get_advanced_foreign_key_options_sql(
     Ok(query)
 }
 
-pub fn get_truncate_table_sql(this: &dyn DatabasePlatform, table_name: &Identifier) -> String {
-    format!("DELETE FROM {}", table_name.get_quoted_name(this))
+pub fn get_truncate_table_sql(
+    this: &dyn SchemaManager,
+    table_name: &dyn IntoIdentifier,
+) -> Result<String> {
+    let platform = this.get_platform()?;
+    Ok(format!(
+        "DELETE FROM {}",
+        table_name
+            .into_identifier()
+            .get_quoted_name(platform.as_dyn())
+    ))
 }
 
 pub fn get_for_update_sql() -> Result<String> {

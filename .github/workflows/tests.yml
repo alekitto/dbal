@@ -44,6 +44,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-check-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
@@ -76,6 +77,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
@@ -116,6 +118,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-sqlite-${{ matrix.runtime }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
@@ -162,6 +165,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-postgres-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
@@ -226,6 +230,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
@@ -282,6 +287,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            !target/**/*.gcda
           key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1

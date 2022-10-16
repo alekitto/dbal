@@ -20,33 +20,12 @@ pub trait AbstractSQLiteSchemaManager: SchemaManager {}
 impl AbstractSQLiteSchemaManager for SQLiteSchemaManager<'_> {}
 
 impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
+    fn get_connection(&self) -> &'a Connection {
+        self.connection
+    }
+
     fn as_dyn(&self) -> &dyn SchemaManager {
         self
-    }
-
-    #[inline(always)]
-    fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
-        sqlite::get_list_table_columns_sql(self, table)
-    }
-
-    #[inline(always)]
-    fn get_list_tables_sql(&self) -> Result<String> {
-        sqlite::get_list_tables_sql()
-    }
-
-    #[inline(always)]
-    fn get_list_views_sql(&self, _: &str) -> Result<String> {
-        sqlite::get_list_views_sql()
-    }
-
-    #[inline(always)]
-    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
-        sqlite::get_list_table_foreign_keys_sql(self, table)
-    }
-
-    #[inline(always)]
-    fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
-        sqlite::get_drop_tables_sql(self, tables)
     }
 
     #[inline(always)]
@@ -61,16 +40,8 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         sqlite::get_create_table_sql(self, table, create_flags)
     }
 
-    #[inline(always)]
-    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
-    where
-        Self: Sync,
-    {
-        sqlite::get_alter_table_sql(self, diff)
-    }
-
-    fn get_list_table_constraints_sql(&self, table: &str) -> Result<String> {
-        sqlite::get_list_table_constraints_sql(self, table)
+    fn get_create_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
+        sqlite::get_create_tables_sql(self, tables)
     }
 
     fn _get_create_table_sql(
@@ -82,20 +53,57 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         sqlite::_get_create_table_sql(self, name, columns, options)
     }
 
-    fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String> {
-        sqlite::get_inline_column_comment_sql(comment)
-    }
-
-    fn get_create_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
-        sqlite::get_create_tables_sql(self, tables)
-    }
-
     fn get_create_primary_key_sql(&self, _: &Index, _: &dyn IntoIdentifier) -> Result<String> {
         Err(Error::platform_feature_unsupported(
             "Sqlite platform does not support alter primary key.",
         ))
     }
 
+    fn get_create_foreign_key_sql(
+        &self,
+        _: &ForeignKeyConstraint,
+        _: &dyn IntoIdentifier,
+    ) -> Result<String> {
+        Err(Error::platform_feature_unsupported(
+            "Sqlite platform does not support alter foreign key.",
+        ))
+    }
+
+    #[inline(always)]
+    fn get_list_tables_sql(&self) -> Result<String> {
+        sqlite::get_list_tables_sql()
+    }
+
+    #[inline(always)]
+    fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
+        sqlite::get_list_table_columns_sql(self, table)
+    }
+
+    #[inline(always)]
+    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
+        sqlite::get_list_table_foreign_keys_sql(self, table)
+    }
+
+    fn get_list_table_constraints_sql(&self, table: &str) -> Result<String> {
+        sqlite::get_list_table_constraints_sql(self, table)
+    }
+
+    fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String> {
+        sqlite::get_inline_column_comment_sql(comment)
+    }
+
+    #[inline(always)]
+    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
+    where
+        Self: Sync,
+    {
+        sqlite::get_alter_table_sql(self, diff)
+    }
+
+    #[inline(always)]
+    fn get_drop_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
+        sqlite::get_drop_tables_sql(self, tables)
+    }
     fn get_drop_foreign_key_sql(
         &self,
         _: &dyn IntoIdentifier,
@@ -105,6 +113,12 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
             "Sqlite platform does not support alter foreign key.",
         ))
     }
+
+    #[inline(always)]
+    fn get_list_views_sql(&self, _: &str) -> Result<String> {
+        sqlite::get_list_views_sql()
+    }
+
     fn get_pre_alter_table_index_foreign_key_sql(&self, _: &mut TableDiff) -> Result<Vec<String>> {
         sqlite::get_pre_alter_table_index_foreign_key_sql()
     }
@@ -120,18 +134,8 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         sqlite::get_advanced_foreign_key_options_sql(self, foreign_key)
     }
 
-    fn get_create_foreign_key_sql(
-        &self,
-        _: &ForeignKeyConstraint,
-        _: &dyn IntoIdentifier,
-    ) -> Result<String> {
-        Err(Error::platform_feature_unsupported(
-            "Sqlite platform does not support alter foreign key.",
-        ))
-    }
-
-    fn get_connection(&self) -> &'a Connection {
-        self.connection
+    fn get_truncate_table_sql(&self, table_name: &dyn IntoIdentifier, _: bool) -> Result<String> {
+        sqlite::get_truncate_table_sql(self, table_name)
     }
 
     fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column> {
@@ -512,5 +516,32 @@ mod tests {
             .get_unique_constraint_declaration_sql("select", &constraint)
             .unwrap();
         assert_eq!(sql, r#"CONSTRAINT "select" UNIQUE (foo)"#);
+    }
+
+    #[tokio::test]
+    pub async fn quotes_reserved_keyword_in_truncate_table_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        assert_eq!(
+            schema_manager
+                .get_truncate_table_sql(&"select", false)
+                .unwrap(),
+            r#"DELETE FROM "select""#
+        );
+    }
+
+    #[tokio::test]
+    pub async fn quotes_reserved_keyword_in_index_declaration_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let index = Index::new("select", &["foo"], false, false, &[], HashMap::default());
+
+        assert_eq!(
+            schema_manager
+                .get_index_declaration_sql(&"select", &index)
+                .unwrap(),
+            r#"INDEX "select" (foo)"#
+        );
     }
 }

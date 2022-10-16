@@ -1372,8 +1372,17 @@ pub fn get_empty_identity_insert_sql(
     )
 }
 
-pub fn get_truncate_table_sql(this: &dyn DatabasePlatform, table_name: &Identifier) -> String {
-    format!("TRUNCATE {}", table_name.get_quoted_name(this))
+pub fn get_truncate_table_sql(
+    this: &dyn SchemaManager,
+    table_name: &dyn IntoIdentifier,
+) -> Result<String> {
+    let platform = this.get_platform()?;
+    Ok(format!(
+        "TRUNCATE {}",
+        table_name
+            .into_identifier()
+            .get_quoted_name(platform.as_dyn())
+    ))
 }
 
 pub fn create_save_point(savepoint: &str) -> String {

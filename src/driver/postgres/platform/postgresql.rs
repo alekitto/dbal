@@ -848,16 +848,22 @@ pub fn get_empty_identity_insert_sql(
 }
 
 pub fn get_truncate_table_sql(
-    this: &dyn DatabasePlatform,
-    table_name: &Identifier,
+    this: &dyn SchemaManager,
+    table_name: &dyn IntoIdentifier,
     cascade: bool,
-) -> String {
-    let mut sql = format!("TRUNCATE {}", table_name.get_quoted_name(this));
+) -> Result<String> {
+    let platform = this.get_platform()?;
+    let mut sql = format!(
+        "TRUNCATE {}",
+        table_name
+            .into_identifier()
+            .get_quoted_name(platform.as_dyn())
+    );
     if cascade {
         sql += " CASCADE";
     }
 
-    sql
+    Ok(sql)
 }
 
 pub fn get_read_lock_sql() -> Result<String> {

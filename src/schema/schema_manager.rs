@@ -340,6 +340,19 @@ pub trait SchemaManager: Sync {
         ))
     }
 
+    /// Generates a Truncate Table SQL statement for a given table.
+    ///
+    /// Cascade is not supported on many platforms but would optionally cascade the truncate by
+    /// following the foreign keys.
+    #[allow(unused_variables)]
+    fn get_truncate_table_sql(
+        &self,
+        table_name: &dyn IntoIdentifier,
+        cascade: bool,
+    ) -> Result<String> {
+        default::get_truncate_table_sql(self.as_dyn(), table_name)
+    }
+
     /// Returns the SQL snippet to drop an existing database.
     fn get_drop_database_sql(&self, name: &str) -> Result<String> {
         default::get_drop_database_sql(self.as_dyn(), name)
@@ -1367,6 +1380,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String>;
             fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
+            fn get_truncate_table_sql(&self, table_name: &dyn IntoIdentifier, cascade: bool) -> Result<String>;
             fn get_drop_database_sql(&self, name: &str) -> Result<String>;
             fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String>;
             fn get_drop_table_sql(&self, table_name: &dyn IntoIdentifier) -> Result<String>;
@@ -1498,6 +1512,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String>;
             fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
+            fn get_truncate_table_sql(&self, table_name: &dyn IntoIdentifier, cascade: bool) -> Result<String>;
             fn get_drop_database_sql(&self, name: &str) -> Result<String>;
             fn get_drop_schema_sql(&self, schema_name: &str) -> Result<String>;
             fn get_drop_table_sql(&self, table_name: &dyn IntoIdentifier) -> Result<String>;

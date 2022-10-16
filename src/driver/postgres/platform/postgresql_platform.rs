@@ -186,10 +186,6 @@ impl DatabasePlatform for PostgreSQLPlatform {
         postgresql::get_empty_identity_insert_sql(quoted_table_name, quoted_identifier_column_name)
     }
 
-    fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String {
-        postgresql::get_truncate_table_sql(self, table_name, cascade)
-    }
-
     fn get_read_lock_sql(&self) -> Result<String> {
         postgresql::get_read_lock_sql()
     }

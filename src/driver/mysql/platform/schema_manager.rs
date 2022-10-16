@@ -51,6 +51,68 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
     }
 
     #[inline]
+    fn _get_create_table_sql(
+        &self,
+        name: &Identifier,
+        columns: &[ColumnData],
+        options: &TableOptions,
+    ) -> Result<Vec<String>> {
+        mysql::_get_create_table_sql(self.as_mysql_dyn(), name, columns, options)
+    }
+
+    #[inline]
+    fn get_create_index_sql_flags(&self, index: &Index) -> String {
+        mysql::get_create_index_sql_flags(index)
+    }
+
+    #[inline]
+    fn get_list_databases_sql(&self) -> Result<String> {
+        mysql::get_list_databases_sql()
+    }
+
+    #[inline]
+    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
+    where
+        Self: Sync,
+    {
+        mysql::get_alter_table_sql(self.as_dyn(), diff)
+    }
+
+    /// MySQL commits a transaction implicitly when DROP TABLE is executed, however not
+    /// if DROP TEMPORARY TABLE is executed.
+    #[inline]
+    fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String> {
+        mysql::get_drop_temporary_table_sql(self.as_dyn(), table)
+    }
+
+    #[inline]
+    fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String> {
+        mysql::get_drop_index_sql(self.get_platform()?, index, table)
+    }
+
+    #[inline]
+    fn get_drop_unique_constraint_sql(
+        &self,
+        name: &Identifier,
+        table_name: &Identifier,
+    ) -> Result<String> {
+        mysql::get_drop_unique_constraint_sql(self.as_dyn(), name, table_name)
+    }
+
+    #[inline]
+    fn get_list_views_sql(&self, database: &str) -> Result<String> {
+        mysql::get_list_views_sql(self.as_dyn(), database)
+    }
+
+    #[inline]
+    fn get_pre_alter_table_index_foreign_key_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
+    where
+        Self: Sync,
+    {
+        mysql::get_pre_alter_table_index_foreign_key_sql(self.as_dyn(), diff)
+    }
+
+    #[inline]
     fn get_rename_index_sql(
         &self,
         old_index_name: &Identifier,
@@ -68,72 +130,6 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         }
     }
 
-    fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column> {
-        todo!()
-    }
-
-    #[inline]
-    fn get_list_databases_sql(&self) -> Result<String> {
-        mysql::get_list_databases_sql()
-    }
-
-    #[inline]
-    fn get_list_views_sql(&self, database: &str) -> Result<String> {
-        mysql::get_list_views_sql(self.as_dyn(), database)
-    }
-
-    #[inline]
-    fn get_drop_index_sql(&self, index: &Identifier, table: &Identifier) -> Result<String> {
-        mysql::get_drop_index_sql(self.get_platform()?, index, table)
-    }
-
-    #[inline]
-    fn get_drop_unique_constraint_sql(
-        &self,
-        name: &Identifier,
-        table_name: &Identifier,
-    ) -> Result<String> {
-        mysql::get_drop_unique_constraint_sql(self.as_dyn(), name, table_name)
-    }
-
-    /// MySQL commits a transaction implicitly when DROP TABLE is executed, however not
-    /// if DROP TEMPORARY TABLE is executed.
-    #[inline]
-    fn get_drop_temporary_table_sql(&self, table: &Identifier) -> Result<String> {
-        mysql::get_drop_temporary_table_sql(self.as_dyn(), table)
-    }
-
-    #[inline]
-    fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
-    where
-        Self: Sync,
-    {
-        mysql::get_alter_table_sql(self.as_dyn(), diff)
-    }
-
-    #[inline]
-    fn _get_create_table_sql(
-        &self,
-        name: &Identifier,
-        columns: &[ColumnData],
-        options: &TableOptions,
-    ) -> Result<Vec<String>> {
-        mysql::_get_create_table_sql(self.as_mysql_dyn(), name, columns, options)
-    }
-
-    #[inline]
-    fn get_create_index_sql_flags(&self, index: &Index) -> String {
-        mysql::get_create_index_sql_flags(index)
-    }
-
-    #[inline]
-    fn get_pre_alter_table_index_foreign_key_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>
-    where
-        Self: Sync,
-    {
-        mysql::get_pre_alter_table_index_foreign_key_sql(self.as_dyn(), diff)
-    }
-
     #[inline]
     fn get_column_collation_declaration_sql(&self, collation: &str) -> Result<String> {
         mysql::get_column_collation_declaration_sql(self.get_platform()?.as_dyn(), collation)
@@ -145,6 +141,10 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         foreign_key: &ForeignKeyConstraint,
     ) -> Result<String> {
         mysql::get_advanced_foreign_key_options_sql(self.as_dyn(), foreign_key)
+    }
+
+    fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column> {
+        todo!()
     }
 
     fn create_comparator(&self) -> Box<dyn Comparator + Send + '_> {
@@ -605,5 +605,32 @@ mod tests {
             .get_unique_constraint_declaration_sql("select", &constraint)
             .unwrap();
         assert_eq!(sql, "CONSTRAINT `select` UNIQUE (foo)");
+    }
+
+    #[tokio::test]
+    pub async fn quotes_reserved_keyword_in_truncate_table_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        assert_eq!(
+            schema_manager
+                .get_truncate_table_sql(&"select", false)
+                .unwrap(),
+            "TRUNCATE `select`"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn quotes_reserved_keyword_in_index_declaration_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let index = Index::new("select", &["foo"], false, false, &[], HashMap::default());
+
+        assert_eq!(
+            schema_manager
+                .get_index_declaration_sql(&"select", &index)
+                .unwrap(),
+            "INDEX `select` (foo)"
+        );
     }
 }

@@ -1,6 +1,7 @@
 use crate::schema::asset::{generate_identifier_name, impl_asset, Asset};
 use crate::schema::{
-    Column, ForeignKeyConstraint, Identifier, Index, IntoIdentifier, UniqueConstraint,
+    Column, ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier,
+    UniqueConstraint,
 };
 use crate::{Error, Result, Value};
 use regex::Regex;
@@ -198,7 +199,7 @@ impl Table {
     }
 
     /// Sets the Primary Key.
-    pub fn set_primary_key<S: AsRef<str> + IntoIdentifier + Clone>(
+    pub fn set_primary_key<S: IntoIdentifier + Clone>(
         &mut self,
         column_names: &[S],
         index_name: Option<&str>,
@@ -217,10 +218,7 @@ impl Table {
             if let Some(column) = self.get_column_mut(column_name) {
                 column.set_notnull(true);
             } else {
-                return Err(Error::column_does_not_exist(
-                    column_name.as_ref(),
-                    &self.get_name(),
-                ));
+                return Err(Error::column_does_not_exist(column_name, &self.get_name()));
             }
         }
 
@@ -233,6 +231,49 @@ impl Table {
 
     pub fn get_foreign_keys(&self) -> &Vec<ForeignKeyConstraint> {
         &self.foreign_keys
+    }
+
+    pub fn add_foreign_key_constraint<LC, FC, FT, N>(
+        &mut self,
+        local_columns: &[LC],
+        foreign_columns: &[FC],
+        foreign_table: FT,
+        options: HashMap<String, Value>,
+        on_update: Option<ForeignKeyReferentialAction>,
+        on_delete: Option<ForeignKeyReferentialAction>,
+        name: Option<N>,
+    ) -> Result<()>
+    where
+        LC: IntoIdentifier,
+        FC: IntoIdentifier,
+        FT: IntoIdentifier,
+        N: IntoIdentifier,
+    {
+        let name = name.map(|n| n.into_identifier()).unwrap_or_else(|| {
+            let mut names = vec![self.get_name()];
+            for local_column in local_columns {
+                names.push(local_column.to_string());
+            }
+
+            generate_identifier_name(&names, "fk", self.get_max_identifier_length())
+                .into_identifier()
+        });
+
+        for local_column in local_columns {
+            if !self.has_column(&local_column.to_string()) {
+                return Err(Error::column_does_not_exist(local_column, &self.get_name()));
+            }
+        }
+
+        self.create_foreign_key_constraint(
+            local_columns,
+            foreign_columns,
+            foreign_table,
+            options,
+            on_update,
+            on_delete,
+            name,
+        )
     }
 
     pub fn add_foreign_key(&mut self, constraint: ForeignKeyConstraint) {
@@ -352,7 +393,7 @@ impl Table {
         }
     }
 
-    fn create_index<S: AsRef<str> + IntoIdentifier + Clone>(
+    fn create_index<S: IntoIdentifier + Clone>(
         &self,
         column_names: &[S],
         index_name: &str,
@@ -368,7 +409,7 @@ impl Table {
             for column_name in column_names {
                 if !self.has_column(column_name) {
                     return Err(Error::column_does_not_exist(
-                        column_name.as_ref(),
+                        &column_name.into_identifier().get_name(),
                         &self.get_name(),
                     ));
                 }
@@ -376,16 +417,76 @@ impl Table {
 
             Ok(Index::new(
                 index_name,
-                &column_names
-                    .iter()
-                    .map(|n| n.as_ref().to_owned())
-                    .collect::<Vec<_>>(),
+                column_names,
                 is_unique,
                 is_primary,
                 &flags,
                 options,
             ))
         }
+    }
+
+    fn create_foreign_key_constraint<LC, FC, FT>(
+        &mut self,
+        local_columns: &[LC],
+        foreign_columns: &[FC],
+        foreign_table: FT,
+        options: HashMap<String, Value>,
+        on_update: Option<ForeignKeyReferentialAction>,
+        on_delete: Option<ForeignKeyReferentialAction>,
+        name: Identifier,
+    ) -> Result<()>
+    where
+        LC: IntoIdentifier,
+        FC: IntoIdentifier,
+        FT: IntoIdentifier,
+    {
+        let mut constraint = ForeignKeyConstraint::new(
+            local_columns,
+            foreign_columns,
+            foreign_table,
+            options,
+            on_update,
+            on_delete,
+        );
+
+        let mut names = vec![self.get_name()];
+        for local_column in local_columns {
+            names.push(local_column.to_string());
+        }
+
+        constraint.set_name(&if name.is_empty() {
+            generate_identifier_name(&names, "fk", self.get_max_identifier_length())
+        } else {
+            name.get_name()
+        });
+
+        /* Add an implicit index (defined by the DBAL) on the foreign key
+        columns. If there is already a user-defined index that fulfills these
+        requirements drop the request. In the case of "new" calling
+        this method during hydration from schema-details, all the explicitly
+        added indexes lead to duplicates. This creates computation overhead in
+        this case, however no duplicate indexes are ever added (based on
+        columns). */
+        let index_name = generate_identifier_name(&names, "idx", self.get_max_identifier_length());
+        let index_candidate = self.create_index(
+            constraint.get_local_columns(),
+            &index_name,
+            false,
+            false,
+            vec![],
+            HashMap::default(),
+        )?;
+        self.add_foreign_key(constraint);
+
+        for index in &self.indices {
+            if index_candidate.is_fulfilled_by(index) {
+                return Ok(());
+            }
+        }
+
+        self.add_index(index_candidate);
+        Ok(())
     }
 }
 

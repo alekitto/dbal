@@ -36,19 +36,16 @@ impl ForeignKeyConstraint {
         on_delete: Option<ForeignKeyReferentialAction>,
     ) -> Self
     where
-        LC: AsRef<str>,
-        FC: AsRef<str>,
-        FT: AsRef<str>,
+        LC: IntoIdentifier,
+        FC: IntoIdentifier,
+        FT: IntoIdentifier,
     {
-        let local_columns = local_columns
-            .iter()
-            .map(|c| Identifier::new(c, false))
-            .collect();
+        let local_columns = local_columns.iter().map(|c| c.into_identifier()).collect();
         let foreign_columns = foreign_columns
             .iter()
-            .map(|c| Identifier::new(c, false))
+            .map(|c| c.into_identifier())
             .collect();
-        let foreign_table = Identifier::new(foreign_table, false);
+        let foreign_table = foreign_table.into_identifier();
 
         Self {
             asset: AbstractAsset::default(),

@@ -258,7 +258,7 @@ pub fn get_varchar_type_declaration_sql_snippet(
     if fixed {
         Ok(format!("CHAR({})", length.unwrap_or(255)))
     } else {
-        let length = length.unwrap_or(0);
+        let length = length.unwrap_or(255);
         if length > 0 {
             Ok(format!("VARCHAR({})", length))
         } else {

@@ -1,6 +1,7 @@
 use super::asset::AbstractAsset;
 use crate::schema::asset::{impl_asset, Asset};
 use creed_derive::IntoIdentifier;
+use std::fmt::Display;
 
 #[derive(Clone, IntoIdentifier, PartialEq)]
 pub struct Identifier {
@@ -21,7 +22,7 @@ impl Identifier {
     }
 }
 
-pub trait IntoIdentifier {
+pub trait IntoIdentifier: Display {
     #[allow(clippy::wrong_self_convention)]
     fn into_identifier(&self) -> Identifier;
 }

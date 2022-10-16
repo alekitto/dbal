@@ -8,19 +8,25 @@ pub fn into_identifier_derive_fn(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input as DeriveInput);
     format!(
         r#"
-impl ::creed::schema::IntoIdentifier for {} {{
+impl ::creed::schema::IntoIdentifier for {0} {{
     fn into_identifier(&self) -> ::creed::schema::Identifier {{
         ::creed::schema::Identifier::new(self.get_name(), self.is_quoted())
     }}
 }}
 
-impl ::creed::schema::IntoIdentifier for &{} {{
+impl ::core::fmt::Display for {0} {{
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {{
+        f.write_str(&self.get_name())
+    }}
+}}
+
+impl ::creed::schema::IntoIdentifier for &{0} {{
     fn into_identifier(&self) -> ::creed::schema::Identifier {{
         ::creed::schema::Identifier::new(self.get_name(), self.is_quoted())
     }}
 }}
     "#,
-        input.ident, input.ident,
+        input.ident,
     )
     .parse()
     .unwrap()

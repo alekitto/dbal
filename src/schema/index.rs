@@ -16,7 +16,7 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn new<S: AsRef<str>, N: Into<Option<S>>, C: AsRef<str>>(
+    pub fn new<S: AsRef<str>, N: Into<Option<S>>, C: IntoIdentifier>(
         name: N,
         columns: &[C],
         is_unique: bool,
@@ -43,7 +43,7 @@ impl Index {
         };
 
         for column in columns {
-            this.add_column(column.as_ref());
+            this.add_column(column);
         }
 
         for flag in flags {
@@ -113,8 +113,8 @@ impl Index {
     }
 
     /// Adds a new column to the index.
-    fn add_column(&mut self, column: &str) {
-        let identifier = Identifier::new(column, false);
+    fn add_column<I: IntoIdentifier>(&mut self, column: &I) {
+        let identifier = column.into_identifier();
         if self.columns.iter().all(|i| i != &identifier) {
             self.columns.push(identifier);
         }

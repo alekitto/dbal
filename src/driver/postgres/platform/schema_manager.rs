@@ -160,6 +160,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::platform::CreateFlags;
     use crate::r#type::{BOOLEAN, INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
         ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
@@ -535,5 +536,117 @@ mod tests {
                 "CREATE INDEX \"key\" ON test (column1)",
             ]
         );
+    }
+
+    #[tokio::test]
+    pub async fn quoted_column_in_foreign_key_propagation() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("`quoted`");
+        table.add_column(Column::new("create", STRING).unwrap());
+        table.add_column(Column::new("foo", STRING).unwrap());
+        table.add_column(Column::new("`bar`", STRING).unwrap());
+
+        // Foreign table with reserved keyword as name (needs quotation).
+        let mut foreign_table = Table::new("foreign");
+
+        // Foreign column with reserved keyword as name (needs quotation).
+        foreign_table.add_column(Column::new("create", STRING).unwrap());
+
+        // Foreign column with non-reserved keyword as name (does not need quotation).
+        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+
+        // Foreign table with special character in name
+        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+
+        table
+            .add_foreign_key_constraint(
+                &["create", "foo", "`bar`"],
+                &["create", "bar", "`foo-bar`"],
+                &foreign_table,
+                HashMap::default(),
+                None,
+                None,
+                Some("FK_WITH_RESERVED_KEYWORD"),
+            )
+            .expect("cannot add foreign key constraint");
+
+        // Foreign table with non-reserved keyword as name (does not need quotation).
+        let mut foreign_table = Table::new("foo");
+
+        // Foreign column with reserved keyword as name (needs quotation).
+        foreign_table.add_column(Column::new("create", STRING).unwrap());
+
+        // Foreign column with non-reserved keyword as name (does not need quotation).
+        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+
+        // Foreign table with special character in name
+        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+
+        table
+            .add_foreign_key_constraint(
+                &["create", "foo", "`bar`"],
+                &["create", "bar", "`foo-bar`"],
+                &foreign_table,
+                HashMap::default(),
+                None,
+                None,
+                Some("FK_WITH_NON_RESERVED_KEYWORD"),
+            )
+            .expect("cannot add foreign key constraint");
+
+        // Foreign table with special character in name.
+        let mut foreign_table = Table::new("`foo-bar`");
+
+        // Foreign column with reserved keyword as name (needs quotation).
+        foreign_table.add_column(Column::new("create", STRING).unwrap());
+
+        // Foreign column with non-reserved keyword as name (does not need quotation).
+        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+
+        // Foreign table with special character in name
+        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+
+        table
+            .add_foreign_key_constraint(
+                &["create", "foo", "`bar`"],
+                &["create", "bar", "`foo-bar`"],
+                &foreign_table,
+                HashMap::default(),
+                None,
+                None,
+                Some("FK_WITH_INTENDED_QUOTATION"),
+            )
+            .expect("cannot add foreign key constraint");
+
+        let sql = schema_manager
+            .get_create_table_sql(
+                &table,
+                Some(CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS),
+            )
+            .unwrap();
+        assert_eq!(
+            sql,
+            &[
+                r#"CREATE TABLE "quoted" ("create" VARCHAR(255) NOT NULL, foo VARCHAR(255) NOT NULL, "bar" VARCHAR(255) NOT NULL)"#,
+                r#"CREATE INDEX IDX_22660D028FD6E0FB8C736521D79164E3 ON "quoted" ("create", foo, "bar")"#,
+                r#"ALTER TABLE "quoted" ADD CONSTRAINT FK_WITH_RESERVED_KEYWORD FOREIGN KEY ("create", foo, "bar") REFERENCES "foreign" ("create", bar, "foo-bar") NOT DEFERRABLE INITIALLY IMMEDIATE"#,
+                r#"ALTER TABLE "quoted" ADD CONSTRAINT FK_WITH_NON_RESERVED_KEYWORD FOREIGN KEY ("create", foo, "bar") REFERENCES foo ("create", bar, "foo-bar") NOT DEFERRABLE INITIALLY IMMEDIATE"#,
+                r#"ALTER TABLE "quoted" ADD CONSTRAINT FK_WITH_INTENDED_QUOTATION FOREIGN KEY ("create", foo, "bar") REFERENCES "foo-bar" ("create", bar, "foo-bar") NOT DEFERRABLE INITIALLY IMMEDIATE"#,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    pub async fn quotes_reserved_keyword_in_unique_constraint_declaration_sql() {
+        let constraint = UniqueConstraint::new("select", &["foo"], &[], HashMap::default());
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let sql = schema_manager
+            .get_unique_constraint_declaration_sql("select", &constraint)
+            .unwrap();
+        assert_eq!(sql, r#"CONSTRAINT "select" UNIQUE (foo)"#);
     }
 }

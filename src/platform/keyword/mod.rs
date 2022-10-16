@@ -20,7 +20,6 @@ pub trait Keywords {
 }
 
 pub struct KeywordList {
-    keywords: &'static dyn Keywords,
     keyword_map: BTreeMap<String, &'static str>,
 }
 
@@ -31,10 +30,7 @@ impl KeywordList {
             keyword_map.insert(keyword.to_uppercase(), *keyword);
         }
 
-        Self {
-            keywords,
-            keyword_map,
-        }
+        Self { keyword_map }
     }
 
     /// Checks if the given word is a keyword of this dialect/vendor platform.

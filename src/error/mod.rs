@@ -1,5 +1,6 @@
 use crate::schema::{Asset, Identifier};
 use crate::Value;
+use creed::schema::IntoIdentifier;
 use std::any::TypeId;
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
@@ -184,7 +185,7 @@ impl Error {
         )
     }
 
-    pub fn column_does_not_exist(invalid_column: &str, table_name: &str) -> Self {
+    pub fn column_does_not_exist(invalid_column: &dyn IntoIdentifier, table_name: &str) -> Self {
         Self::new(
             ErrorKind::ColumnDoesNotExist,
             format!(

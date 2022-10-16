@@ -13,7 +13,7 @@ pub struct UniqueConstraint {
 }
 
 impl UniqueConstraint {
-    pub fn new<S: AsRef<str>, C: AsRef<str>>(
+    pub fn new<S: AsRef<str>, C: IntoIdentifier>(
         name: S,
         columns: &[C],
         flags: &[String],
@@ -30,7 +30,7 @@ impl UniqueConstraint {
         };
 
         for column in columns {
-            this.add_column(column.as_ref());
+            this.add_column(column);
         }
 
         for flag in flags {
@@ -100,10 +100,10 @@ impl UniqueConstraint {
     }
 
     /// Adds a new column to the unique constraint.
-    fn add_column(&mut self, column: &str) {
+    fn add_column<I: IntoIdentifier>(&mut self, column: &I) {
         let _ = self
             .columns
-            .insert(column.to_string(), Identifier::new(column, false));
+            .insert(column.to_string(), column.into_identifier());
     }
 }
 

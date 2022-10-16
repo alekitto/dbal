@@ -5,7 +5,7 @@ use crate::r#type::{
     BigintType, BinaryType, BlobType, BooleanType, DateTimeType, DateType, DecimalType, FloatType,
     IntegerType, StringType, TextType, TimeType,
 };
-use crate::schema::{ColumnData, Identifier, SchemaManager};
+use crate::schema::{ColumnData, SchemaManager};
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel};
 use dashmap::DashMap;
 use std::any::TypeId;
@@ -158,10 +158,6 @@ impl DatabasePlatform for SQLitePlatform {
 
     fn get_name(&self) -> String {
         "sqlite".to_string()
-    }
-
-    fn get_truncate_table_sql(&self, table_name: &Identifier, _: bool) -> String {
-        sqlite::get_truncate_table_sql(self, table_name)
     }
 
     fn get_for_update_sql(&self) -> Result<String> {

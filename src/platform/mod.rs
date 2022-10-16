@@ -6,7 +6,7 @@ mod lock_mode;
 mod trim_mode;
 
 use crate::r#type::{TypeManager, TypePtr};
-use crate::schema::{ColumnData, Identifier};
+use crate::schema::ColumnData;
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 pub use create_flags::CreateFlags;
 use creed::schema::SchemaManager;
@@ -702,15 +702,6 @@ pub trait DatabasePlatform: Debug {
         default::get_empty_identity_insert_sql(quoted_table_name, quoted_identifier_column_name)
     }
 
-    /// Generates a Truncate Table SQL statement for a given table.
-    ///
-    /// Cascade is not supported on many platforms but would optionally cascade the truncate by
-    /// following the foreign keys.
-    #[allow(unused_variables)]
-    fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String {
-        default::get_truncate_table_sql(self.as_dyn(), table_name)
-    }
-
     /// This is for test reasons, many vendors have special requirements for dummy statements.
     fn get_dummy_select_sql(&self, expression: Option<&str>) -> String {
         format!("SELECT {}", expression.unwrap_or("1"))
@@ -845,7 +836,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for &mut P {
             fn modify_limit_query(&self, query: &str, limit: Option<usize>, offset: Option<usize>) -> String;
             fn get_max_identifier_length(&self) -> usize;
             fn get_empty_identity_insert_sql(&self, quoted_table_name: &str, quoted_identifier_column_name: &str) -> String;
-            fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String;
             fn get_dummy_select_sql(&self, expression: Option<&str>) -> String;
             fn create_save_point(&self, savepoint: &str) -> String;
             fn release_save_point(&self, savepoint: &str) -> String;
@@ -959,7 +949,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Box<P> {
             fn modify_limit_query(&self, query: &str, limit: Option<usize>, offset: Option<usize>) -> String;
             fn get_max_identifier_length(&self) -> usize;
             fn get_empty_identity_insert_sql(&self, quoted_table_name: &str, quoted_identifier_column_name: &str) -> String;
-            fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String;
             fn get_dummy_select_sql(&self, expression: Option<&str>) -> String;
             fn create_save_point(&self, savepoint: &str) -> String;
             fn release_save_point(&self, savepoint: &str) -> String;
@@ -1073,7 +1062,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
             fn modify_limit_query(&self, query: &str, limit: Option<usize>, offset: Option<usize>) -> String;
             fn get_max_identifier_length(&self) -> usize;
             fn get_empty_identity_insert_sql(&self, quoted_table_name: &str, quoted_identifier_column_name: &str) -> String;
-            fn get_truncate_table_sql(&self, table_name: &Identifier, cascade: bool) -> String;
             fn get_dummy_select_sql(&self, expression: Option<&str>) -> String;
             fn create_save_point(&self, savepoint: &str) -> String;
             fn release_save_point(&self, savepoint: &str) -> String;

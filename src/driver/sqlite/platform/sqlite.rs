@@ -757,7 +757,6 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         let mut new_column_names = vec![];
 
         for column in from_table.get_columns() {
-            let column_name = column.get_name().to_lowercase();
             columns.push(column.clone());
 
             let quoted_name = column.get_quoted_name(&platform);

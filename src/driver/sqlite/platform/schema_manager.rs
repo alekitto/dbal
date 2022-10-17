@@ -544,4 +544,37 @@ mod tests {
             r#"INDEX "select" (foo)"#
         );
     }
+
+    #[tokio::test]
+    pub async fn get_create_schema_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        assert_eq!(
+            schema_manager.get_create_schema_sql(&"schema").is_err(),
+            true
+        );
+    }
+
+    #[tokio::test]
+    pub async fn alter_table_change_quoted_column() {
+        let mut table = Table::new("mytable");
+        table.add_column(Column::new("select", INTEGER).unwrap());
+
+        let mut table_diff = TableDiff::new("mytable", &table);
+        table_diff.changed_columns.push(ColumnDiff::new(
+            "select",
+            &Column::new("select", STRING).unwrap(),
+            &[ChangedProperty::Type],
+            None,
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let platform = schema_manager.get_platform().unwrap();
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        assert_eq!(
+            sql.join(";").contains(&platform.quote_identifier("select")),
+            true
+        );
+    }
 }

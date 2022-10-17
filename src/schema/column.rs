@@ -130,6 +130,14 @@ impl Column {
         self.length
     }
 
+    pub fn is_fixed(&self) -> bool {
+        self.fixed.unwrap_or(false)
+    }
+
+    pub fn set_fixed<I: Into<Option<bool>>>(&mut self, fixed: I) {
+        self.fixed = fixed.into();
+    }
+
     pub(crate) fn generate_column_data(&self, platform: &dyn DatabasePlatform) -> ColumnData {
         let name = self.get_quoted_name(platform);
 

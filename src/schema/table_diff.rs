@@ -33,7 +33,7 @@ impl<'a> TableDiff<'a>
 where
     Self: 'a,
 {
-    pub fn new<S: AsRef<str>>(table_name: S, from_table: Option<&'a Table>) -> Self {
+    pub fn new<S: AsRef<str>, I: Into<Option<&'a Table>>>(table_name: S, from_table: I) -> Self {
         Self {
             name: table_name.as_ref().to_string(),
             new_name: None,
@@ -48,7 +48,7 @@ where
             added_foreign_keys: vec![],
             changed_foreign_keys: vec![],
             removed_foreign_keys: vec![],
-            from_table,
+            from_table: from_table.into(),
         }
     }
 

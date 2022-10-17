@@ -276,6 +276,8 @@ impl DatabasePlatform for MySQLPlatform {
 mod tests {
     use crate::driver::mysql::MySQLPlatform;
     use crate::platform::DatabasePlatform;
+    use crate::r#type::{BINARY, JSON};
+    use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
     use creed::driver::mysql::MySQLVariant;
@@ -283,6 +285,14 @@ mod tests {
 
     pub fn create_mysql_platform() -> MySQLPlatform {
         MySQLPlatform::new(MySQLVariant::MySQL, Arc::new(EventDispatcher::new()))
+    }
+
+    pub fn create_mysql80_platform() -> MySQLPlatform {
+        MySQLPlatform::new(MySQLVariant::MySQL80, Arc::new(EventDispatcher::new()))
+    }
+
+    pub fn create_mariadb_platform() -> MySQLPlatform {
+        MySQLPlatform::new(MySQLVariant::MariaDB, Arc::new(EventDispatcher::new()))
     }
 
     #[test]
@@ -321,4 +331,88 @@ mod tests {
     }
 
     common_platform_tests!(create_mysql_platform());
+
+    #[test]
+    pub fn returns_binary_type_declaration_sql() {
+        let platform = create_mysql_platform();
+        let mut column = Column::new("foo", BINARY).unwrap();
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "VARBINARY(255)"
+        );
+
+        column.set_length(0);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "VARBINARY(255)"
+        );
+
+        column.set_length(65535);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "VARBINARY(65535)"
+        );
+
+        column.set_length(None);
+        column.set_fixed(true);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BINARY(255)"
+        );
+
+        column.set_length(0);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BINARY(255)"
+        );
+
+        column.set_length(65535);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BINARY(65535)"
+        );
+    }
+
+    #[test]
+    pub fn returns_json_type_declaration_sql() {
+        let mut column = Column::new("foo", JSON).unwrap();
+        column.set_notnull(true);
+        column.set_length(666);
+
+        let platform = create_mysql_platform();
+        assert_eq!(
+            platform
+                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "JSON"
+        );
+
+        let platform = create_mysql80_platform();
+        assert_eq!(
+            platform
+                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "JSON"
+        );
+
+        let platform = create_mariadb_platform();
+        assert_eq!(
+            platform
+                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "LONGTEXT"
+        );
+    }
 }

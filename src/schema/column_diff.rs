@@ -24,17 +24,17 @@ pub struct ColumnDiff {
 }
 
 impl ColumnDiff {
-    pub fn new(
+    pub fn new<I: Into<Option<Column>>>(
         old_column_name: &str,
         column: &Column,
         changed_properties: &[ChangedProperty],
-        from_column: Option<Column>,
+        from_column: I,
     ) -> Self {
         Self {
             old_column_name: old_column_name.to_string(),
             column: column.clone(),
             changed_properties: changed_properties.to_vec(),
-            from_column,
+            from_column: from_column.into(),
         }
     }
 

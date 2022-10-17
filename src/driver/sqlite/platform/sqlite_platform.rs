@@ -241,6 +241,8 @@ impl DatabasePlatform for SQLitePlatform {
 mod tests {
     use crate::driver::sqlite::SQLitePlatform;
     use crate::platform::DatabasePlatform;
+    use crate::r#type::{BINARY, JSON};
+    use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
     use std::sync::Arc;
@@ -285,4 +287,72 @@ mod tests {
     }
 
     common_platform_tests!(create_sqlite_platform());
+
+    #[test]
+    pub fn returns_binary_type_declaration_sql() {
+        let platform = create_sqlite_platform();
+        let mut column = Column::new("foo", BINARY).unwrap();
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+
+        column.set_length(0);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+
+        column.set_length(999999);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+
+        column.set_length(None);
+        column.set_fixed(true);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+
+        column.set_length(0);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+
+        column.set_length(65535);
+        assert_eq!(
+            platform
+                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "BLOB"
+        );
+    }
+
+    #[test]
+    pub fn returns_json_type_declaration_sql() {
+        let mut column = Column::new("foo", JSON).unwrap();
+        column.set_notnull(true);
+        column.set_length(666);
+
+        let platform = create_sqlite_platform();
+        assert_eq!(
+            platform
+                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "CLOB"
+        );
+    }
 }

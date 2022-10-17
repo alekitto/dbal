@@ -184,7 +184,7 @@ pub fn get_binary_type_declaration_sql_snippet(
     fixed: bool,
 ) -> Result<String> {
     let c_type = if fixed { "BINARY" } else { "VARBINARY" };
-    let length = length.unwrap_or(255);
+    let length = length.map(|s| if s > 0 { s } else { 255 }).unwrap_or(255);
 
     Ok(format!("{}({})", c_type, length))
 }

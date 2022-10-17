@@ -647,11 +647,17 @@ pub fn get_create_primary_key_sql(
     ))
 }
 
-pub fn get_create_schema_sql(platform: &dyn DatabasePlatform, schema_name: &str) -> Result<String> {
+pub fn get_create_schema_sql(
+    platform: &dyn DatabasePlatform,
+    schema_name: &dyn IntoIdentifier,
+) -> Result<String> {
     if platform.supports_schemas() {
-        Err(Error::platform_feature_unsupported("schemas"))
+        Ok(format!(
+            "CREATE SCHEMA {}",
+            schema_name.into_identifier().get_quoted_name(platform)
+        ))
     } else {
-        Ok(format!("CREATE SCHEMA {}", schema_name))
+        Err(Error::platform_feature_unsupported("schemas"))
     }
 }
 

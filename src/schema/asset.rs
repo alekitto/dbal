@@ -115,9 +115,14 @@ impl<A: Asset + ?Sized> Asset for &mut A {
         to(**self) {
             fn get_name(&self) -> String;
             fn set_name(&mut self, name: &str);
+            fn is_empty(&self) -> bool;
+            fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
             fn get_namespace_name(&self) -> Option<String>;
+            fn is_identifier_quoted(&self, identifier: &str) -> bool;
+            fn trim_quotes(&self, identifier: &str) -> String;
             fn get_shortest_name(&self, default_namespace_name: &str) -> String;
             fn is_quoted(&self) -> bool;
+            fn get_quoted_name(&self, platform: &dyn DatabasePlatform) -> String;
         }
     }
 }
@@ -135,9 +140,14 @@ impl<A: Asset + ?Sized> Asset for Box<A> {
         to(**self) {
             fn get_name(&self) -> String;
             fn set_name(&mut self, name: &str);
+            fn is_empty(&self) -> bool;
+            fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
             fn get_namespace_name(&self) -> Option<String>;
+            fn is_identifier_quoted(&self, identifier: &str) -> bool;
+            fn trim_quotes(&self, identifier: &str) -> String;
             fn get_shortest_name(&self, default_namespace_name: &str) -> String;
             fn is_quoted(&self) -> bool;
+            fn get_quoted_name(&self, platform: &dyn DatabasePlatform) -> String;
         }
     }
 }
@@ -148,9 +158,14 @@ pub(crate) macro impl_asset($t:ident,$e:ident) {
             to(self.$e) {
                 fn get_name(&self) -> String;
                 fn set_name(&mut self, name: &str);
+                fn is_empty(&self) -> bool;
+                fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
                 fn get_namespace_name(&self) -> Option<String>;
+                fn is_identifier_quoted(&self, identifier: &str) -> bool;
+                fn trim_quotes(&self, identifier: &str) -> String;
                 fn get_shortest_name(&self, default_namespace_name: &str) -> String;
                 fn is_quoted(&self) -> bool;
+                fn get_quoted_name(&self, platform: &dyn DatabasePlatform) -> String;
             }
         }
     }

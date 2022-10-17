@@ -199,7 +199,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Returns the SQL to create a named schema.
-    fn get_create_schema_sql(&self, schema_name: &str) -> Result<String> {
+    fn get_create_schema_sql(&self, schema_name: &dyn IntoIdentifier) -> Result<String> {
         default::get_create_schema_sql(self.get_platform()?.as_dyn(), schema_name)
     }
 
@@ -1363,7 +1363,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_create_index_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
             fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
-            fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
+            fn get_create_schema_sql(&self, schema_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;
@@ -1495,7 +1495,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_create_index_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_index_sql_flags(&self, index: &Index) -> String;
             fn get_create_primary_key_sql(&self, index: &Index, table: &dyn IntoIdentifier) -> Result<String>;
-            fn get_create_schema_sql(&self, schema_name: &str) -> Result<String>;
+            fn get_create_schema_sql(&self, schema_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_unique_constraint_sql(&self, constraint: &UniqueConstraint, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;

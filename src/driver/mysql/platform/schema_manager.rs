@@ -666,4 +666,25 @@ mod tests {
             true
         );
     }
+
+    #[tokio::test]
+    pub async fn alter_table_rename_index() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("mytable");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("mytable", &table);
+        table_diff.renamed_indexes.push((
+            "idx_foo".to_string(),
+            Index::new("idx_bar", &["id"], false, false, &[], HashMap::default()),
+        ));
+
+        assert_eq!(
+            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            &["ALTER TABLE mytable RENAME INDEX idx_foo TO idx_bar"]
+        );
+    }
 }

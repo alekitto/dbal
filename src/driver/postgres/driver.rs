@@ -3,12 +3,12 @@ use crate::driver::connection::{Connection, DriverConnection};
 use crate::driver::postgres::platform::PostgreSQLPlatform;
 use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
+use crate::sync::JoinHandle;
 use crate::{Async, EventDispatcher, Result};
 use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
 use tokio_postgres::{Client, GenericClient, NoTls, Socket};
 use url::Url;
@@ -138,7 +138,7 @@ impl DriverConnection<ConnectionOptions> for Driver {
         async move {
             // Connect to the database.
             let (client, connection) = tokio_postgres::connect(&config, tls).await?;
-            let handle = tokio::spawn(async move {
+            let handle = crate::sync::spawn(async move {
                 if let Err(e) = connection.await {
                     eprintln!("connection error: {}", e);
                 }

@@ -1,8 +1,8 @@
+use crate::sync::Mutex;
 use crate::{AsyncResult, Event, Result};
 use std::any::*;
 use std::default::Default;
 use std::fmt::{Debug, Formatter};
-use tokio::sync::Mutex;
 
 pub type AsyncHandlerFn = dyn (FnMut(&mut dyn Event) -> AsyncResult<()>) + Send;
 pub type SyncHandlerFn = dyn (FnMut(&mut dyn Event) -> Result<()>) + Send;

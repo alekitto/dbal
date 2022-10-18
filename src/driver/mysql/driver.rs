@@ -4,13 +4,13 @@ use crate::driver::mysql::platform::MySQLPlatform;
 use crate::driver::statement::Statement;
 use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;
+use crate::sync::Mutex;
 use crate::{Async, Error, EventDispatcher, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
 use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use url::Url;
 use version_compare::{compare_to, Cmp};
 

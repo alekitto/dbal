@@ -24,6 +24,7 @@ pub mod driver;
 pub mod error;
 pub mod platform;
 pub mod schema;
+pub mod sync;
 pub mod r#type;
 
 pub use configuration::Configuration;

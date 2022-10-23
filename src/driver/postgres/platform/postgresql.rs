@@ -2,13 +2,15 @@ use crate::error::ErrorKind;
 use crate::platform::{default, DateIntervalUnit};
 use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
 use crate::schema::{
-    Asset, ChangedProperty, Column, ColumnData, ColumnDiff, ForeignKeyConstraint, Identifier,
-    Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
+    extract_type_from_comment, Asset, ChangedProperty, Column, ColumnData, ColumnDiff,
+    ForeignKeyConstraint, Identifier, Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
 };
-use crate::{Error, Result, TransactionIsolationLevel, Value};
+use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
+use creed::params;
 use creed::platform::DatabasePlatform;
-use creed::schema::SchemaManager;
+use creed::schema::{remove_type_from_comment, SchemaManager};
 use itertools::Itertools;
+use regex::Regex;
 
 // const TRUE_BOOLEAN_LITERALS: [&str; 6] = ["t", "true", "y", "yes", "on", "1"];
 const FALSE_BOOLEAN_LITERALS: [&str; 6] = ["f", "false", "n", "no", "off", "0"];
@@ -153,16 +155,57 @@ pub fn get_list_table_indexes_sql(this: &dyn SchemaManager, table: &str) -> Resu
     Ok(format!(
         r#"SELECT quote_ident(relname) as relname, pg_index.indisunique, pg_index.indisprimary,
                   pg_index.indkey, pg_index.indrelid,
-                  pg_get_expr(indpred, indrelid) AS where
+                  pg_get_expr(indpred, indrelid) AS where,
+                  array(
+                     SELECT attname
+                     FROM pg_attribute
+                     WHERE attrelid = pg_index.indrelid AND attnum = ANY(pg_index.indkey)
+                     ORDER BY attnum ASC
+                  ) AS attrs
             FROM pg_class, pg_index
             WHERE oid IN (
                 SELECT indexrelid
                 FROM pg_index si, pg_class sc, pg_namespace sn
                 WHERE {}
                 AND sc.oid=si.indrelid AND sc.relnamespace = sn.oid
-            ) AND pg_index.indexrelid = oid'"#,
+            ) AND pg_index.indexrelid = oid"#,
         get_table_where_clause(this, table, "sc", "sn")?
     ))
+}
+
+pub fn get_portable_table_indexes_list(
+    this: &dyn SchemaManager,
+    table_indexes: Vec<Row>,
+    table_name: &str,
+) -> Result<Vec<Index>> {
+    let mut buffer = vec![];
+    for row in table_indexes {
+        let attrs = row.get("attrs")?.clone().try_into_vec()?;
+        for col_name in attrs {
+            let row = Row::new(
+                vec![
+                    "key_name".into(),
+                    "column_name".into(),
+                    "non_unique".into(),
+                    "primary".into(),
+                    "where".into(),
+                    "flags".into(),
+                ],
+                vec![
+                    row.get("relname")?.clone(),
+                    col_name,
+                    Value::Boolean(!bool::try_from(row.get("indisunique")?.clone())?),
+                    row.get("indisprimary")?.clone(),
+                    row.get("where")?.clone(),
+                    Value::NULL,
+                ],
+            );
+
+            buffer.push(row);
+        }
+    }
+
+    default::get_portable_table_indexes_list(this, buffer, table_name)
 }
 
 fn get_table_where_clause(
@@ -201,6 +244,8 @@ pub fn get_list_table_columns_sql(this: &dyn SchemaManager, table: &str) -> Resu
         r#"
 SELECT
     a.attnum,
+    a.attlen AS length,
+    a.atttypmod AS atttypmod,
     quote_ident(a.attname) AS field,
     t.typname AS type,
     format_type(a.atttypid, a.atttypmod) AS complete_type,
@@ -341,7 +386,7 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
         {
             let r#type = TypeManager::get_instance().get_type(column.get_type())?;
             let mut column_data = column.generate_column_data(&platform);
-            column_data.autoincrement = Some(false);
+            column_data.autoincrement = false;
 
             let query = format!(
                 "ALTER {} TYPE {}",
@@ -547,8 +592,8 @@ pub fn get_rename_index_sql(
 
 pub fn get_comment_on_column_sql(
     platform: &dyn DatabasePlatform,
-    table_name: &Identifier,
-    column: &Column,
+    table_name: &dyn IntoIdentifier,
+    column: &dyn IntoIdentifier,
     comment: &str,
 ) -> Result<String> {
     let comment = if comment.is_empty() {
@@ -558,8 +603,8 @@ pub fn get_comment_on_column_sql(
     };
     Ok(format!(
         "COMMENT ON COLUMN {}.{} IS {}",
-        table_name.get_quoted_name(platform),
-        column.get_quoted_name(platform),
+        table_name.into_identifier().get_quoted_name(platform),
+        column.into_identifier().get_quoted_name(platform),
         comment
     ))
 }
@@ -769,7 +814,7 @@ pub fn get_boolean_type_declaration_sql() -> Result<String> {
 }
 
 pub fn get_integer_type_declaration_sql(column: &ColumnData) -> Result<String> {
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         Ok("SERIAL".to_string())
     } else {
         Ok("INT".to_string())
@@ -777,7 +822,7 @@ pub fn get_integer_type_declaration_sql(column: &ColumnData) -> Result<String> {
 }
 
 pub fn get_bigint_type_declaration_sql(column: &ColumnData) -> Result<String> {
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         Ok("BIGSERIAL".to_string())
     } else {
         Ok("BIGINT".to_string())
@@ -785,7 +830,7 @@ pub fn get_bigint_type_declaration_sql(column: &ColumnData) -> Result<String> {
 }
 
 pub fn get_smallint_type_declaration_sql(column: &ColumnData) -> Result<String> {
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         Ok("SMALLSERIAL".to_string())
     } else {
         Ok("SMALLINT".to_string())
@@ -878,7 +923,7 @@ pub fn get_default_value_declaration_sql(
     this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         Ok("".to_string())
     } else {
         default::get_default_value_declaration_sql(this, column)
@@ -896,12 +941,7 @@ pub fn get_column_collation_declaration_sql(
 }
 
 pub fn get_json_type_declaration_sql(column: &ColumnData) -> Result<String> {
-    Ok(if column.jsonb.unwrap_or(false) {
-        "JSONB"
-    } else {
-        "JSON"
-    }
-    .to_string())
+    Ok(if column.jsonb { "JSONB" } else { "JSON" }.to_string())
 }
 
 fn get_old_column_comment(this: &dyn SchemaManager, column_diff: &ColumnDiff) -> Option<String> {
@@ -909,4 +949,212 @@ fn get_old_column_comment(this: &dyn SchemaManager, column_diff: &ColumnDiff) ->
         .from_column
         .as_ref()
         .map(|c| this.get_column_comment(c).unwrap_or_else(|_| String::new()))
+}
+
+pub fn get_portable_table_column_definition(
+    this: &dyn SchemaManager,
+    table_column: &Row,
+) -> Result<Column> {
+    let platform = this.get_platform()?;
+    let col_type = table_column.get("type")?;
+    let mut col_length = table_column.get("length")?.clone();
+    if col_type == &Value::from("varchar") || col_type == &Value::from("bpchar") {
+        // get length from varchar definition
+        let r = Regex::new(".*\\(([0-9]*)\\).*")?;
+        let complete_type = table_column.get("complete_type")?.to_string();
+        let len = r.replace(&complete_type, "$1");
+        col_length = Value::String(len.to_string());
+    }
+
+    let mut autoincrement = false;
+
+    let mut col_default = table_column.get("default")?.clone();
+    let mut col_sequence = Value::NULL;
+    if !col_default.is_null() {
+        let def = col_default.to_string();
+
+        let next_val_re = Regex::new("^nextval\\('(.*)'(::.*)?\\)$")?;
+        let default_val_re = Regex::new("^['(](.*)[')]::")?;
+        let null_val_re = Regex::new("^NULL::")?;
+        if let Some(matches) = next_val_re.captures(&def) {
+            col_sequence = matches.get(1).unwrap().as_str().into();
+            col_default = Value::NULL;
+            autoincrement = true;
+        } else if let Some(matches) = default_val_re.captures(&def) {
+            col_default = matches.get(1).unwrap().as_str().into();
+        } else if null_val_re.is_match(&def) {
+            col_default = Value::NULL;
+        }
+    }
+
+    let atttypmod = table_column.get("atttypmod")?;
+    let mut col_length = match &col_length {
+        Value::String(v) => {
+            if v == "-1" && !atttypmod.is_null() {
+                Some(atttypmod.to_string().parse::<i64>()? - 4)
+            } else {
+                Some(v.parse()?)
+            }
+        }
+        Value::Int(v) => Some(*v),
+        Value::UInt(v) => Some(i64::try_from(*v)?),
+        _ => None,
+    };
+
+    if col_length.unwrap_or(-1) <= 0 {
+        col_length = None;
+    }
+
+    let mut fixed = None;
+    let mut precision = None;
+    let mut scale = None;
+    let mut jsonb = None;
+
+    let mut db_type = table_column.get("type")?.to_string().to_lowercase();
+    let domain_type = table_column.get("domain_type")?;
+    let mut complete_type = table_column.get("complete_type")?.to_string();
+    if !domain_type.is_null()
+        && &domain_type.to_string() != ""
+        && !platform.has_type_mapping_for(&db_type)
+    {
+        db_type = domain_type.to_string().to_lowercase();
+        complete_type = table_column.get("domain_complete_type")?.to_string();
+    }
+
+    let ty = platform.get_type_mapping(&db_type)?;
+    let comment = match table_column.get("comment")? {
+        Value::NULL => None,
+        v => Some(v.to_string()),
+    };
+
+    let ty = extract_type_from_comment(comment.clone(), ty)?;
+    let comment = remove_type_from_comment(comment, ty.clone());
+
+    match db_type.as_str() {
+        "smallint" | "int2" | "int" | "int4" | "integer" | "bigint" | "int8" | "year" => {
+            col_length = None;
+        }
+
+        "bool" | "boolean" => {
+            if col_default == Value::String("true".to_string()) {
+                col_default = Value::Boolean(true);
+            }
+            if col_default == Value::String("false".to_string()) {
+                col_default = Value::Boolean(false);
+            }
+
+            col_length = None;
+        }
+
+        "text" | "_varchar" | "varchar" => {
+            col_default = match col_default {
+                Value::NULL => col_default,
+                _ => Value::String(col_default.to_string().replace("''", "'")),
+            };
+            fixed = Some(false);
+        }
+
+        "interval" => {
+            fixed = Some(false);
+        }
+
+        "char" | "bpchar" => {
+            fixed = Some(true);
+        }
+
+        "float" | "float4" | "float8" | "double" | "double precision" | "real" | "decimal"
+        | "money" | "numeric" => {
+            if let Some(matches) =
+                Regex::new("[A-Za-z]+\\(([0-9]+),([0-9]+)\\)")?.captures(&complete_type)
+            {
+                precision = Some(matches.get(1).unwrap().as_str().parse()?);
+                scale = Some(matches.get(2).unwrap().as_str().parse()?);
+                col_length = None;
+            }
+        }
+
+        "jsonb" => {
+            jsonb = Some(true);
+        }
+
+        _ => { /* Do nothing. */ }
+    }
+
+    if !col_default.is_null() {
+        if let Some(matches) = Regex::new("('([^']+)'::)")?.captures(&col_default.to_string()) {
+            col_default = Value::String(matches.get(1).unwrap().as_str().to_string());
+        }
+    }
+
+    let mut column = Column::new(&table_column.get("field")?.to_string(), ty)?;
+    column.set_length(col_length.and_then(|v| usize::try_from(v).ok()));
+    column.set_notnull(table_column.get("isnotnull")?.to_string() == "true".to_string());
+    column.set_default(col_default);
+    column.set_precision(precision);
+    column.set_scale(scale);
+    column.set_fixed(fixed);
+    column.set_jsonb(jsonb);
+    column.set_autoincrement(autoincrement);
+
+    let comment = comment.unwrap_or_default();
+    if !comment.is_empty() {
+        column.set_comment(comment);
+    }
+
+    let collation = table_column.get("collation")?;
+    if let Value::String(c) = collation {
+        column.set_collation(c);
+    }
+
+    Ok(column)
+}
+
+pub fn get_portable_sequence_definition(row: &Row) -> Result<Sequence> {
+    let sequence_name = if row.get("schemaname")? != &Value::from("public") {
+        format!(
+            "{}.{}",
+            row.get("schemaname")?.to_string(),
+            row.get("relname")?.to_string()
+        )
+    } else {
+        row.get("relname")?.to_string()
+    };
+
+    let increment_by = row.get("increment_by")?;
+    let increment_by: usize = if increment_by.is_null() {
+        "1".to_string()
+    } else {
+        increment_by.to_string()
+    }
+    .parse()?;
+
+    let min_value = row.get("min_value")?;
+    let min_value: usize = if min_value.is_null() {
+        "1".to_string()
+    } else {
+        min_value.to_string()
+    }
+    .parse()?;
+
+    Ok(Sequence::new(sequence_name, increment_by, min_value, None))
+}
+
+pub fn list_schema_names(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier>> {
+    Box::pin(async move {
+        let conn = this.get_connection();
+        let rows = conn
+            .fetch_all(
+                "SELECT schema_name
+                FROM   information_schema.schemata
+                WHERE  schema_name NOT LIKE 'pg\\_%'
+                AND    schema_name != 'information_schema'",
+                params!(),
+            )
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| r.get(0).unwrap().to_string().into_identifier())
+            .collect())
+    })
 }

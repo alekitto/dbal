@@ -56,7 +56,7 @@ impl Type for DecimalType {
         column: &ColumnData,
         platform: &dyn DatabasePlatform,
     ) -> Result<String> {
-        platform.get_binary_type_declaration_sql(column)
+        platform.get_decimal_type_declaration_sql(column)
     }
 
     fn get_binding_type(&self) -> ParameterType {

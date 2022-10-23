@@ -1,7 +1,9 @@
 use std::fmt::{Debug, Formatter};
 
+type SchemaAssetFilterType = dyn (Fn(&str) -> bool) + Sync + Send;
+
 pub struct Configuration {
-    schema_assets_filter: Box<dyn (Fn(&str) -> bool) + Sync + Send>,
+    schema_assets_filter: Box<SchemaAssetFilterType>,
 }
 
 impl Configuration {
@@ -11,7 +13,12 @@ impl Configuration {
         }
     }
 
-    pub fn get_schema_assets_filter(&self) -> &(dyn (Fn(&str) -> bool) + Sync + Send) {
+    pub fn set_schema_assets_filter(mut self, filter: Box<SchemaAssetFilterType>) -> Self {
+        self.schema_assets_filter = filter;
+        self
+    }
+
+    pub fn get_schema_assets_filter(&self) -> &SchemaAssetFilterType {
         &self.schema_assets_filter
     }
 }

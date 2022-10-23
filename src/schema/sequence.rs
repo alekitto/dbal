@@ -10,20 +10,25 @@ pub struct Sequence {
 }
 
 impl Sequence {
-    pub fn new<S: AsRef<str>>(
+    pub fn new<
+        S: AsRef<str>,
+        AS: Into<Option<usize>>,
+        IV: Into<Option<usize>>,
+        C: Into<Option<usize>>,
+    >(
         name: S,
-        allocation_size: Option<usize>,
-        initial_value: Option<usize>,
-        cache: Option<usize>,
+        allocation_size: AS,
+        initial_value: IV,
+        cache: C,
     ) -> Self {
         let mut asset = AbstractAsset::default();
         asset.set_name(name.as_ref());
 
         Self {
             asset,
-            allocation_size: allocation_size.unwrap_or(1),
-            initial_value: initial_value.unwrap_or(1),
-            cache,
+            allocation_size: allocation_size.into().unwrap_or(1),
+            initial_value: initial_value.into().unwrap_or(1),
+            cache: cache.into(),
         }
     }
 

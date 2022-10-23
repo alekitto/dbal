@@ -7,18 +7,30 @@ use crate::r#type::{
     IntoType, TypeManager, TypePtr, BIGINT, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
 };
 use crate::schema::{
-    Asset, CheckConstraint, Column, ColumnData, ColumnDiff, ForeignKeyConstraint,
-    ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, SchemaManager, Table,
-    TableDiff, TableOptions, UniqueConstraint, View,
+    string_from_value, Asset, CheckConstraint, Column, ColumnData, ColumnDiff,
+    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexOptions,
+    IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableOptions, UniqueConstraint,
+    View,
 };
+use crate::util::{filter_asset_names, function_name};
 use crate::{
-    Error, Result, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
-    SchemaAlterTableRenameColumnEvent, SchemaCreateTableColumnEvent, TransactionIsolationLevel,
-    Value,
+    params, AsyncResult, Connection, Error, Result, Row, SchemaAlterTableChangeColumnEvent,
+    SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaCreateTableColumnEvent,
+    SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
 };
 use itertools::Itertools;
 use regex::Regex;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::HashMap;
 use std::fmt::Display;
+
+async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
+    if let Some(database) = conn.get_database().await {
+        Ok(database)
+    } else {
+        Err(Error::database_required(method_name))
+    }
+}
 
 pub fn get_ascii_string_type_declaration_sql(
     this: &dyn DatabasePlatform,
@@ -31,7 +43,7 @@ pub fn get_string_type_declaration_sql(
     this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
-    let fixed = column.fixed.unwrap_or(false);
+    let fixed = column.fixed;
     this.get_varchar_type_declaration_sql_snippet(column.length, fixed)
 }
 
@@ -39,7 +51,7 @@ pub fn get_binary_type_declaration_sql(
     this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
-    let fixed = column.fixed.unwrap_or(false);
+    let fixed = column.fixed;
     this.get_binary_type_declaration_sql_snippet(column.length, fixed)
 }
 
@@ -49,7 +61,7 @@ pub fn get_guid_type_declaration_sql(
 ) -> Result<String> {
     let mut column = column.clone();
     let _ = column.length.insert(36);
-    let _ = column.fixed.insert(true);
+    column.fixed = true;
 
     this.get_string_type_declaration_sql(&column)
 }
@@ -499,14 +511,14 @@ pub fn get_comment_on_table_sql(
 
 pub fn get_comment_on_column_sql(
     platform: &dyn DatabasePlatform,
-    table_name: &Identifier,
-    column: &Column,
+    table_name: &dyn IntoIdentifier,
+    column: &dyn IntoIdentifier,
     comment: &str,
 ) -> Result<String> {
     Ok(format!(
         "COMMENT ON COLUMN {}.{} IS {}",
-        table_name.get_quoted_name(platform),
-        column.get_quoted_name(platform),
+        table_name.into_identifier().get_quoted_name(platform),
+        column.into_identifier().get_quoted_name(platform),
         platform.quote_string_literal(comment)
     ))
 }
@@ -678,7 +690,7 @@ pub fn get_create_unique_constraint_sql(
 }
 
 pub fn get_drop_schema_sql(this: &dyn SchemaManager, schema_name: &str) -> Result<String> {
-    if this.get_platform()?.supports_schemas() {
+    if !this.get_platform()?.supports_schemas() {
         Err(Error::platform_feature_unsupported("schemas"))
     } else {
         Ok(format!("DROP SCHEMA {}", schema_name))
@@ -942,13 +954,17 @@ pub fn get_column_declaration_sql(
         let charset = column
             .charset
             .as_ref()
-            .map(|v| format!(" {}", v))
+            .map(|v| format!(" {}", this.get_column_charset_declaration_sql(v)))
             .unwrap_or_default();
-        let collation = column
-            .collation
-            .as_ref()
-            .map(|v| format!(" {}", v))
-            .unwrap_or_default();
+        let collation = if let Some(collation) = column.collation.as_ref() {
+            if !collation.is_empty() {
+                format!(" {}", this.get_column_collation_declaration_sql(collation)?)
+            } else {
+                Default::default()
+            }
+        } else {
+            Default::default()
+        };
 
         let not_null = if column.notnull { " NOT NULL" } else { "" };
         let unique = if column.unique { " UNIQUE" } else { "" };
@@ -976,7 +992,7 @@ pub fn get_column_declaration_sql(
         )
     };
 
-    Ok(format!("{} {}", name, declaration))
+    Ok(format!("{} {}", name, declaration).trim().to_string())
 }
 
 pub fn get_decimal_type_declaration_sql(column: &ColumnData) -> Result<String> {
@@ -1301,8 +1317,8 @@ pub fn get_create_database_sql(
     platform: &dyn DatabasePlatform,
     name: &Identifier,
 ) -> Result<String> {
-    if platform.supports_create_drop_database() {
-        Err(Error::platform_feature_unsupported("sequence next val"))
+    if !platform.supports_create_drop_database() {
+        Err(Error::platform_feature_unsupported("create drop database"))
     } else {
         Ok(format!(
             "CREATE DATABASE {}",
@@ -1312,8 +1328,8 @@ pub fn get_create_database_sql(
 }
 
 pub fn get_drop_database_sql(this: &dyn SchemaManager, name: &str) -> Result<String> {
-    if this.get_platform()?.supports_create_drop_database() {
-        Err(Error::platform_feature_unsupported("sequence next val"))
+    if !this.get_platform()?.supports_create_drop_database() {
+        Err(Error::platform_feature_unsupported("create drop database"))
     } else {
         Ok(format!("DROP DATABASE {}", name))
     }
@@ -1439,4 +1455,104 @@ pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Colum
     } else {
         column1.get_type() == column2.get_type()
     })
+}
+
+pub fn list_databases(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier>> {
+    Box::pin(async {
+        let sql = this.get_list_databases_sql()?;
+        let databases = this.get_connection().fetch_all(sql, params!()).await?;
+
+        this.get_portable_databases_list(databases)
+    })
+}
+
+pub fn list_sequences(this: &dyn SchemaManager) -> AsyncResult<Vec<Sequence>> {
+    Box::pin(async move {
+        let conn = this.get_connection();
+        let database = get_database(conn, function_name!()).await?;
+        let sql = this.get_list_sequences_sql(&database)?;
+        let sequences = this.get_connection().fetch_all(sql, params!()).await?;
+
+        this.get_portable_sequences_list(sequences)
+            .map(|r| filter_asset_names(conn, r))
+    })
+}
+
+pub fn get_portable_table_indexes_list(
+    this: &dyn SchemaManager,
+    table_indexes: Vec<Row>,
+    table_name: &str,
+) -> Result<Vec<Index>> {
+    let mut result = HashMap::new();
+    let connection = this.get_connection();
+    for table_index in table_indexes {
+        let index_name = string_from_value(connection, table_index.get("key_name"))?;
+        let key_name = if bool::from(table_index.get("primary")?) {
+            "primary".to_string()
+        } else {
+            index_name.to_lowercase()
+        };
+
+        let length = table_index
+            .get("length")
+            .cloned()
+            .and_then(usize::try_from)
+            .ok();
+
+        match result.entry(key_name) {
+            Vacant(e) => {
+                e.insert(IndexOptions {
+                    name: index_name,
+                    columns: vec![string_from_value(
+                        connection,
+                        table_index.get("column_name"),
+                    )?],
+                    unique: !bool::from(table_index.get("non_unique")?),
+                    primary: bool::from(table_index.get("primary")?),
+                    flags: string_from_value(connection, table_index.get("flags"))?
+                        .split(',')
+                        .map(|s| s.to_string())
+                        .collect(),
+                    options_lengths: vec![length],
+                    options_where: table_index
+                        .get("where")
+                        .and_then(|v| match v {
+                            Value::String(s) => Ok(s.clone()),
+                            _ => Err("invalid".into()),
+                        })
+                        .ok(),
+                });
+            }
+            Occupied(mut e) => {
+                let opts = e.get_mut();
+                opts.columns.push(string_from_value(
+                    connection,
+                    table_index.get("column_name"),
+                )?);
+                opts.options_lengths.push(length);
+            }
+        }
+    }
+
+    let event_manager = this.get_platform()?.as_dyn().get_event_manager();
+
+    let mut indexes = HashMap::new();
+    for (index_key, data) in result {
+        let event = event_manager.dispatch_sync(SchemaIndexDefinitionEvent::new(
+            &data,
+            table_name,
+            this.get_platform()?,
+        ))?;
+        let index = if event.is_default_prevented() {
+            event.index()
+        } else {
+            Some(data.new_index())
+        };
+
+        if let Some(index) = index {
+            indexes.insert(index_key, index);
+        }
+    }
+
+    Ok(indexes.into_values().collect())
 }

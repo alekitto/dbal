@@ -184,7 +184,7 @@ pub macro common_platform_tests($ex:expr) {
     }
 
     #[test]
-    pub fn test_get_default_value_declaration_sql_for_date_type() {
+    pub fn get_default_value_declaration_sql_for_date_type() {
         let platform = $ex;
 
         let current_date_sql = platform.get_current_date_sql();
@@ -205,5 +205,17 @@ pub macro common_platform_tests($ex:expr) {
 
         let keyword_list = platform.create_reserved_keywords_list();
         assert_eq!(keyword_list.is_keyword("table"), true);
+    }
+
+    #[test]
+    pub fn quote_string_literal() {
+        let platform = $ex;
+
+        assert_eq!(platform.quote_string_literal("No quote"), "'No quote'");
+        assert_eq!(
+            platform.quote_string_literal("It's a quote"),
+            "'It''s a quote'"
+        );
+        assert_eq!(platform.quote_string_literal("'"), "''''");
     }
 }

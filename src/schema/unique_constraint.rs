@@ -4,7 +4,7 @@ use crate::schema::{Identifier, IntoIdentifier};
 use crate::Value;
 use std::collections::HashMap;
 
-#[derive(Clone, IntoIdentifier)]
+#[derive(Clone, Debug, IntoIdentifier)]
 pub struct UniqueConstraint {
     asset: AbstractAsset,
     columns: HashMap<String, Identifier>,

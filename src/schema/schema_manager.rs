@@ -8,29 +8,17 @@ use crate::schema::{
     ForeignKeyReferentialAction, Identifier, Index, IndexOptions, IntoIdentifier, Schema,
     SchemaDiff, Sequence, Table, TableDiff, TableOptions, UniqueConstraint, View,
 };
-use crate::util::ToSqlStatementList;
+use crate::util::{filter_asset_names, function_name, ToSqlStatementList};
 use crate::{
     params, AsyncResult, Connection, Error, Result, Row, SchemaColumnDefinitionEvent,
     SchemaIndexDefinitionEvent, Value,
 };
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::ops::Index as _;
 use std::sync::Arc;
-
-macro_rules! function_name {
-    () => {{
-        // Okay, this is ugly, I get it. However, this is the best we can get on a stable rust.
-        fn f() {}
-        fn type_name_of<T>(_: T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-        let name = type_name_of(f);
-        // `3` is the length of the `::f`.
-        &name[..name.len() - 3]
-    }};
-}
 
 async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
     if let Some(database) = conn.get_database().await {
@@ -48,18 +36,24 @@ async fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
     for row in result.fetch_all().await? {
         let table_name = schema_manager
             .get_portable_table_definition(&row)?
-            .get_name();
-        if let Occupied(mut e) = data.entry(table_name.clone()) {
-            e.get_mut().push(row);
-        } else {
-            data.insert(table_name, vec![row]);
+            .get_name()
+            .into_owned();
+
+        let e = data.entry(table_name);
+        match e {
+            Occupied(mut e) => {
+                e.get_mut().push(row);
+            }
+            Vacant(e) => {
+                e.insert(vec![row]);
+            }
         }
     }
 
     Ok(data)
 }
 
-fn string_from_value(conn: &Connection, value: Result<&Value>) -> Result<String> {
+pub(crate) fn string_from_value(conn: &Connection, value: Result<&Value>) -> Result<String> {
     Ok(match conn.convert_value(value?, r#type::STRING)? {
         Value::NULL => "".to_string(),
         Value::String(n) => n,
@@ -78,19 +72,6 @@ fn _exec_sql<S: ToSqlStatementList>(connection: &Connection, sql: S) -> AsyncRes
     })
 }
 
-/// Filters asset names if they are configured to return only a subset of all
-/// the found elements.
-pub fn filter_asset_names<A: Asset + Clone>(connection: &Connection, assets: Vec<A>) -> Vec<A> {
-    let configuration = connection.get_configuration();
-    let filter = configuration.get_schema_assets_filter();
-
-    assets
-        .iter()
-        .filter(|a| filter(&a.get_name()))
-        .cloned()
-        .collect()
-}
-
 /// Given a table comment this method tries to extract a typehint for Doctrine Type, or returns
 /// the type given as default.
 ///
@@ -100,13 +81,13 @@ pub fn extract_type_from_comment<I: IntoType>(
     comment: Option<String>,
     current_type: I,
 ) -> Result<TypePtr> {
-    let type_regex = Regex::new("(\\(CRType:([^)].*)\\))").unwrap();
+    let type_regex = Regex::new("\\(CRType:([^)]+)\\)").unwrap();
     let current_type = current_type.into_type();
     comment
         .and_then(|comment| {
             type_regex
                 .captures(&comment)
-                .map(|cap| cap.index(0).to_owned())
+                .map(|cap| cap.index(1).to_owned())
         })
         .map(|name| TypeManager::get_instance().get_type_by_name(&name))
         .unwrap_or(current_type)
@@ -114,7 +95,7 @@ pub fn extract_type_from_comment<I: IntoType>(
 
 /// # Internal
 /// This method should be only used from within the AbstractSchemaManager class hierarchy.
-fn remove_doctrine_type_from_comment<I: IntoType>(
+pub fn remove_type_from_comment<I: IntoType>(
     comment: Option<String>,
     current_type: I,
 ) -> Option<String> {
@@ -234,6 +215,14 @@ pub trait SchemaManager: Sync {
         default::get_create_database_sql(self.get_platform()?.as_dyn(), name)
     }
 
+    /// Obtains DBMS specific SQL code portion needed to set the CHARACTER SET
+    /// of a column declaration to be used in statements like CREATE TABLE.
+    /// # Internal
+    #[allow(unused_variables)]
+    fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
+        default::get_column_charset_declaration_sql()
+    }
+
     /// Gets the SQL query to retrieve the databases list.
     ///
     /// # Errors
@@ -268,7 +257,7 @@ pub trait SchemaManager: Sync {
     ///
     /// Returns an error if the feature is not supported by the current platform.
     #[allow(unused_variables)]
-    fn get_list_table_columns_sql(&self, table: &str, database: Option<&str>) -> Result<String> {
+    fn get_list_table_columns_sql(&self, table: &str, database: &str) -> Result<String> {
         Err(Error::platform_feature_unsupported("list table columns"))
     }
 
@@ -284,12 +273,12 @@ pub trait SchemaManager: Sync {
     ///
     /// Returns an error if the feature is not supported by the current platform.
     #[allow(unused_variables)]
-    fn get_list_table_indexes_sql(&self, table: &str, database: Option<&str>) -> Result<String> {
+    fn get_list_table_indexes_sql(&self, table: &str, database: &str) -> Result<String> {
         Err(Error::platform_feature_unsupported("list table indexes"))
     }
 
     #[allow(unused_variables)]
-    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
+    fn get_list_table_foreign_keys_sql(&self, table: &str, database: &str) -> Result<String> {
         Err(Error::platform_feature_unsupported(
             "list table foreign keys",
         ))
@@ -308,8 +297,8 @@ pub trait SchemaManager: Sync {
 
     fn get_comment_on_column_sql(
         &self,
-        table_name: &Identifier,
-        column: &Column,
+        table_name: &dyn IntoIdentifier,
+        column: &dyn IntoIdentifier,
         comment: &str,
     ) -> Result<String> {
         default::get_comment_on_column_sql(
@@ -424,12 +413,7 @@ pub trait SchemaManager: Sync {
 
     /// Lists the available databases for this connection.
     fn list_databases(&self) -> AsyncResult<Vec<Identifier>> {
-        Box::pin(async {
-            let sql = self.get_list_databases_sql()?;
-            let databases = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_databases_list(databases)
-        })
+        default::list_databases(self.as_dyn())
     }
 
     /// Returns a list of the names of all schemata in the current database.
@@ -439,14 +423,7 @@ pub trait SchemaManager: Sync {
 
     /// Lists the available sequences for this connection.
     fn list_sequences(&self) -> AsyncResult<Vec<Sequence>> {
-        Box::pin(async move {
-            let database = get_database(self.get_connection(), function_name!()).await?;
-            let sql = self.get_list_sequences_sql(&database)?;
-            let sequences = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_sequences_list(sequences)
-                .map(|r| filter_asset_names(self.get_connection(), r))
-        })
+        default::list_sequences(self.as_dyn())
     }
 
     /// Lists the columns for a given table.
@@ -461,7 +438,7 @@ pub trait SchemaManager: Sync {
                 get_database(self.get_connection(), function_name!()).await?
             };
 
-            let sql = self.get_list_table_columns_sql(&table, Some(&database))?;
+            let sql = self.get_list_table_columns_sql(&table, &database)?;
             let table_columns = self.get_connection().fetch_all(sql, params!()).await?;
 
             self.get_portable_table_column_list(&table, &database, table_columns)
@@ -475,7 +452,7 @@ pub trait SchemaManager: Sync {
 
         Box::pin(async move {
             let database = get_database(self.get_connection(), function_name!()).await?;
-            let sql = self.get_list_table_indexes_sql(&table, Some(&database))?;
+            let sql = self.get_list_table_indexes_sql(&table, &database)?;
 
             let table_indexes = self.get_connection().fetch_all(sql, params!()).await?;
 
@@ -514,6 +491,7 @@ pub trait SchemaManager: Sync {
             )
             .iter()
             .map(Asset::get_name)
+            .map(Cow::into_owned)
             .collect())
         })
     }
@@ -561,7 +539,7 @@ pub trait SchemaManager: Sync {
     ///
     /// Such platforms should convert a possibly quoted name into a value of the corresponding case.
     fn normalize_name(&self, name: &str) -> String {
-        Identifier::new(name, false).get_name()
+        Identifier::new(name, false).get_name().into_owned()
     }
 
     /// Selects names of tables in the specified database.
@@ -704,7 +682,8 @@ pub trait SchemaManager: Sync {
     fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>> {
         let table = table.to_string();
         Box::pin(async move {
-            let sql = self.get_list_table_foreign_keys_sql(&table)?;
+            let database = get_database(self.get_connection(), function_name!()).await?;
+            let sql = self.get_list_table_foreign_keys_sql(&table, &database)?;
             let table_foreign_keys = self.get_connection().fetch_all(sql, params!()).await?;
 
             self.get_portable_table_foreign_keys_list(table_foreign_keys)
@@ -919,7 +898,7 @@ pub trait SchemaManager: Sync {
         new_name: &dyn IntoIdentifier,
     ) -> AsyncResult<()> {
         let mut table_diff = TableDiff::new(name.into_identifier().get_name(), None);
-        table_diff.new_name = Some(new_name.into_identifier().get_name());
+        table_diff.new_name = Some(new_name.into_identifier().get_name().into_owned());
 
         self.alter_table(table_diff)
     }
@@ -1147,7 +1126,7 @@ pub trait SchemaManager: Sync {
 
         let platform = self.get_platform()?;
         let event_manager = platform.get_event_manager();
-        let mut list = HashMap::new();
+        let mut list = vec![];
 
         for table_column in table_columns {
             let event = event_manager.dispatch_sync(SchemaColumnDefinitionEvent::new(
@@ -1169,10 +1148,10 @@ pub trait SchemaManager: Sync {
 
             let column = column.unwrap();
             let name = column.get_name().to_lowercase();
-            list.insert(name, column);
+            list.push(column);
         }
 
-        Ok(list.into_values().collect())
+        Ok(list)
     }
 
     /// Gets Table Column Definition.
@@ -1184,78 +1163,7 @@ pub trait SchemaManager: Sync {
         table_indexes: Vec<Row>,
         table_name: &str,
     ) -> Result<Vec<Index>> {
-        let mut result = HashMap::new();
-        let connection = self.get_connection();
-        for table_index in table_indexes {
-            let index_name = string_from_value(connection, table_index.get("key_name"))?;
-            let key_name = if bool::from(table_index.get("primary")?) {
-                "primary".to_string()
-            } else {
-                index_name.to_lowercase()
-            };
-
-            let length = table_index
-                .get("length")
-                .cloned()
-                .and_then(usize::try_from)
-                .ok();
-
-            match result.entry(key_name) {
-                Vacant(e) => {
-                    e.insert(IndexOptions {
-                        name: index_name,
-                        columns: vec![string_from_value(
-                            connection,
-                            table_index.get("column_name"),
-                        )?],
-                        unique: !bool::from(table_index.get("non_unique")?),
-                        primary: bool::from(table_index.get("primary")?),
-                        flags: string_from_value(connection, table_index.get("flags"))?
-                            .split(',')
-                            .map(|s| s.to_string())
-                            .collect(),
-                        options_lengths: vec![length],
-                        options_where: table_index
-                            .get("where")
-                            .and_then(|v| match v {
-                                Value::String(s) => Ok(s.clone()),
-                                _ => Err("invalid".into()),
-                            })
-                            .ok(),
-                    });
-                }
-                Occupied(mut e) => {
-                    let opts = e.get_mut();
-                    opts.columns.push(string_from_value(
-                        connection,
-                        table_index.get("column_name"),
-                    )?);
-                    opts.options_lengths.push(length);
-                }
-            }
-        }
-
-        let event_manager = self.get_platform()?.as_dyn().get_event_manager();
-
-        let mut indexes = HashMap::new();
-        for (index_key, data) in result {
-            let event = event_manager.dispatch_sync(SchemaIndexDefinitionEvent::new(
-                &data,
-                table_name,
-                self.get_platform()?,
-            ))?;
-            let index = if event.is_default_prevented() {
-                event.index()
-            } else {
-                Some(data.new_index())
-            };
-
-            if let Some(index) = index {
-                indexes.insert(index_key, index);
-            }
-        }
-
-        Ok(indexes.into_values().collect())
+        default::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
     }
 
     fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>> {
@@ -1368,15 +1276,16 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;
             fn get_create_database_sql(&self, name: &Identifier) -> Result<String>;
+            fn get_column_charset_declaration_sql(&self, charset: &str) -> String;
             fn get_list_databases_sql(&self) -> Result<String>;
             fn get_list_tables_sql(&self) -> Result<String>;
             fn get_list_sequences_sql(&self, database: &str) -> Result<String>;
-            fn get_list_table_columns_sql(&self, table: &str, database: Option<&str>) -> Result<String>;
-            fn get_list_table_indexes_sql(&self, table: &str, database: Option<&str>) -> Result<String>;
-            fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String>;
+            fn get_list_table_columns_sql(&self, table: &str, database: &str) -> Result<String>;
+            fn get_list_table_indexes_sql(&self, table: &str, database: &str) -> Result<String>;
+            fn get_list_table_foreign_keys_sql(&self, table: &str, database: &str) -> Result<String>;
             fn get_list_table_constraints_sql(&self, table: &str) -> Result<String>;
             fn get_comment_on_table_sql(&self, table_name: &Identifier, comment: &str) -> Result<String>;
-            fn get_comment_on_column_sql(&self, table_name: &Identifier, column: &Column, comment: &str) -> Result<String>;
+            fn get_comment_on_column_sql(&self, table_name: &dyn IntoIdentifier, column: &dyn IntoIdentifier, comment: &str) -> Result<String>;
             fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String>;
             fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
@@ -1500,15 +1409,16 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_create_foreign_key_sql(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> Result<String>;
             fn get_create_view_sql(&self, view: &View) -> Result<String>;
             fn get_create_database_sql(&self, name: &Identifier) -> Result<String>;
+            fn get_column_charset_declaration_sql(&self, charset: &str) -> String;
             fn get_list_databases_sql(&self) -> Result<String>;
             fn get_list_tables_sql(&self) -> Result<String>;
             fn get_list_sequences_sql(&self, database: &str) -> Result<String>;
-            fn get_list_table_columns_sql(&self, table: &str, database: Option<&str>) -> Result<String>;
-            fn get_list_table_indexes_sql(&self, table: &str, database: Option<&str>) -> Result<String>;
-            fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String>;
+            fn get_list_table_columns_sql(&self, table: &str, database: &str) -> Result<String>;
+            fn get_list_table_indexes_sql(&self, table: &str, database: &str) -> Result<String>;
+            fn get_list_table_foreign_keys_sql(&self, table: &str, database: &str) -> Result<String>;
             fn get_list_table_constraints_sql(&self, table: &str) -> Result<String>;
             fn get_comment_on_table_sql(&self, table_name: &Identifier, comment: &str) -> Result<String>;
-            fn get_comment_on_column_sql(&self, table_name: &Identifier, column: &Column, comment: &str) -> Result<String>;
+            fn get_comment_on_column_sql(&self, table_name: &dyn IntoIdentifier, column: &dyn IntoIdentifier, comment: &str) -> Result<String>;
             fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String>;
             fn get_alter_table_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_alter_sequence_sql(&self, sequence: &Sequence) -> Result<String>;
@@ -1616,23 +1526,28 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::r#type::{INTEGER, STRING};
-    use crate::schema::{
-        Column, ColumnDiff, ForeignKeyReferentialAction, Index, IntoIdentifier, SchemaManager,
-        Table, TableDiff, UniqueConstraint,
+    use crate::r#type::{
+        TypeManager, BOOLEAN, DATE, DATETIME, DECIMAL, INTEGER, STRING, TEXT, TIME,
     };
-    use crate::tests::{create_connection, MockConnection};
+    use crate::schema::{
+        Asset, Column, ColumnDiff, Comparator, ForeignKeyReferentialAction, Index, IntoIdentifier,
+        SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
+    };
+    use crate::tests::{create_connection, FunctionalTestsHelper, MockConnection};
     use crate::{
-        Connection, EventDispatcher, SchemaAlterTableAddColumnEvent,
-        SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
-        SchemaAlterTableRemoveColumnEvent, SchemaCreateTableColumnEvent, SchemaCreateTableEvent,
-        SchemaDropTableEvent,
+        params, Configuration, Connection, Error, EventDispatcher, Result,
+        SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
+        SchemaAlterTableRemoveColumnEvent, SchemaColumnDefinitionEvent,
+        SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent, Value,
     };
     use creed::SchemaAlterTableRenameColumnEvent;
+    use itertools::Itertools;
+    use serial_test::serial;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     #[tokio::test]
+    #[serial]
     async fn can_overwrite_drop_table_sql_via_event_listener() {
         let ev = EventDispatcher::new();
         ev.add_listener(|e: &mut SchemaDropTableEvent| {
@@ -1657,6 +1572,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn returns_foreign_key_referential_action_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -1680,6 +1596,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn create_with_no_columns() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -1692,6 +1609,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn generates_partial_indexes_sql_only_when_supporting_partial_indexes() {
         let r#where = "test IS NULL AND test2 IS NOT NULL";
         let mut index_def = Index::new(
@@ -1751,6 +1669,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn get_custom_column_declaration_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -1775,10 +1694,13 @@ mod tests {
         on_schema_alter_table_remove_column: usize,
         on_schema_alter_table_change_column: usize,
         on_schema_alter_table_rename_column: usize,
+
+        on_schema_column_definition: usize,
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn get_create_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
@@ -1824,6 +1746,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn get_drop_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
@@ -1846,6 +1769,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     pub async fn get_alter_table_sql_dispatch_event() {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
@@ -1937,5 +1861,508 @@ mod tests {
                 "alter table rename column calls count differs"
             );
         }
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn default_value_comparison() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = schema_manager.get_platform()?;
+
+        let tests = [
+            (INTEGER, Value::from(1)),
+            (BOOLEAN, Value::from(true)),
+            (STRING, Value::from("Creed")),
+        ];
+
+        for (ty, value) in tests {
+            let mut col = Column::new("test", ty).unwrap();
+            if ty == STRING && platform.get_name() == "mysql" {
+                let rows = helper.connection
+                    .fetch_all("SELECT @@character_set_database AS charset, @@collation_database AS collation", params!())
+                    .await?;
+                let row = rows.get(0).unwrap();
+
+                col.set_charset(row.get("charset")?.to_string());
+                col.set_collation(row.get("collation")?.to_string());
+            }
+
+            col.set_default(value);
+
+            let mut table = Table::new("default_value");
+            table.add_column(col);
+
+            helper.drop_and_create_table(&table).await?;
+
+            let online_table = schema_manager.list_table_details("default_value").await?;
+            let comparator = schema_manager.create_comparator();
+            let diff = comparator.diff_table(&table, &online_table)?;
+            assert_eq!(true, diff.is_none());
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn create_sequence() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = schema_manager.get_platform()?;
+
+        if !platform.supports_sequences() {
+            return Ok(());
+        }
+
+        let name = "create_sequences_test_seq";
+        let _ = schema_manager.drop_sequence(&name).await;
+        schema_manager
+            .create_sequence(&Sequence::new(name, None, None, None))
+            .await?;
+        assert_eq!(
+            helper.has_element_with_name(&schema_manager.list_sequences().await?, name),
+            true
+        );
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_sequences() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = schema_manager.get_platform()?;
+
+        if platform.supports_sequences() {
+            let name = "list_sequences_test_seq";
+            let _ = schema_manager.drop_sequence(&name).await;
+            schema_manager
+                .create_sequence(&Sequence::new(&name, 20, 10, None))
+                .await?;
+            let sequences = schema_manager.list_sequences().await?;
+
+            assert_eq!(
+                sequences.into_iter().any(|s| {
+                    if s.get_name().to_lowercase() == name {
+                        assert_eq!(s.get_allocation_size(), 20);
+                        assert_eq!(s.get_initial_value(), 10);
+
+                        true
+                    } else {
+                        false
+                    }
+                }),
+                true
+            );
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_databases() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = schema_manager.get_platform()?;
+
+        if platform.supports_create_drop_database() {
+            let name = "test_create_database";
+            let _ = schema_manager.drop_database(name).await;
+            schema_manager.create_database(&name).await?;
+
+            let databases = schema_manager.list_databases().await?;
+            assert_eq!(
+                databases
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name),
+                true
+            );
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_schema_names() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = schema_manager.get_platform()?;
+        let connection = schema_manager.get_connection();
+
+        if platform.supports_schemas() {
+            let name = "test_create_schema";
+            let _ = schema_manager.drop_schema(name).await;
+
+            let schemas = schema_manager.list_schema_names().await?;
+            assert_eq!(
+                schemas
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name),
+                false
+            );
+
+            connection
+                .prepare(schema_manager.get_create_schema_sql(&name)?)?
+                .execute(params!())
+                .await?;
+
+            let schemas = schema_manager.list_schema_names().await?;
+            assert_eq!(
+                schemas
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name),
+                true
+            );
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_tables() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let name = "list_tables_test";
+        helper.drop_table_if_exists(&name).await;
+        helper.create_test_table(name).await?;
+
+        let tables = schema_manager.list_tables().await?;
+        let table = tables.into_iter().find(|t| t.get_name() == name);
+
+        assert_eq!(table.is_some(), true);
+
+        let table = table.unwrap();
+        assert_eq!(table.has_column(&"id"), true);
+        assert_eq!(table.has_column(&"test"), true);
+        assert_eq!(table.has_column(&"foreign_key_test"), true);
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_tables_does_not_include_views() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let name = "test_table_for_view";
+        let view_name = "test_view";
+
+        let _ = schema_manager.drop_view(&view_name).await;
+        helper.drop_table_if_exists(&name).await;
+
+        helper.create_test_table(name).await?;
+
+        let sql = "SELECT * FROM test_table_for_view";
+
+        let view = View::new(view_name, sql);
+        schema_manager.create_view(&view).await?;
+
+        let tables = schema_manager.list_tables().await?;
+        let view = tables.into_iter().find(|t| t.get_name() == "test_view");
+        assert_eq!(view.is_none(), true);
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_tables_with_filter() -> Result<()> {
+        let tests = [("filter_test_1", 1), ("filter_test_", 2)];
+
+        for (prefix, expected_count) in tests {
+            let configuration =
+                Configuration::default().set_schema_assets_filter(Box::new(move |name| {
+                    name.to_lowercase().starts_with(prefix)
+                }));
+
+            let helper = FunctionalTestsHelper::with_configuration(configuration).await;
+            let schema_manager = helper.get_schema_manager();
+
+            helper.drop_table_if_exists(&"filter_test_1").await;
+            helper.drop_table_if_exists(&"filter_test_2").await;
+
+            helper.create_test_table("filter_test_1").await?;
+            helper.create_test_table("filter_test_2").await?;
+
+            assert_eq!(
+                schema_manager.list_table_names().await?.len(),
+                expected_count
+            );
+            assert_eq!(schema_manager.list_tables().await?.len(), expected_count);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn rename_table() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        helper.drop_table_if_exists(&"old_name").await;
+        helper.drop_table_if_exists(&"new_name").await;
+        helper.create_test_table("old_name").await?;
+        schema_manager
+            .rename_table(&"old_name", &"new_name")
+            .await?;
+
+        assert_eq!(schema_manager.tables_exist(&["old_name"]).await?, false);
+        assert_eq!(schema_manager.tables_exist(&["new_name"]).await?, true);
+
+        Ok(())
+    }
+
+    fn create_list_table_columns() -> Result<Table> {
+        let mut table = Table::new("list_table_columns");
+        table.add_column(
+            Column::builder("id", INTEGER)?
+                .set_notnull(true)
+                .get_column(),
+        );
+        table.add_column(
+            Column::builder("test", STRING)?
+                .set_length(255)
+                .set_notnull(false)
+                .set_default("expected default")
+                .get_column(),
+        );
+        table.add_column(Column::builder("foo", TEXT)?.set_notnull(true).get_column());
+        table.add_column(
+            Column::builder("bar", DECIMAL)?
+                .set_precision(10)
+                .set_scale(4)
+                .set_notnull(false)
+                .get_column(),
+        );
+        table.add_column(Column::new("baz1", DATETIME)?);
+        table.add_column(Column::new("baz2", TIME)?);
+        table.add_column(Column::new("baz3", DATE)?);
+        table.set_primary_key(&["id"], None)?;
+
+        Ok(table)
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_columns() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let table = create_list_table_columns()?;
+
+        helper.drop_and_create_table(&table).await?;
+
+        let columns = schema_manager
+            .list_table_columns("list_table_columns", None)
+            .await?;
+        let column_keys = columns
+            .iter()
+            .map(|c| c.get_name().into_owned())
+            .collect::<Vec<_>>();
+
+        let id_column = columns
+            .iter()
+            .find(|c| c.get_name() == "id")
+            .ok_or::<Error>("cannot find column 'id'".into())?;
+        assert_eq!(
+            column_keys.iter().find_position(|c| c == &"id").unwrap().0,
+            0
+        );
+        assert_eq!(
+            id_column.get_type(),
+            TypeManager::get_instance().get_type_by_name(INTEGER)?
+        );
+        assert_eq!(id_column.is_unsigned().unwrap_or(false), false);
+        assert_eq!(id_column.is_notnull(), true);
+
+        let test_column = columns
+            .iter()
+            .find(|c| c.get_name() == "test")
+            .ok_or::<Error>("cannot find column 'test'".into())?;
+        assert_eq!(
+            column_keys
+                .iter()
+                .find_position(|c| c == &"test")
+                .unwrap()
+                .0,
+            1
+        );
+        assert_eq!(
+            test_column.get_type(),
+            TypeManager::get_instance().get_type_by_name(STRING)?
+        );
+        assert_eq!(test_column.get_length(), Some(255));
+        assert_eq!(test_column.is_fixed(), false);
+        assert_eq!(test_column.is_notnull(), false);
+        assert_eq!(test_column.get_default(), &Value::from("expected default"));
+
+        let foo_column = columns
+            .iter()
+            .find(|c| c.get_name() == "foo")
+            .ok_or::<Error>("cannot find column 'foo'".into())?;
+        assert_eq!(
+            column_keys.iter().find_position(|c| c == &"foo").unwrap().0,
+            2
+        );
+        assert_eq!(
+            foo_column.get_type(),
+            TypeManager::get_instance().get_type_by_name(TEXT)?
+        );
+        assert_eq!(foo_column.is_unsigned().unwrap_or(false), false);
+        assert_eq!(foo_column.is_fixed(), false);
+        assert_eq!(foo_column.is_notnull(), true);
+        assert_eq!(foo_column.get_default(), &Value::NULL);
+
+        let bar_column = columns
+            .iter()
+            .find(|c| c.get_name() == "bar")
+            .ok_or::<Error>("cannot find column 'bar'".into())?;
+        assert_eq!(
+            column_keys.iter().find_position(|c| c == &"bar").unwrap().0,
+            3
+        );
+        assert_eq!(
+            bar_column.get_type(),
+            TypeManager::get_instance().get_type_by_name(DECIMAL)?
+        );
+        assert_eq!(bar_column.get_precision(), Some(10));
+        assert_eq!(bar_column.get_scale(), Some(4));
+        assert_eq!(bar_column.is_unsigned().unwrap_or(false), false);
+        assert_eq!(bar_column.is_fixed(), false);
+        assert_eq!(bar_column.is_notnull(), false);
+        assert_eq!(bar_column.get_default(), &Value::NULL);
+
+        let baz1_column = columns
+            .iter()
+            .find(|c| c.get_name() == "baz1")
+            .ok_or::<Error>("cannot find column 'baz1'".into())?;
+        assert_eq!(
+            column_keys
+                .iter()
+                .find_position(|c| c == &"baz1")
+                .unwrap()
+                .0,
+            4
+        );
+        assert_eq!(
+            baz1_column.get_type(),
+            TypeManager::get_instance().get_type_by_name(DATETIME)?
+        );
+        assert_eq!(baz1_column.is_notnull(), true);
+        assert_eq!(baz1_column.get_default(), &Value::NULL);
+
+        let baz2_column = columns
+            .iter()
+            .find(|c| c.get_name() == "baz2")
+            .ok_or::<Error>("cannot find column 'baz2'".into())?;
+        assert_eq!(
+            column_keys
+                .iter()
+                .find_position(|c| c == &"baz2")
+                .unwrap()
+                .0,
+            5
+        );
+        assert_eq!(
+            [TIME, DATE, DATETIME].contains(&baz2_column.get_type().get_name()),
+            true
+        );
+        assert_eq!(baz2_column.is_notnull(), true);
+        assert_eq!(baz2_column.get_default(), &Value::NULL);
+
+        let baz3_column = columns
+            .iter()
+            .find(|c| c.get_name() == "baz3")
+            .ok_or::<Error>("cannot find column 'baz3'".into())?;
+        assert_eq!(
+            column_keys
+                .iter()
+                .find_position(|c| c == &"baz3")
+                .unwrap()
+                .0,
+            6
+        );
+        assert_eq!(
+            [TIME, DATE, DATETIME].contains(&baz3_column.get_type().get_name()),
+            true
+        );
+        assert_eq!(baz3_column.is_notnull(), true);
+        assert_eq!(baz3_column.get_default(), &Value::NULL);
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_columns_with_fixed_string_column() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let table_name = "test_list_table_fixed_string";
+
+        let mut table = Table::new(table_name);
+        table.add_column(
+            Column::builder("column_char", STRING)?
+                .set_fixed(true)
+                .set_length(2),
+        );
+
+        schema_manager.create_table(&table).await?;
+        let columns = schema_manager.list_table_columns(table_name, None).await?;
+
+        let col = columns.get(0).unwrap();
+        assert_eq!(col.get_name(), "column_char");
+        assert_eq!(col.get_type().get_name(), STRING);
+        assert_eq!(col.is_fixed(), true);
+        assert_eq!(col.get_length(), Some(2));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_columns_dispatch_event() -> Result<()> {
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let event_manager = helper.connection.get_event_manager();
+
+        let table = create_list_table_columns()?;
+        helper.drop_and_create_table(&table).await?;
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaColumnDefinitionEvent| {
+                listener.lock().unwrap().on_schema_column_definition += 1;
+                Ok(())
+            });
+        }
+
+        schema_manager
+            .list_table_columns("list_table_columns", None)
+            .await?;
+        assert_eq!(listener.lock().unwrap().on_schema_column_definition, 7);
+
+        Ok(())
     }
 }

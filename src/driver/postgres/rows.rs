@@ -1,10 +1,12 @@
 use crate::{Error, Result, Row, Value};
+use fallible_iterator::FallibleIterator;
 use futures::{Stream, StreamExt};
+use postgres_protocol::types;
 use std::io::Read;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio_postgres::types::{FromSql, Kind, Type};
-use tokio_postgres::RowStream;
+use tokio_postgres::{RowStream, Statement};
 
 fn simple_type_from_sql(
     ty: &Type,
@@ -19,7 +21,12 @@ fn simple_type_from_sql(
         Type::FLOAT8 => Value::Float(<f64 as FromSql>::from_sql(ty, raw)?),
         Type::BOOL => Value::Boolean(<bool as FromSql>::from_sql(ty, raw)?),
         Type::JSON | Type::JSONB => {
-            todo!();
+            let mut s = String::new();
+            let vv = Vec::from(raw);
+            vv.as_slice().read_to_string(&mut s)?;
+
+            let json = serde_json::from_str(&s)?;
+            Value::Json(json)
         }
         Type::CSTRING
         | Type::NAME
@@ -60,6 +67,25 @@ impl<'a> FromSql<'a> for Value {
     ) -> core::result::Result<Self, Box<dyn std::error::Error + Sync + Send>> {
         let item = match ty.kind() {
             Kind::Simple => simple_type_from_sql(ty, raw)?,
+            Kind::Array(ty) => {
+                let array = types::array_from_sql(raw)?;
+                if array.dimensions().count()? > 1 {
+                    return Err("array contains too many dimensions".into());
+                }
+
+                let out = array
+                    .values()
+                    .map(|val| {
+                        if let Some(val) = val {
+                            simple_type_from_sql(ty, val)
+                        } else {
+                            Ok(Value::NULL)
+                        }
+                    })
+                    .collect::<Vec<_>>()?;
+
+                Value::Array(out)
+            }
             _ => {
                 println!("{:?}", ty);
                 todo!()
@@ -82,34 +108,19 @@ impl<'a> FromSql<'a> for Value {
 
 pub struct PostgreSQLRowsIterator {
     row_stream: Pin<Box<RowStream>>,
-    first_row: Option<tokio_postgres::Row>,
     columns: Vec<String>,
 }
 
 impl PostgreSQLRowsIterator {
-    pub async fn new(row_stream: RowStream) -> Result<Self> {
-        let mut row_stream = Box::pin(row_stream);
-        let first_row = row_stream.next().await;
-        let first_row = if let Some(result) = first_row {
-            Some(result?)
-        } else {
-            None
-        };
+    pub fn new(row_stream: RowStream, statement: &Statement) -> Result<Self> {
+        let mut columns = vec![];
+        for column in statement.columns() {
+            columns.push(column.name().to_string());
+        }
 
-        let columns = if let Some(row) = &first_row {
-            let mut c = vec![];
-            for column in row.columns() {
-                c.push(column.name().to_string());
-            }
-
-            c
-        } else {
-            vec![]
-        };
-
+        let row_stream = Box::pin(row_stream);
         Ok(Self {
             row_stream,
-            first_row,
             columns,
         })
     }
@@ -133,11 +144,7 @@ impl Stream for PostgreSQLRowsIterator {
     type Item = Result<Row>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(first_row) = self.first_row.take() {
-            return Poll::Ready(Some(Ok(self.psql_row_to_row(first_row))));
-        }
-
-        match Pin::new(&mut self.row_stream).poll_next(cx) {
+        match self.row_stream.poll_next_unpin(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Ready(Some(result)) => Poll::Ready(Some(match result {

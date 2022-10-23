@@ -7,11 +7,13 @@ use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
-use crate::{Error, Result, TransactionIsolationLevel};
+use crate::{Error, Result, Row, TransactionIsolationLevel, Value};
 use creed::schema::IntoIdentifier;
 use itertools::Itertools;
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 pub fn get_regexp_expression() -> Result<String> {
     Ok("REGEXP".to_string())
@@ -115,7 +117,7 @@ pub fn get_boolean_type_declaration_sql() -> Result<String> {
 
 fn get_common_integer_type_declaration_sql(column: &ColumnData) -> &'static str {
     // sqlite autoincrement is only possible for the primary key
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         " PRIMARY KEY AUTOINCREMENT"
     } else if column.unsigned.unwrap_or(false) {
         " UNSIGNED"
@@ -136,7 +138,7 @@ pub fn get_bigint_type_declaration_sql<T: AbstractSQLitePlatform + ?Sized>(
     column: &ColumnData,
 ) -> Result<String> {
     // SQLite autoincrement is implicit for INTEGER PKs, but not for BIGINT columns
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         this.get_integer_type_declaration_sql(column)
     } else {
         Ok(format!(
@@ -151,7 +153,7 @@ pub fn get_smallint_type_declaration_sql<T: AbstractSQLitePlatform + ?Sized>(
     column: &ColumnData,
 ) -> Result<String> {
     // SQLite autoincrement is implicit for INTEGER PKs, but not for BIGINT columns
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         this.get_integer_type_declaration_sql(column)
     } else {
         Ok(format!(
@@ -189,7 +191,7 @@ fn get_non_autoincrement_primary_key_definition(
                     .iter()
                     .find(|c| c.name.cmp(key_column) == Ordering::Equal)
                 {
-                    if column.autoincrement.unwrap_or(false) {
+                    if column.autoincrement {
                         return "".to_string();
                     }
                 }
@@ -301,7 +303,7 @@ pub fn get_list_tables_sql() -> Result<String> {
         AND name != 'sqlite_sequence' \
         AND name != 'geometry_columns' \
         AND name != 'spatial_ref_sys' \
-        UNION ALL SELECT name FROM sqlite_temp_master' \
+        UNION ALL SELECT name FROM sqlite_temp_master \
         WHERE type = 'table' ORDER BY name"
         .to_string())
 }
@@ -362,7 +364,7 @@ fn get_column_names_in_altered_table(
 
     for column in from_table.get_columns() {
         let name = column.get_name();
-        columns.insert(name.to_lowercase(), name);
+        columns.insert(name.to_lowercase(), name.into_owned());
     }
 
     for removed_column in &diff.removed_columns {
@@ -371,13 +373,13 @@ fn get_column_names_in_altered_table(
     }
 
     for (old_column_name, column) in &diff.renamed_columns {
-        let column_name = column.get_name();
+        let column_name = column.get_name().into_owned();
         columns.insert(old_column_name.to_lowercase(), column_name.clone());
         columns.insert(column_name.to_lowercase(), column_name);
     }
 
     for column_diff in &diff.changed_columns {
-        let column_name = column_diff.column.get_name();
+        let column_name = column_diff.column.get_name().into_owned();
         columns.insert(
             column_diff.get_old_column_name().get_name().to_lowercase(),
             column_name.clone(),
@@ -386,7 +388,7 @@ fn get_column_names_in_altered_table(
     }
 
     for column in &diff.added_columns {
-        let column_name = column.get_name();
+        let column_name = column.get_name().into_owned();
         columns.insert(column_name.to_lowercase(), column_name);
     }
 
@@ -681,7 +683,7 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             let r#type = column.get_type();
 
             if definition.column_definition.is_some()
-                || definition.autoincrement.unwrap_or(false)
+                || definition.autoincrement
                 || definition.unique
                 || (r#type == DATETIME.into_type()?
                     && definition.default == platform.get_current_timestamp_sql().into())
@@ -754,14 +756,10 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         let mut column_sql = vec![];
         let mut columns = vec![];
         let mut old_column_names = vec![];
-        let mut new_column_names = vec![];
 
         for column in from_table.get_columns() {
             columns.push(column.clone());
-
-            let quoted_name = column.get_quoted_name(&platform);
-            old_column_names.push(quoted_name.clone());
-            new_column_names.push(quoted_name);
+            old_column_names.push(column.get_quoted_name(&platform));
         }
 
         for column in &diff.removed_columns {
@@ -785,13 +783,6 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 {
                     old_column_names.remove(p);
                 }
-
-                if let Some((p, _)) = new_column_names
-                    .iter()
-                    .find_position(|c| *c == &column_name)
-                {
-                    new_column_names.remove(p);
-                }
             }
         }
 
@@ -807,15 +798,7 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 continue;
             }
 
-            let old_column_name = old_column_name.to_lowercase();
-            columns = replace_column(&diff.name, columns, &old_column_name, column)?;
-
-            if let Some((pos, _)) = new_column_names
-                .iter()
-                .find_position(|c| *c == &old_column_name)
-            {
-                new_column_names.splice(pos..=pos, [column.get_quoted_name(&platform)]);
-            }
+            columns = replace_column(&diff.name, columns, old_column_name, column)?;
         }
 
         for column_diff in &diff.changed_columns {
@@ -826,15 +809,9 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 continue;
             }
 
-            let old_column_name = column_diff.get_old_column_name().get_name().to_lowercase();
+            let old_column_identifier = column_diff.get_old_column_name();
+            let old_column_name = old_column_identifier.get_name().to_lowercase();
             columns = replace_column(&diff.name, columns, &old_column_name, &column_diff.column)?;
-
-            if let Some((pos, _)) = new_column_names
-                .iter()
-                .find_position(|c| *c == &old_column_name)
-            {
-                new_column_names.splice(pos..=pos, [column_diff.column.get_quoted_name(&platform)]);
-            }
         }
 
         for column in &diff.added_columns {
@@ -851,7 +828,21 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         let mut sql = vec![];
         let (res, mut table_sql) = this.on_schema_alter_table(diff, vec![])?;
         if !res {
+            let old_columns = old_column_names.join(", ");
+            let added_columns = diff
+                .added_columns
+                .iter()
+                .map(|c| c.get_name())
+                .collect::<Vec<_>>();
+            let new_columns = columns
+                .iter()
+                .filter(|c| !added_columns.contains(&c.get_name()))
+                .map(|c| c.get_quoted_name(&platform))
+                .join(", ");
+
             let data_table = Identifier::new(format!("__temp__{}", from_table.get_name()), false);
+            let data_table_quoted = data_table.get_quoted_name(&platform);
+
             let mut new_table = from_table.template();
             new_table.set_alter(true);
             new_table.add_columns(columns.into_iter());
@@ -862,10 +853,6 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
 
             new_table
                 .add_foreign_keys(get_foreign_keys_in_altered_table(diff, from_table).into_iter());
-
-            let old_columns = old_column_names.join(", ");
-            let new_columns = new_column_names.join(", ");
-            let data_table_quoted = data_table.get_quoted_name(&platform);
 
             sql = this.get_pre_alter_table_index_foreign_key_sql(diff)?;
             sql.push(format!(
@@ -906,4 +893,101 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
     } else {
         Err(Error::new(ErrorKind::UnknownError, "Sqlite platform requires for alter table the table diff with reference to original table schema"))
     }
+}
+
+pub fn get_portable_table_column_definition(
+    this: &dyn SchemaManager,
+    table_column: &Row,
+) -> Result<Column> {
+    let platform = this.get_platform()?;
+    let ty = String::try_from(table_column.get("type").unwrap())?;
+    let parts = Regex::new("[()]")?.split(&ty).collect::<Vec<_>>();
+
+    let db_type = parts.get(0).unwrap().to_lowercase();
+    let mut length = if let Some(len) = parts.get(1) {
+        Some(len.to_string())
+    } else {
+        None
+    };
+
+    let unsigned = db_type.contains(" unsigned");
+    let db_type = db_type.replace(" unsigned", "");
+
+    let mut fixed = false;
+    let ty = platform.get_type_mapping(&db_type)?;
+    let default = table_column.get("dflt_value").unwrap().to_string();
+
+    let default = if default == "NULL" {
+        None
+    } else {
+        let rx = Regex::new("^'(.*)'$")?;
+        Some(if let Some(matches) = rx.captures(&default) {
+            matches
+                .get(1)
+                .unwrap()
+                .as_str()
+                .replace("''", "'")
+                .to_string()
+        } else {
+            default
+        })
+    };
+
+    let notnull = table_column.get("notnull").unwrap() == &Value::Int(1);
+    let name = String::try_from(
+        table_column
+            .get("name")
+            .cloned()
+            .unwrap_or(Value::String("".to_string())),
+    )?;
+
+    let mut precision = None;
+    let mut scale = None;
+
+    match db_type.as_str() {
+        "char" => {
+            fixed = true;
+        }
+        "float" | "double" | "real" | "decimal" | "numeric" => {
+            if let Some(len) = length {
+                let len = if len.contains(',') {
+                    len
+                } else {
+                    format!("{},0", len)
+                };
+
+                let l = len
+                    .split(',')
+                    .map(|x| x.trim().to_string())
+                    .collect::<Vec<_>>();
+                precision = usize::from_str(l.get(0).unwrap()).ok();
+                scale = usize::from_str(l.get(1).unwrap()).ok();
+            }
+
+            length = None;
+        }
+
+        _ => {
+            // Do nothing
+        }
+    }
+
+    let r#type = ty.into_type()?;
+    let default = if let Some(default) = default {
+        r#type.convert_to_value(&Value::String(default), &platform)?
+    } else {
+        Value::NULL
+    };
+
+    let mut column = Column::new(&name, r#type)?;
+    column.set_length(length.and_then(|x| usize::from_str(&x).ok()));
+    column.set_jsonb(unsigned);
+    column.set_fixed(fixed);
+    column.set_notnull(notnull);
+    column.set_default(default);
+    column.set_precision(precision);
+    column.set_scale(scale);
+    column.set_autoincrement(false);
+
+    Ok(column)
 }

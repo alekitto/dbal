@@ -3,8 +3,8 @@ use crate::driver::mysql::platform::{mariadb, MySQLVariant};
 use crate::driver::mysql::MySQLSchemaManager;
 use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList};
 use crate::r#type::{
-    BigintType, BinaryType, BlobType, DateTimeType, DateType, DecimalType, FloatType, IntegerType,
-    JsonType, SimpleArrayType, StringType, TextType, TimeType,
+    BigintType, BinaryType, BlobType, BooleanType, DateTimeType, DateType, DecimalType, FloatType,
+    IntegerType, JsonType, SimpleArrayType, StringType, TextType, TimeType,
 };
 use crate::schema::{ColumnData, SchemaManager};
 use crate::{Connection, Error};
@@ -32,11 +32,15 @@ pub struct MySQLPlatform {
 
 impl MySQLPlatform {
     pub fn new(variant: MySQLVariant, ev: Arc<EventDispatcher>) -> Self {
-        Self {
+        let pl = Self {
             variant,
             ev,
             type_mappings: DashMap::default(),
-        }
+        };
+
+        pl.initialize_all_type_mappings()
+            .expect("unable to initialize type mappings");
+        pl
     }
 }
 
@@ -154,10 +158,6 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_default_value_declaration_sql(self, column)
     }
 
-    fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
-        mysql::get_column_charset_declaration_sql(charset)
-    }
-
     fn get_set_transaction_isolation_sql(
         &self,
         level: TransactionIsolationLevel,
@@ -216,6 +216,7 @@ impl DatabasePlatform for MySQLPlatform {
         self._add_type_mapping("time", TypeId::of::<TimeType>());
         self._add_type_mapping("timestamp", TypeId::of::<DateTimeType>());
         self._add_type_mapping("tinyblob", TypeId::of::<BlobType>());
+        self._add_type_mapping("tinyint", TypeId::of::<BooleanType>());
         self._add_type_mapping("tinytext", TypeId::of::<TextType>());
         self._add_type_mapping("varbinary", TypeId::of::<BinaryType>());
         self._add_type_mapping("varchar", TypeId::of::<StringType>());
@@ -276,7 +277,7 @@ impl DatabasePlatform for MySQLPlatform {
 mod tests {
     use crate::driver::mysql::MySQLPlatform;
     use crate::platform::DatabasePlatform;
-    use crate::r#type::{BINARY, JSON};
+    use crate::r#type::{BINARY, GUID, JSON};
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
@@ -413,6 +414,19 @@ mod tests {
                 .get_json_type_declaration_sql(&column.generate_column_data(&platform))
                 .unwrap(),
             "LONGTEXT"
+        );
+    }
+
+    #[test]
+    pub fn returns_guid_type_declaration_sql() {
+        let platform = create_mysql_platform();
+        let column = Column::new("foo", GUID).unwrap();
+
+        assert_eq!(
+            platform
+                .get_guid_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "CHAR(36)"
         );
     }
 }

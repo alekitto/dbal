@@ -3,15 +3,19 @@ use crate::driver::mysql::platform::mysql_platform::{
     LENGTH_LIMIT_TEXT, LENGTH_LIMIT_TINYBLOB, LENGTH_LIMIT_TINYTEXT,
 };
 use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
+use crate::driver::mysql::MySQLSchemaManager;
 use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
 use crate::r#type::{IntoType, BLOB, TEXT};
 use crate::schema::{
-    Asset, ColumnData, ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
+    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData,
+    ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
 };
-use crate::{Error, Result, SchemaDropTableEvent, TransactionIsolationLevel, Value};
+use crate::util::strtr;
+use crate::{Error, Result, Row, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::option::Option::Some;
 use creed::schema::SchemaManager;
 use itertools::Itertools;
+use regex::Regex;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -78,7 +82,9 @@ fn get_pre_alter_table_alter_index_foreign_key_sql(
             let index_columns = changed_index.get_columns();
             for column in from_table.get_primary_key_columns().unwrap_or_default() {
                 // Check if an autoincrement column was dropped from the primary key.
-                if !column.is_autoincrement() || index_columns.contains(&column.get_name()) {
+                if !column.is_autoincrement()
+                    || index_columns.contains(&column.get_name().into_owned())
+                {
                     continue;
                 }
 
@@ -86,8 +92,7 @@ fn get_pre_alter_table_alter_index_foreign_key_sql(
 
                 // The autoincrement attribute needs to be removed from the dropped column
                 // before we can drop and recreate the primary key.
-                column_data.autoincrement = Some(false);
-
+                column_data.autoincrement = false;
                 sql.push(format!(
                     "ALTER TABLE {} MODIFY {}",
                     &table,
@@ -472,7 +477,7 @@ fn get_pre_alter_table_alter_primary_key_sql(
             }
 
             let mut column_data = column.generate_column_data(&platform);
-            column_data.autoincrement = Some(false);
+            column_data.autoincrement = false;
 
             sql.push(format!(
                 "ALTER TABLE {} MODIFY {}",
@@ -586,7 +591,7 @@ fn get_unsigned_declaration(column: &ColumnData) -> &'static str {
 
 fn get_common_integer_type_declaration_sql(column: &ColumnData) -> String {
     let mut autoinc = "".to_string();
-    if column.autoincrement.unwrap_or(false) {
+    if column.autoincrement {
         autoinc += " AUTO_INCREMENT";
     }
 
@@ -629,8 +634,8 @@ pub fn get_decimal_type_declaration_sql(column: &ColumnData) -> Result<String> {
     ))
 }
 
-pub fn get_column_charset_declaration_sql(charset: &str) -> String {
-    format!("CHARACTER SET {}", charset)
+pub fn get_column_charset_declaration_sql(this: &dyn SchemaManager, charset: &str) -> String {
+    format!("CHARACTER SET {}", this.quote_string_literal(charset))
 }
 
 pub fn get_column_collation_declaration_sql(
@@ -763,4 +768,267 @@ pub fn get_rename_index_sql(
 
 pub fn get_json_type_declaration_sql() -> Result<String> {
     Ok("JSON".to_string())
+}
+
+fn get_column_default(
+    platform: &dyn DatabasePlatform,
+    column_default: Option<String>,
+) -> Option<String> {
+    if let Some(column_default) = column_default {
+        if column_default == "NULL" {
+            return None;
+        }
+
+        if let Some(matches) = Regex::new("^'(.*)'$").unwrap().captures(&column_default) {
+            return Some(strtr(
+                matches.get(1).unwrap().as_str(),
+                [
+                    ("\\0".to_string(), "\0".to_string()),
+                    ("\\'".to_string(), "'".to_string()),
+                    ("\\\"".to_string(), "\"".to_string()),
+                    ("\\b".to_string(), "\x08".to_string()),
+                    ("\\n".to_string(), "\n".to_string()),
+                    ("\\r".to_string(), "\r".to_string()),
+                    ("\\t".to_string(), "\t".to_string()),
+                    ("\\\\".to_string(), "\\".to_string()),
+                    ("\\%".to_string(), "%".to_string()),
+                    ("\\_".to_string(), "_".to_string()),
+                    ("''".to_string(), "'".to_string()),
+                ],
+            ));
+        }
+
+        Some(match column_default.as_str() {
+            "current_timestamp()" => platform.get_current_timestamp_sql().to_string(),
+            "curdate()" => platform.get_current_date_sql().to_string(),
+            "curtime()" => platform.get_current_time_sql().to_string(),
+            _ => column_default,
+        })
+    } else {
+        None
+    }
+}
+
+pub fn get_portable_table_column_definition(
+    this: &dyn SchemaManager,
+    table_column: &Row,
+) -> Result<Column> {
+    let platform = this.get_platform()?;
+
+    let ty_re = Regex::new("[(),\\s]")?;
+    let col_type = table_column.get("type")?.to_string();
+    let mut tys = ty_re.split(&col_type);
+    let db_type = tys.next().unwrap().to_string();
+
+    let length = match table_column.get("length")? {
+        Value::NULL => tys.next().unwrap_or("").to_string(),
+        Value::String(s) => s.to_string(),
+        Value::Int(i) => i.to_string(),
+        _ => "".to_string(),
+    };
+
+    let mut length = if length.is_empty() {
+        None
+    } else {
+        Some(length.parse::<usize>()?)
+    };
+
+    let mut fixed = false;
+    let mut scale = None;
+    let mut precision = None;
+
+    let mut ty = platform.get_type_mapping(&db_type)?.into_type()?;
+
+    // In cases where not connected to a database DESCRIBE $table does not return 'Comment'
+    let col_comment: Option<String> = table_column.get("comment")?.into();
+    let comment = if col_comment.is_some() {
+        ty = extract_type_from_comment(col_comment.clone(), ty)?;
+        remove_type_from_comment(col_comment, ty.clone())
+    } else {
+        None
+    };
+
+    match db_type.as_str() {
+        "char" | "binary" => {
+            fixed = true;
+        }
+
+        "float" | "double" | "real" | "numeric" | "decimal" => {
+            if let Some(matches) =
+                Regex::new("[A-Za-z]+\\(([0-9]+),([0-9]+)\\)")?.captures(&col_type)
+            {
+                precision = Some(matches.get(1).unwrap().as_str().parse::<usize>()?);
+                scale = Some(matches.get(2).unwrap().as_str().parse::<usize>()?);
+                length = None;
+            }
+        }
+
+        "tinytext" => {
+            length = Some(LENGTH_LIMIT_TINYTEXT as usize);
+        }
+
+        "text" => {
+            length = Some(LENGTH_LIMIT_TEXT as usize);
+        }
+
+        "mediumtext" => {
+            length = Some(LENGTH_LIMIT_MEDIUMTEXT as usize);
+        }
+
+        "tinyblob" => {
+            length = Some(LENGTH_LIMIT_TINYBLOB as usize);
+        }
+
+        "blob" => {
+            length = Some(LENGTH_LIMIT_BLOB as usize);
+        }
+
+        "mediumblob" => {
+            length = Some(LENGTH_LIMIT_MEDIUMBLOB as usize);
+        }
+
+        "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint" | "year" => {
+            length = None;
+        }
+
+        _ => { /* Do nothing */ }
+    }
+
+    let column_default = table_column.get("default")?;
+    let column_default = if column_default == &Value::String("NULL".into()) {
+        Value::NULL
+    } else {
+        ty.clone()
+            .into_type()?
+            .convert_to_value(column_default, platform.as_dyn())?
+    };
+
+    let column_default = if let Value::String(s) = column_default {
+        Value::from(get_column_default(platform.as_dyn(), Some(s.clone())))
+    } else {
+        column_default
+    };
+
+    let mut column = Column::new(&table_column.get("field")?.to_string(), ty)?;
+    column.set_length(length);
+    column.set_unsigned(col_type.contains("unsigned"));
+    column.set_fixed(fixed);
+    column.set_default(column_default.into());
+    column.set_notnull(table_column.get("null")? != &Value::from("YES"));
+
+    if scale.is_some() && precision.is_some() {
+        column.set_scale(scale);
+        column.set_precision(precision);
+    }
+
+    column.set_autoincrement(
+        table_column
+            .get("extra")?
+            .to_string()
+            .contains("auto_increment"),
+    );
+    column.set_comment::<String, _>(comment);
+
+    let charset = table_column.get("characterset")?;
+    if !charset.is_null() {
+        column.set_charset::<String, _>(charset);
+    }
+    let collation = table_column.get("collation")?;
+    if !collation.is_null() {
+        column.set_collation::<String, _>(collation);
+    }
+
+    Ok(column)
+}
+
+pub fn get_list_table_columns_sql(
+    this: &dyn SchemaManager,
+    table: &str,
+    database: &str,
+) -> Result<String> {
+    Ok(format!(
+        "
+SELECT
+    c.COLUMN_NAME              AS field,
+    c.COLUMN_TYPE              AS type,
+    c.CHARACTER_MAXIMUM_LENGTH AS length,
+    c.IS_NULLABLE              AS `null`,
+    c.COLUMN_KEY               AS `key`,
+    c.COLUMN_DEFAULT           AS `default`,
+    c.EXTRA                    AS extra,
+    c.COLUMN_COMMENT           AS comment,
+    c.CHARACTER_SET_NAME       AS characterset,
+    c.COLLATION_NAME           AS collation
+FROM information_schema.COLUMNS c
+INNER JOIN information_schema.TABLES t
+    ON t.TABLE_NAME = c.TABLE_NAME
+WHERE
+    c.TABLE_SCHEMA = {0} AND
+    t.TABLE_SCHEMA = {0} AND
+    t.TABLE_TYPE = 'BASE TABLE' AND
+    t.TABLE_NAME = {1}
+ORDER BY ORDINAL_POSITION
+    ",
+        this.quote_string_literal(database),
+        this.quote_string_literal(table)
+    ))
+}
+
+pub fn get_list_table_foreign_keys_sql(
+    this: &dyn SchemaManager,
+    table: &str,
+    database: &str,
+) -> Result<String> {
+    Ok(format!(
+        "
+SELECT DISTINCT
+    k.TABLE_NAME,
+    k.CONSTRAINT_NAME,
+    k.COLUMN_NAME,
+    k.REFERENCED_TABLE_NAME,
+    k.REFERENCED_COLUMN_NAME,
+    k.ORDINAL_POSITION /*!50116,
+                c.UPDATE_RULE,
+                c.DELETE_RULE */
+FROM information_schema.key_column_usage k /*!50116
+INNER JOIN information_schema.referential_constraints c
+    ON c.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+    AND c.TABLE_NAME = k.TABLE_NAME */
+WHERE
+    k.TABLE_SCHEMA = {0} AND
+    k.TABLE_NAME = {1} AND
+    k.REFERENCED_COLUMN_NAME IS NOT NULL
+    /*!50116 AND c.CONSTRAINT_SCHEMA = {0} */
+ORDER BY k.ORDINAL_POSITION
+",
+        this.quote_string_literal(database),
+        this.quote_string_literal(table)
+    ))
+}
+
+pub fn get_list_table_indexes_sql(
+    this: &MySQLSchemaManager,
+    database: &str,
+    table: &str,
+) -> Result<String> {
+    Ok(format!(
+        "
+SELECT
+    NON_UNIQUE  AS Non_Unique,
+    INDEX_NAME  AS Key_name,
+    COLUMN_NAME AS Column_Name,
+    SUB_PART    AS Sub_Part,
+    INDEX_TYPE  AS Index_Type
+FROM information_schema.STATISTICS
+WHERE
+    TABLE_SCHEMA = {} AND
+    TABLE_NAME = {}
+ORDER BY SEQ_IN_INDEX",
+        this.quote_string_literal(database),
+        this.quote_string_literal(table)
+    ))
+}
+
+pub fn get_list_tables_sql() -> Result<String> {
+    Ok("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'".to_string())
 }

@@ -1,9 +1,10 @@
 use super::asset::AbstractAsset;
 use crate::schema::asset::{impl_asset, Asset};
 use creed_derive::IntoIdentifier;
+use std::borrow::{Borrow, Cow};
 use std::fmt::Display;
 
-#[derive(Clone, IntoIdentifier, PartialEq)]
+#[derive(Clone, Debug, IntoIdentifier, PartialEq)]
 pub struct Identifier {
     asset: AbstractAsset,
 }
@@ -30,6 +31,12 @@ pub trait IntoIdentifier: Display {
 impl IntoIdentifier for str {
     fn into_identifier(&self) -> Identifier {
         Identifier::from(self)
+    }
+}
+
+impl IntoIdentifier for Cow<'_, str> {
+    fn into_identifier(&self) -> Identifier {
+        Identifier::from(self.borrow())
     }
 }
 

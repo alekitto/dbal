@@ -25,7 +25,7 @@ pub struct TableOptions {
     pub alter: bool,
 }
 
-#[derive(Clone, IntoIdentifier)]
+#[derive(Clone, Debug, IntoIdentifier)]
 pub struct Table {
     name: Identifier,
     columns: Vec<Column>,
@@ -100,8 +100,8 @@ impl Table {
         &self.columns
     }
 
-    pub fn add_column(&mut self, column: Column) {
-        self.columns.push(column)
+    pub fn add_column<IC: Into<Column>>(&mut self, column: IC) {
+        self.columns.push(column.into())
     }
 
     pub fn add_columns<T: Iterator<Item = Column>>(&mut self, columns: T) {
@@ -111,19 +111,22 @@ impl Table {
     }
 
     pub fn has_column(&self, name: &dyn IntoIdentifier) -> bool {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.columns.iter().any(|column| column.get_name() == name)
     }
 
     pub fn get_column(&self, name: &dyn IntoIdentifier) -> Option<&Column> {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.columns
             .iter()
             .find(|&column| column.get_name() == name)
     }
 
     fn get_column_mut(&mut self, name: &dyn IntoIdentifier) -> Option<&mut Column> {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.columns
             .iter_mut()
             .find(|column| column.get_name() == name)
@@ -131,7 +134,7 @@ impl Table {
 
     pub fn add_index(&mut self, mut index: Index) {
         if index.get_name().is_empty() {
-            let mut columns = vec![self.get_name()];
+            let mut columns = vec![self.get_name().into_owned()];
             columns.extend(index.get_columns());
             index.set_name(&generate_identifier_name(
                 &columns,
@@ -152,7 +155,7 @@ impl Table {
         let index_name = if let Some(index_name) = index_name {
             index_name.to_string()
         } else {
-            let mut names = vec![self.get_name()];
+            let mut names = vec![self.get_name().into_owned()];
             names.extend(column_names.iter().map(|c| c.as_ref().to_string()));
             generate_identifier_name(&names, "uniq", self.get_max_identifier_length())
         };
@@ -189,12 +192,14 @@ impl Table {
     }
 
     pub fn has_index(&self, index_name: &dyn IntoIdentifier) -> bool {
-        let name = index_name.into_identifier().get_name();
+        let name = index_name.into_identifier();
+        let name = name.get_name();
         self.indices.iter().any(|i| i.get_name() == name)
     }
 
     pub fn get_index(&self, index_name: &dyn IntoIdentifier) -> Option<&Index> {
-        let name = index_name.into_identifier().get_name();
+        let name = index_name.into_identifier();
+        let name = name.get_name();
         self.indices.iter().find(|i| i.get_name() == name)
     }
 
@@ -250,7 +255,7 @@ impl Table {
         N: IntoIdentifier,
     {
         let name = name.map(|n| n.into_identifier()).unwrap_or_else(|| {
-            let mut names = vec![self.get_name()];
+            let mut names = vec![self.get_name().into_owned()];
             for local_column in local_columns {
                 names.push(local_column.to_string());
             }
@@ -306,7 +311,7 @@ impl Table {
             .map(|cols| {
                 self.columns
                     .iter()
-                    .filter(|c| cols.contains(&c.get_name()))
+                    .filter(|c| cols.contains(&c.get_name().into_owned()))
                     .collect()
             })
     }
@@ -331,16 +336,16 @@ impl Table {
         self.charset.clone()
     }
 
-    pub fn set_charset(&mut self, charset: Option<String>) {
-        self.charset = charset;
+    pub fn set_charset<S: AsRef<str>, I: Into<Option<S>>>(&mut self, charset: I) {
+        self.charset = charset.into().map(|s| s.as_ref().to_string());
     }
 
     pub fn get_collation(&self) -> Option<String> {
         self.collation.clone()
     }
 
-    pub fn set_collation(&mut self, collation: Option<String>) {
-        self.collation = collation;
+    pub fn set_collation<S: AsRef<str>, I: Into<Option<S>>>(&mut self, collation: I) {
+        self.collation = collation.into().map(|s| s.as_ref().to_string());
     }
 
     pub fn get_auto_increment(&self) -> Option<String> {
@@ -450,7 +455,7 @@ impl Table {
             on_delete,
         );
 
-        let mut names = vec![self.get_name()];
+        let mut names = vec![self.get_name().into_owned()];
         for local_column in local_columns {
             names.push(local_column.to_string());
         }
@@ -458,7 +463,7 @@ impl Table {
         constraint.set_name(&if name.is_empty() {
             generate_identifier_name(&names, "fk", self.get_max_identifier_length())
         } else {
-            name.get_name()
+            name.get_name().into_owned()
         });
 
         /* Add an implicit index (defined by the DBAL) on the foreign key

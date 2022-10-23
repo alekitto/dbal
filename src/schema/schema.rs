@@ -33,7 +33,8 @@ impl Schema {
     }
 
     pub fn has_schema_name(&self, name: &dyn IntoIdentifier) -> bool {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.schema_names.iter().any(|i| i.get_name() == name)
     }
 
@@ -42,7 +43,8 @@ impl Schema {
     }
 
     pub fn get_table(&self, name: &dyn IntoIdentifier) -> Option<&Table> {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.tables.iter().find(|i| i.get_name() == name)
     }
 
@@ -52,12 +54,14 @@ impl Schema {
     ///
     /// Calling this method without checking if table exists will _panic_.
     pub unsafe fn get_table_unchecked(&self, name: &dyn IntoIdentifier) -> &Table {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.tables.iter().find(|i| i.get_name() == name).unwrap()
     }
 
     pub fn has_table(&self, name: &dyn IntoIdentifier) -> bool {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.tables.iter().any(|i| i.get_name() == name)
     }
 
@@ -66,7 +70,8 @@ impl Schema {
     }
 
     pub fn get_sequence(&self, name: &dyn IntoIdentifier) -> Option<&Sequence> {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.sequences.iter().find(|i| i.get_name() == name)
     }
 
@@ -76,7 +81,8 @@ impl Schema {
     ///
     /// Calling this method without checking if sequence exists will _panic_.
     pub unsafe fn get_sequence_unchecked(&self, name: &dyn IntoIdentifier) -> &Sequence {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.sequences
             .iter()
             .find(|i| i.get_name() == name)
@@ -84,11 +90,12 @@ impl Schema {
     }
 
     pub fn has_sequence(&self, name: &dyn IntoIdentifier) -> bool {
-        let name = name.into_identifier().get_name();
+        let name = name.into_identifier();
+        let name = name.get_name();
         self.sequences.iter().any(|i| i.get_name() == name)
     }
 
-    pub fn to_drop_sql(&self, platform: &(dyn DatabasePlatform)) -> Result<String> {
+    pub fn to_drop_sql(&self, platform: &dyn DatabasePlatform) -> Result<String> {
         todo!()
     }
 }

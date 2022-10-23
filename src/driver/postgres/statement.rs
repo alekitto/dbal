@@ -133,7 +133,7 @@ impl<'conn> Statement<'conn> {
             .query_raw(&statement, raw_params)
             .await?;
 
-        let iterator = PostgreSQLRowsIterator::new(row_stream).await?;
+        let iterator = PostgreSQLRowsIterator::new(row_stream, &statement)?;
         let rows = Rows::new(iterator.columns().clone(), 0, None, Box::pin(iterator));
         self.row_count.store(rows.len(), Ordering::SeqCst);
 

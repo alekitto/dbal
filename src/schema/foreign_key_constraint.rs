@@ -6,7 +6,7 @@ use crate::Value;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ForeignKeyReferentialAction {
     Cascade,
     SetNull,
@@ -15,7 +15,7 @@ pub enum ForeignKeyReferentialAction {
     SetDefault,
 }
 
-#[derive(Clone, IntoIdentifier)]
+#[derive(Clone, Debug, IntoIdentifier)]
 pub struct ForeignKeyConstraint {
     asset: AbstractAsset,
     local_columns: Vec<Identifier>,
@@ -70,7 +70,10 @@ impl ForeignKeyConstraint {
     }
 
     pub fn get_unquoted_local_columns(&self) -> Vec<String> {
-        self.local_columns.iter().map(|c| c.get_name()).collect()
+        self.local_columns
+            .iter()
+            .map(|c| c.get_name().into_owned())
+            .collect()
     }
 
     pub fn get_foreign_columns(&self) -> &Vec<Identifier> {
@@ -85,7 +88,10 @@ impl ForeignKeyConstraint {
     }
 
     pub fn get_unquoted_foreign_columns(&self) -> Vec<String> {
-        self.foreign_columns.iter().map(|c| c.get_name()).collect()
+        self.foreign_columns
+            .iter()
+            .map(|c| c.get_name().into_owned())
+            .collect()
     }
 
     pub fn get_foreign_table(&self) -> &Identifier {

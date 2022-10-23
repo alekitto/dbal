@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum CheckConstraint {
     Literal(String),
     EqString(String),

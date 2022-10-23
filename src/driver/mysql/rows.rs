@@ -14,7 +14,13 @@ impl ConvIr<Value> for IrValue {
     fn new(v: mysql_async::Value) -> core::result::Result<Self, FromValueError> {
         let output = match &v {
             mysql_async::Value::NULL => Value::NULL,
-            mysql_async::Value::Bytes(bytes) => Value::Bytes(bytes.clone()),
+            mysql_async::Value::Bytes(bytes) => {
+                if let Ok(str) = String::from_utf8(bytes.clone()) {
+                    Value::String(str)
+                } else {
+                    Value::Bytes(bytes.clone())
+                }
+            }
             mysql_async::Value::Int(i) => Value::Int(*i),
             mysql_async::Value::UInt(u) => Value::UInt(*u),
             mysql_async::Value::Float(f) => Value::Float(*f as f64),

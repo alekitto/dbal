@@ -141,6 +141,8 @@ impl DriverConnection<ConnectionOptions> for Driver {
             let handle = crate::sync::spawn(async move {
                 if let Err(e) = connection.await {
                     eprintln!("connection error: {}", e);
+                } else {
+                    eprintln!("connection closed");
                 }
             });
 
@@ -202,9 +204,11 @@ mod tests {
     use crate::driver::postgres::ConnectionOptions;
     use crate::rows::ColumnIndex;
     use crate::{params, Result, Value};
+    use serial_test::serial;
     use url::Url;
 
     #[tokio::test]
+    #[serial]
     async fn can_connect() {
         let result = Driver::create(ConnectionOptions::build_from_url(
             &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
@@ -214,6 +218,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn can_prepare_statements() {
         let connection = Driver::create(ConnectionOptions::build_from_url(
             &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
@@ -228,6 +233,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn can_fetch_rows() -> Result<()> {
         let connection = Driver::create(ConnectionOptions::build_from_url(
             &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),

@@ -3,7 +3,7 @@ use crate::schema::{
     Asset, ForeignKeyConstraint, Identifier, Schema, SchemaManager, Sequence, Table, TableDiff,
 };
 use crate::Result;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Differences between two schemas.
 ///
@@ -20,7 +20,7 @@ pub struct SchemaDiff<'a> {
     /// All added tables.
     new_tables: Vec<&'a Table>,
     /// All changed tables.
-    pub changed_tables: HashMap<String, TableDiff<'a>>,
+    pub changed_tables: BTreeMap<String, TableDiff<'a>>,
     /// All removed tables.
     pub removed_tables: Vec<&'a Table>,
 
@@ -35,7 +35,7 @@ impl<'a> SchemaDiff<'a> {
     /// Creates a new SchemaDiff.
     pub fn new(
         new_tables: Vec<&'a Table>,
-        changed_tables: HashMap<String, TableDiff<'a>>,
+        changed_tables: BTreeMap<String, TableDiff<'a>>,
         removed_tables: Vec<&'a Table>,
         from_schema: Option<&'a Schema>,
     ) -> Self {

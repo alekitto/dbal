@@ -1,14 +1,14 @@
 use crate::r#type::{IntoType, BINARY, GUID, STRING};
 use crate::schema::{
-    Asset, ChangedProperty, Column, Index, Schema, SchemaDiff, SchemaManager, Sequence, Table,
-    TableDiff,
+    Asset, ChangedProperty, Column, ColumnData, Index, Schema, SchemaDiff, SchemaManager, Sequence,
+    Table, TableDiff,
 };
 use crate::{Result, Value};
 use creed::r#type::DECIMAL;
 use creed::schema::ColumnDiff;
 use itertools::Itertools;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::collections::HashMap;
+use std::collections::btree_map::Entry::{Occupied, Vacant};
+use std::collections::BTreeMap;
 
 fn is_auto_increment_sequence_in_schema(schema: &Schema, sequence: &Sequence) -> bool {
     schema
@@ -28,7 +28,7 @@ fn detect_column_renames<S: SchemaManager + ?Sized>(
     schema_manager: &S,
     table_differences: &mut TableDiff,
 ) {
-    let mut rename_candidates = HashMap::new();
+    let mut rename_candidates = BTreeMap::new();
     for added_column in &table_differences.added_columns {
         for removed_column in &table_differences.removed_columns {
             if !schema_manager
@@ -52,7 +52,7 @@ fn detect_column_renames<S: SchemaManager + ?Sized>(
     let mut added_columns_names_to_be_removed = vec![];
     let mut removed_columns_names_to_be_removed = vec![];
     for candidate_columns in rename_candidates.into_values() {
-        if candidate_columns.len() == 1 {
+        if candidate_columns.len() != 1 {
             continue;
         }
 
@@ -68,12 +68,13 @@ fn detect_column_renames<S: SchemaManager + ?Sized>(
             continue;
         }
 
-        table_differences
-            .renamed_columns
-            .push((removed_column_name.clone(), added_column.clone()));
+        table_differences.renamed_columns.push((
+            removed_column_name.clone().into_owned(),
+            added_column.clone(),
+        ));
 
         added_columns_names_to_be_removed.push(added_column_name);
-        removed_columns_names_to_be_removed.push(removed_column_name);
+        removed_columns_names_to_be_removed.push(removed_column_name.into_owned());
     }
 
     table_differences
@@ -87,7 +88,7 @@ fn detect_column_renames<S: SchemaManager + ?Sized>(
 /// Try to find indexes that only changed their name, rename operations maybe cheaper than add/drop
 /// however ambiguities between different possibilities should not lead to renaming at all.
 fn detect_index_renames<C: Comparator + ?Sized>(comparator: &C, table_differences: &mut TableDiff) {
-    let mut rename_candidates = HashMap::new();
+    let mut rename_candidates = BTreeMap::new();
 
     // Gather possible rename candidates by comparing each added and removed index based on semantics.
     for added_index in &table_differences.added_indexes {
@@ -146,6 +147,63 @@ fn detect_index_renames<C: Comparator + ?Sized>(comparator: &C, table_difference
     });
 }
 
+/// Returns the difference between the columns
+///
+/// If there are differences this method returns the changed properties as a
+/// string vector, otherwise an empty vector gets returned.
+pub fn diff_column(properties1: ColumnData, properties2: ColumnData) -> Vec<ChangedProperty> {
+    let mut changed_properties = vec![];
+    if properties1.r#type != properties2.r#type {
+        changed_properties.push(ChangedProperty::Type);
+    }
+
+    if properties1.notnull != properties2.notnull {
+        changed_properties.push(ChangedProperty::NotNull);
+    }
+
+    if properties1.unsigned.unwrap_or(false) != properties2.unsigned.unwrap_or(false) {
+        changed_properties.push(ChangedProperty::Unsigned);
+    }
+
+    if properties1.autoincrement != properties2.autoincrement {
+        changed_properties.push(ChangedProperty::AutoIncrement);
+    }
+
+    // Null values need to be checked additionally as they tell whether to create or drop a default value.
+    // null != 0, null != false, null != '' etc. This affects platform's table alteration SQL generation.
+    if ((properties1.default == Value::NULL) != (properties2.default == Value::NULL))
+        || properties1.default != properties2.default
+    {
+        changed_properties.push(ChangedProperty::Default);
+    }
+
+    if properties1.r#type == STRING.into_type().unwrap()
+        && properties1.r#type != GUID.into_type().unwrap()
+        || properties1.r#type == BINARY.into_type().unwrap()
+    {
+        // check if value of length is set at all, default value assumed otherwise.
+        let length1 = properties1.length.unwrap_or(255);
+        let length2 = properties2.length.unwrap_or(255);
+        if length1 != length2 {
+            changed_properties.push(ChangedProperty::Length);
+        }
+
+        if properties1.fixed != properties2.fixed {
+            changed_properties.push(ChangedProperty::Fixed);
+        }
+    } else if properties1.r#type == DECIMAL.into_type().unwrap() {
+        if properties1.precision.unwrap_or(10) != properties2.precision.unwrap_or(10) {
+            changed_properties.push(ChangedProperty::Precision);
+        }
+
+        if properties1.scale != properties2.scale {
+            changed_properties.push(ChangedProperty::Scale);
+        }
+    }
+
+    changed_properties.into_iter().unique().collect()
+}
+
 pub trait Comparator {
     fn get_schema_manager(&self) -> &dyn SchemaManager;
 
@@ -157,7 +215,7 @@ pub trait Comparator {
         let src_schema_name = from_schema.get_name();
         let dest_schema_name = to_schema.get_name();
 
-        let mut foreign_keys_to_table = HashMap::new();
+        let mut foreign_keys_to_table = BTreeMap::new();
         let mut new_schema_names = vec![];
         let mut removed_schema_names = vec![];
 
@@ -174,7 +232,7 @@ pub trait Comparator {
         }
 
         let mut new_tables = vec![];
-        let mut changed_tables = HashMap::new();
+        let mut changed_tables = BTreeMap::new();
         let mut removed_tables = vec![];
 
         for table in to_schema.get_tables() {
@@ -281,6 +339,7 @@ pub trait Comparator {
         from_table: &'a Table,
         to_table: &'_ Table,
     ) -> Result<Option<TableDiff<'a>>> {
+        let schema_manager = self.get_schema_manager();
         let mut changes = 0;
         let mut table_differences = TableDiff::new(from_table.get_name(), Some(from_table));
 
@@ -305,7 +364,7 @@ pub trait Comparator {
             if let Some(to_column) = to_table.get_column(&column_name) {
                 // See if column has changed properties in "to" table.
                 let changed_properties = self.diff_column(column, to_column);
-                if !self.get_schema_manager().columns_equal(column, to_column)? {
+                if !schema_manager.columns_equal(column, to_column)? {
                     table_differences.changed_columns.push(ColumnDiff::new(
                         &column.get_name(),
                         to_column,
@@ -321,7 +380,7 @@ pub trait Comparator {
             }
         }
 
-        detect_column_renames(self.get_schema_manager(), &mut table_differences);
+        detect_column_renames(schema_manager, &mut table_differences);
 
         let from_table_indexes = from_table.get_indices();
         let to_table_indexes = to_table.get_indices();
@@ -414,56 +473,7 @@ pub trait Comparator {
         let properties1 = column1.generate_column_data(&platform);
         let properties2 = column2.generate_column_data(&platform);
 
-        let mut changed_properties = vec![];
-        if properties1.r#type != properties2.r#type {
-            changed_properties.push(ChangedProperty::Type);
-        }
-
-        if properties1.notnull != properties2.notnull {
-            changed_properties.push(ChangedProperty::NotNull);
-        }
-
-        if properties1.unsigned != properties2.unsigned {
-            changed_properties.push(ChangedProperty::Unsigned);
-        }
-
-        if properties1.autoincrement != properties2.autoincrement {
-            changed_properties.push(ChangedProperty::AutoIncrement);
-        }
-
-        // Null values need to be checked additionally as they tell whether to create or drop a default value.
-        // null != 0, null != false, null != '' etc. This affects platform's table alteration SQL generation.
-        if (properties1.default == Value::NULL) != (properties2.default == Value::NULL)
-            || properties1.default != properties2.default
-        {
-            changed_properties.push(ChangedProperty::Default);
-        }
-
-        if properties1.r#type == STRING.into_type().unwrap()
-            && properties1.r#type != GUID.into_type().unwrap()
-            || properties1.r#type == BINARY.into_type().unwrap()
-        {
-            // check if value of length is set at all, default value assumed otherwise.
-            let length1 = properties1.length.unwrap_or(255);
-            let length2 = properties2.length.unwrap_or(255);
-            if length1 != length2 {
-                changed_properties.push(ChangedProperty::Length);
-            }
-
-            if properties1.fixed != properties2.fixed {
-                changed_properties.push(ChangedProperty::Fixed);
-            }
-        } else if properties1.r#type == DECIMAL.into_type().unwrap() {
-            if properties1.precision.unwrap_or(10) != properties2.precision.unwrap_or(10) {
-                changed_properties.push(ChangedProperty::Precision);
-            }
-
-            if properties1.scale != properties2.scale {
-                changed_properties.push(ChangedProperty::Scale);
-            }
-        }
-
-        changed_properties.into_iter().unique().collect()
+        diff_column(properties1, properties2)
     }
 
     /// Finds the difference between the indexes $index1 and $index2.
@@ -495,6 +505,8 @@ impl<C: Comparator + ?Sized> Comparator for &mut C {
             fn diff_table<'a>(&'a self, from_table: &'a Table, to_table: &'_ Table) -> Result<Option<TableDiff<'a>>>;
             fn compare_schemas<'a>(&'a self, from_schema: &'a Schema, to_schema: &'a Schema) -> Result<SchemaDiff<'a>>;
             fn get_schema_manager(&self) -> &dyn SchemaManager;
+            fn diff_column(&self, column1: &Column, column2: &Column) -> Vec<ChangedProperty>;
+            fn diff_index(&self, index1: &Index, index2: &Index) -> bool;
         }
     }
 }
@@ -505,6 +517,8 @@ impl<C: Comparator + ?Sized> Comparator for Box<C> {
             fn diff_table<'a>(&'a self, from_table: &'a Table, to_table: &'_ Table) -> Result<Option<TableDiff<'a>>>;
             fn compare_schemas<'a>(&'a self, from_schema: &'a Schema, to_schema: &'a Schema) -> Result<SchemaDiff<'a>>;
             fn get_schema_manager(&self) -> &dyn SchemaManager;
+            fn diff_column(&self, column1: &Column, column2: &Column) -> Vec<ChangedProperty>;
+            fn diff_index(&self, index1: &Index, index2: &Index) -> bool;
         }
     }
 }

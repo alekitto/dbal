@@ -126,7 +126,7 @@ pub trait DatabasePlatform: Debug {
     /// Gets the name of the platform.
     fn get_name(&self) -> String;
 
-    /// Initializes Doctrine Type Mappings with the platform defaults
+    /// Initializes Type Mappings with the platform defaults
     /// and with all additional type mappings.
     fn initialize_all_type_mappings(&self) -> Result<()>
     where
@@ -463,14 +463,6 @@ pub trait DatabasePlatform: Debug {
         default::get_temporary_table_name(table_name)
     }
 
-    /// Obtains DBMS specific SQL code portion needed to set the CHARACTER SET
-    /// of a column declaration to be used in statements like CREATE TABLE.
-    /// # Internal
-    #[allow(unused_variables)]
-    fn get_column_charset_declaration_sql(&self, charset: &str) -> String {
-        default::get_column_charset_declaration_sql()
-    }
-
     /// Some platforms need the boolean values to be converted.
     /// The default conversion in this implementation converts to integers (false => 0, true => 1).
     ///
@@ -798,7 +790,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for &mut P {
             fn get_default_value_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_custom_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_temporary_table_name(&self, table_name: &str) -> Result<String>;
-            fn get_column_charset_declaration_sql(&self, charset: &str) -> String;
             fn convert_boolean(&self, item: Value) -> Result<Value>;
             fn convert_from_boolean(&self, item: &Value) -> Value;
             fn convert_booleans_to_database_value(&self, item: Value) -> Result<Value>;
@@ -911,7 +902,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Box<P> {
             fn get_default_value_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_custom_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_temporary_table_name(&self, table_name: &str) -> Result<String>;
-            fn get_column_charset_declaration_sql(&self, charset: &str) -> String;
             fn convert_boolean(&self, item: Value) -> Result<Value>;
             fn convert_from_boolean(&self, item: &Value) -> Value;
             fn convert_booleans_to_database_value(&self, item: Value) -> Result<Value>;
@@ -1024,7 +1014,6 @@ impl<P: DatabasePlatform + ?Sized> DatabasePlatform for Arc<Box<P>> {
             fn get_default_value_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_custom_type_declaration_sql(&self, column: &ColumnData) -> Result<String>;
             fn get_temporary_table_name(&self, table_name: &str) -> Result<String>;
-            fn get_column_charset_declaration_sql(&self, charset: &str) -> String;
             fn convert_boolean(&self, item: Value) -> Result<Value>;
             fn convert_from_boolean(&self, item: &Value) -> Value;
             fn convert_booleans_to_database_value(&self, item: Value) -> Result<Value>;

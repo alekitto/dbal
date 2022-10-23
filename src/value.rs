@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{Error, Result as CreedResult};
 use chrono::{DateTime, Local, TimeZone};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
@@ -38,7 +38,7 @@ impl Default for &Value {
 }
 
 impl Value {
-    fn is_null(&self) -> bool {
+    pub fn is_null(&self) -> bool {
         matches!(self, Value::NULL)
     }
 
@@ -104,6 +104,13 @@ impl Value {
             _ => false,
         }
     }
+
+    pub fn try_into_vec(self) -> CreedResult<Vec<Value>> {
+        match self {
+            Value::Array(v) => Ok(v),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
 }
 
 impl Display for Value {
@@ -155,6 +162,16 @@ macro from_to_value($variant:ident,$source:ty) {
         #[inline]
         fn from(value: $source) -> Self {
             Value::$variant(value)
+        }
+    }
+
+    impl From<Option<$source>> for Value {
+        #[inline]
+        fn from(value: Option<$source>) -> Self {
+            match value {
+                None => Value::NULL,
+                Some(value) => Value::$variant(value),
+            }
         }
     }
 
@@ -370,6 +387,24 @@ impl<Tz: TimeZone> From<&DateTime<Tz>> for Value {
     fn from(value: &DateTime<Tz>) -> Self {
         let value = value.clone();
         Value::DateTime(Local.from_utc_datetime(&value.naive_utc()))
+    }
+}
+
+impl<I: AsRef<str> + From<String>> From<Value> for Option<I> {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::NULL => None,
+            _ => Some(I::from(value.to_string())),
+        }
+    }
+}
+
+impl<I: AsRef<str> + From<String>> From<&Value> for Option<I> {
+    fn from(value: &Value) -> Self {
+        match value {
+            Value::NULL => None,
+            _ => Some(I::from(value.to_string())),
+        }
     }
 }
 

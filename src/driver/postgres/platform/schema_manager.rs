@@ -3,7 +3,7 @@ use crate::schema::{
     Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator, Identifier, Index,
     IntoIdentifier, SchemaManager, Sequence, TableDiff, TableOptions,
 };
-use crate::{Connection, Result, Row};
+use crate::{AsyncResult, Connection, Result, Row};
 
 pub struct PostgreSQLSchemaManager<'a> {
     connection: &'a Connection,
@@ -57,17 +57,17 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
     }
 
     #[inline]
-    fn get_list_table_columns_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
+    fn get_list_table_columns_sql(&self, table: &str, _: &str) -> Result<String> {
         postgresql::get_list_table_columns_sql(self.as_dyn(), table)
     }
 
     #[inline]
-    fn get_list_table_indexes_sql(&self, table: &str, _: Option<&str>) -> Result<String> {
+    fn get_list_table_indexes_sql(&self, table: &str, _: &str) -> Result<String> {
         postgresql::get_list_table_indexes_sql(self.as_dyn(), table)
     }
 
     #[inline]
-    fn get_list_table_foreign_keys_sql(&self, table: &str) -> Result<String> {
+    fn get_list_table_foreign_keys_sql(&self, table: &str, _: &str) -> Result<String> {
         postgresql::get_list_table_foreign_keys_sql(self.as_dyn(), table)
     }
 
@@ -79,8 +79,8 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
     #[inline]
     fn get_comment_on_column_sql(
         &self,
-        table_name: &Identifier,
-        column: &Column,
+        table_name: &dyn IntoIdentifier,
+        column: &dyn IntoIdentifier,
         comment: &str,
     ) -> Result<String> {
         postgresql::get_comment_on_column_sql(
@@ -125,6 +125,10 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         postgresql::get_drop_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
+    fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>> {
+        postgresql::list_schema_names(self.as_dyn())
+    }
+
     #[inline]
     fn get_list_views_sql(&self, _: &str) -> Result<String> {
         postgresql::get_list_views_sql()
@@ -157,12 +161,24 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         postgresql::get_advanced_foreign_key_options_sql(self.as_dyn(), foreign_key)
     }
 
+    fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence> {
+        postgresql::get_portable_sequence_definition(row)
+    }
+
     fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column> {
-        todo!()
+        postgresql::get_portable_table_column_definition(self.as_dyn(), table_column)
     }
 
     fn create_comparator(&self) -> Box<dyn Comparator + Send + '_> {
         Box::new(GenericComparator::new(self))
+    }
+
+    fn get_portable_table_indexes_list(
+        &self,
+        table_indexes: Vec<Row>,
+        table_name: &str,
+    ) -> Result<Vec<Index>> {
+        postgresql::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
     }
 }
 
@@ -171,13 +187,15 @@ mod tests {
     use crate::platform::CreateFlags;
     use crate::r#type::{BOOLEAN, INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
-        ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
+        Asset, ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
     };
     use crate::tests::create_connection;
+    use serial_test::serial;
     use std::collections::HashMap;
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_table_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -206,6 +224,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generate_table_with_multi_column_unique_index() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -236,6 +255,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_index_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -259,6 +279,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_unique_index_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -279,6 +300,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_foreign_key_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -298,6 +320,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_constraint_creation_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -337,6 +360,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn generates_table_alteration_sql() {
         let mut table = Table::new("mytable");
         let mut id_column = Column::new("id", INTEGER).unwrap();
@@ -402,6 +426,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn create_table_column_comments() {
         let mut table = Table::new("test");
         let mut id_col = Column::new("id", INTEGER).unwrap();
@@ -425,6 +450,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn alter_table_column_comments() {
         let mut table_diff = TableDiff::new("mytable", None);
         let mut col = Column::new("quota", INTEGER).unwrap();
@@ -461,6 +487,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn create_table_column_type_comments() {
         let mut table = Table::new("test");
         table.add_column(Column::new("id", INTEGER).unwrap());
@@ -481,6 +508,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quoted_column_in_primary_key_propagation() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -496,6 +524,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quoted_column_in_index_propagation() {
         let mut table = Table::new("`quoted`");
         table.add_column(Column::new("create", STRING).unwrap());
@@ -522,6 +551,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn test_quoted_name_in_index_sql() {
         let mut table = Table::new("test");
         table.add_column(Column::new("column1", STRING).unwrap());
@@ -547,6 +577,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quoted_column_in_foreign_key_propagation() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -647,6 +678,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quotes_reserved_keyword_in_unique_constraint_declaration_sql() {
         let constraint = UniqueConstraint::new("select", &["foo"], &[], HashMap::default());
 
@@ -659,6 +691,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quotes_reserved_keyword_in_truncate_table_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -672,6 +705,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn quotes_reserved_keyword_in_index_declaration_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -686,6 +720,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn get_create_schema_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -696,6 +731,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn alter_table_change_quoted_column() {
         let mut table = Table::new("mytable");
         table.add_column(Column::new("select", INTEGER).unwrap());
@@ -719,6 +755,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     pub async fn alter_table_rename_index() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
@@ -736,6 +773,359 @@ mod tests {
         assert_eq!(
             schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
             &["ALTER INDEX idx_foo RENAME TO idx_bar"]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn quotes_alter_table_rename_index() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        let mut table = Table::new("table");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("table", &table);
+
+        table_diff.renamed_indexes.push((
+            "create".to_string(),
+            Index::new("select", &["id"], false, false, &[], HashMap::default()),
+        ));
+        table_diff.renamed_indexes.push((
+            "`foo`".to_string(),
+            Index::new("`bar`", &["id"], false, false, &[], HashMap::default()),
+        ));
+
+        assert_eq!(
+            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            &[
+                r#"ALTER INDEX "create" RENAME TO "select""#,
+                r#"ALTER INDEX "foo" RENAME TO "bar""#,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn quotes_alter_table_rename_column() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let mut from_table = Table::new("mytable");
+
+        from_table.add_column({
+            let mut column = Column::new("unquoted1", INTEGER).unwrap();
+            column.set_comment("Unquoted 1");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("unquoted2", INTEGER).unwrap();
+            column.set_comment("Unquoted 2");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("unquoted3", INTEGER).unwrap();
+            column.set_comment("Unquoted 3");
+            column
+        });
+
+        from_table.add_column({
+            let mut column = Column::new("create", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 1");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("table", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 2");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("select", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 3");
+            column
+        });
+
+        from_table.add_column({
+            let mut column = Column::new("`quoted1`", INTEGER).unwrap();
+            column.set_comment("Quoted 1");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("`quoted2`", INTEGER).unwrap();
+            column.set_comment("Quoted 2");
+            column
+        });
+        from_table.add_column({
+            let mut column = Column::new("`quoted3`", INTEGER).unwrap();
+            column.set_comment("Quoted 3");
+            column
+        });
+
+        let mut to_table = Table::new("mytable");
+
+        // unquoted -> unquoted
+        to_table.add_column({
+            let mut column = Column::new("unquoted", INTEGER).unwrap();
+            column.set_comment("Unquoted 1");
+            column
+        });
+
+        // unquoted -> reserved keyword
+        to_table.add_column({
+            let mut column = Column::new("where", INTEGER).unwrap();
+            column.set_comment("Unquoted 2");
+            column
+        });
+
+        // unquoted -> quoted
+        to_table.add_column({
+            let mut column = Column::new("`foo`", INTEGER).unwrap();
+            column.set_comment("Unquoted 3");
+            column
+        });
+
+        // reserved keyword -> unquoted
+        to_table.add_column({
+            let mut column = Column::new("reserved_keyword", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 1");
+            column
+        });
+
+        // reserved keyword -> reserved keyword
+        to_table.add_column({
+            let mut column = Column::new("from", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 2");
+            column
+        });
+
+        // reserved keyword -> quoted
+        to_table.add_column({
+            let mut column = Column::new("`bar`", INTEGER).unwrap();
+            column.set_comment("Reserved keyword 3");
+            column
+        });
+
+        // quoted -> unquoted
+        to_table.add_column({
+            let mut column = Column::new("quoted", INTEGER).unwrap();
+            column.set_comment("Quoted 1");
+            column
+        });
+
+        // quoted -> reserved keyword
+        to_table.add_column({
+            let mut column = Column::new("and", INTEGER).unwrap();
+            column.set_comment("Quoted 2");
+            column
+        });
+
+        // quoted -> quoted
+        to_table.add_column({
+            let mut column = Column::new("`baz`", INTEGER).unwrap();
+            column.set_comment("Quoted 3");
+            column
+        });
+
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&from_table, &to_table).unwrap();
+        assert_eq!(diff.is_some(), true);
+        assert_eq!(
+            schema_manager
+                .get_alter_table_sql(&mut diff.unwrap())
+                .unwrap(),
+            &[
+                r#"ALTER TABLE mytable RENAME COLUMN quoted2 TO "and""#,
+                r#"ALTER TABLE mytable RENAME COLUMN "select" TO "bar""#,
+                r#"ALTER TABLE mytable RENAME COLUMN quoted3 TO "baz""#,
+                r#"ALTER TABLE mytable RENAME COLUMN unquoted3 TO "foo""#,
+                r#"ALTER TABLE mytable RENAME COLUMN "table" TO "from""#,
+                r#"ALTER TABLE mytable RENAME COLUMN quoted1 TO quoted"#,
+                r#"ALTER TABLE mytable RENAME COLUMN "create" TO reserved_keyword"#,
+                r#"ALTER TABLE mytable RENAME COLUMN unquoted1 TO unquoted"#,
+                r#"ALTER TABLE mytable RENAME COLUMN unquoted2 TO "where""#,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn quotes_alter_table_change_column_length() {
+        let mut from_table = Table::new("mytable");
+
+        let mut column = Column::new("unquoted1", STRING).unwrap();
+        column.set_comment("Unquoted 1");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut column = Column::new("unquoted2", STRING).unwrap();
+        column.set_comment("Unquoted 2");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut column = Column::new("unquoted3", STRING).unwrap();
+        column.set_comment("Unquoted 3");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut column = Column::new("create", STRING).unwrap();
+        column.set_comment("Reserved keyword 1");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut column = Column::new("table", STRING).unwrap();
+        column.set_comment("Reserved keyword 2");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut column = Column::new("select", STRING).unwrap();
+        column.set_comment("Reserved keyword 3");
+        column.set_length(10);
+        from_table.add_column(column);
+
+        let mut to_table = Table::new("mytable");
+
+        let mut column = Column::new("unquoted1", STRING).unwrap();
+        column.set_comment("Unquoted 1");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let mut column = Column::new("unquoted2", STRING).unwrap();
+        column.set_comment("Unquoted 2");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let mut column = Column::new("unquoted3", STRING).unwrap();
+        column.set_comment("Unquoted 3");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let mut column = Column::new("create", STRING).unwrap();
+        column.set_comment("Reserved keyword 1");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let mut column = Column::new("table", STRING).unwrap();
+        column.set_comment("Reserved keyword 2");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let mut column = Column::new("select", STRING).unwrap();
+        column.set_comment("Reserved keyword 3");
+        column.set_length(255);
+        to_table.add_column(column);
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        let comparator = schema_manager.create_comparator();
+        let mut diff = comparator.diff_table(&from_table, &to_table).unwrap();
+
+        assert_eq!(diff.is_some(), true);
+        assert_eq!(
+            schema_manager
+                .get_alter_table_sql(diff.as_mut().unwrap())
+                .unwrap(),
+            &[
+                r#"ALTER TABLE mytable ALTER unquoted1 TYPE VARCHAR(255)"#,
+                r#"ALTER TABLE mytable ALTER unquoted2 TYPE VARCHAR(255)"#,
+                r#"ALTER TABLE mytable ALTER unquoted3 TYPE VARCHAR(255)"#,
+                r#"ALTER TABLE mytable ALTER "create" TYPE VARCHAR(255)"#,
+                r#"ALTER TABLE mytable ALTER "table" TYPE VARCHAR(255)"#,
+                r#"ALTER TABLE mytable ALTER "select" TYPE VARCHAR(255)"#,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn alter_table_rename_index_in_schema() {
+        let mut table = Table::new("myschema.mytable");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("myschema.mytable", &table);
+        table_diff.renamed_indexes.push((
+            "idx_foo".to_string(),
+            Index::new("idx_bar", &["id"], false, false, &[], HashMap::default()),
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        assert_eq!(
+            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            &["ALTER INDEX myschema.idx_foo RENAME TO idx_bar"]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn quotes_alter_table_rename_index_in_schema() {
+        let mut table = Table::new("`schema`.table");
+        table.add_column(Column::new("id", INTEGER).unwrap());
+        table.set_primary_key(&["id"], None).unwrap();
+
+        let mut table_diff = TableDiff::new("`schema`.table", &table);
+        table_diff.renamed_indexes.push((
+            "create".to_string(),
+            Index::new("select", &["id"], false, false, &[], HashMap::default()),
+        ));
+        table_diff.renamed_indexes.push((
+            "`foo`".to_string(),
+            Index::new("`bar`", &["id"], false, false, &[], HashMap::default()),
+        ));
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+        assert_eq!(
+            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            &[
+                r#"ALTER INDEX "schema"."create" RENAME TO "select""#,
+                r#"ALTER INDEX "schema"."foo" RENAME TO "bar""#,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn quotes_drop_foreign_key_sql() {
+        let table = Table::new("table");
+        let mut foreign_key =
+            ForeignKeyConstraint::new(&["x"], &["y"], "foo", HashMap::default(), None, None);
+        foreign_key.set_name("select");
+
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        assert_eq!(
+            schema_manager
+                .get_drop_foreign_key_sql(&foreign_key, &table)
+                .unwrap(),
+            r#"ALTER TABLE "table" DROP CONSTRAINT "select""#
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn get_comment_on_column_sql() {
+        let connection = create_connection().await.unwrap();
+        let schema_manager = connection.create_schema_manager().unwrap();
+
+        assert_eq!(
+            &[
+                schema_manager
+                    .get_comment_on_column_sql(&"foo", &"bar", "comment")
+                    .unwrap(),
+                schema_manager
+                    .get_comment_on_column_sql(&"`Foo`", &"`BAR`", "comment")
+                    .unwrap(),
+                schema_manager
+                    .get_comment_on_column_sql(&"select", &"from", "comment")
+                    .unwrap(),
+            ],
+            &[
+                r#"COMMENT ON COLUMN foo.bar IS 'comment'"#,
+                r#"COMMENT ON COLUMN "Foo"."BAR" IS 'comment'"#,
+                r#"COMMENT ON COLUMN "select"."from" IS 'comment'"#,
+            ]
         );
     }
 }

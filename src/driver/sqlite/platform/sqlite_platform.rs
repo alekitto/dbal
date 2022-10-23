@@ -22,10 +22,14 @@ pub struct SQLitePlatform {
 
 impl SQLitePlatform {
     pub fn new(ev: Arc<EventDispatcher>) -> Self {
-        Self {
+        let pl = Self {
             ev,
             type_mappings: DashMap::new(),
-        }
+        };
+
+        pl.initialize_all_type_mappings()
+            .expect("unable to initialize type mappings");
+        pl
     }
 }
 
@@ -241,7 +245,7 @@ impl DatabasePlatform for SQLitePlatform {
 mod tests {
     use crate::driver::sqlite::SQLitePlatform;
     use crate::platform::DatabasePlatform;
-    use crate::r#type::{BINARY, JSON};
+    use crate::r#type::{BINARY, GUID, JSON};
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
@@ -353,6 +357,19 @@ mod tests {
                 .get_json_type_declaration_sql(&column.generate_column_data(&platform))
                 .unwrap(),
             "CLOB"
+        );
+    }
+
+    #[test]
+    pub fn returns_guid_type_declaration_sql() {
+        let platform = create_sqlite_platform();
+        let column = Column::new("foo", GUID).unwrap();
+
+        assert_eq!(
+            platform
+                .get_guid_type_declaration_sql(&column.generate_column_data(&platform))
+                .unwrap(),
+            "CHAR(36)"
         );
     }
 }

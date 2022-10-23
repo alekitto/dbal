@@ -4,6 +4,7 @@ use crate::driver::Driver;
 use crate::event::ConnectionEvent;
 use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
+use crate::util::PlatformBox;
 use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
     Value,
@@ -32,7 +33,7 @@ pub struct Connection {
     connection_options: ConnectionOptions,
     configuration: Arc<Configuration>,
     driver: Option<Arc<Driver>>,
-    platform: Option<Arc<Box<dyn DatabasePlatform + Send + Sync>>>,
+    platform: Option<PlatformBox>,
     event_manager: Arc<EventDispatcher>,
 }
 
@@ -125,7 +126,7 @@ impl Connection {
     ///
     /// The connection must be connected to the server for this method to succeed.
     /// Otherwise will return a "Not Connected" Error.
-    pub fn get_platform(&self) -> Result<Arc<Box<dyn DatabasePlatform + Send + Sync>>> {
+    pub fn get_platform(&self) -> Result<PlatformBox> {
         self.platform.clone().ok_or_else(Error::not_connected)
     }
 
@@ -328,11 +329,11 @@ mod tests {
     use crate::tests::get_database_dsn;
     use crate::{params, r#type, Connection, EventDispatcher, Result, Row, Value};
     use lazy_static::lazy_static;
+    use serial_test::serial;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
-    #[tokio::test]
     async fn is_debuggable() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
 
@@ -344,6 +345,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_create_connection() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         assert_eq!(connection.is_connected(), false);
@@ -368,6 +370,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_create_connection_with_event_dispatcher() {
         let events = EventDispatcher::new();
         events
@@ -411,6 +414,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_convert_type_to_runtime() -> Result<()> {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         let connection = connection.connect().await.expect("Connection failed");
@@ -438,6 +442,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_retrieve_database_name() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         assert_eq!(connection.is_connected(), false);
@@ -453,6 +458,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_fetch_results() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         assert_eq!(connection.is_connected(), false);
@@ -473,6 +479,7 @@ mod tests {
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_convert_values() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         assert_eq!(connection.is_connected(), false);

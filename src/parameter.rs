@@ -53,6 +53,19 @@ impl Parameter {
     }
 }
 
+impl From<Value> for Parameter {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::NULL => Parameter::new(value, ParameterType::Null),
+            Value::UInt(_) | Value::Int(_) => Parameter::new(value, ParameterType::Integer),
+            Value::Float(_) => Parameter::new(value, ParameterType::Float),
+            Value::Bytes(_) => Parameter::new(value, ParameterType::Binary),
+            Value::Boolean(_) => Parameter::new(value, ParameterType::Boolean),
+            _ => Parameter::new(value, ParameterType::String),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Parameters<'a> {
     Vec(Vec<(ParameterIndex, Parameter)>),
@@ -132,6 +145,17 @@ impl TryFrom<Parameter> for Vec<u8> {
             Value::Boolean(b) => Ok(if b { vec![1_u8] } else { vec![0_u8] }),
             _ => Err(Error::type_mismatch()),
         }
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Parameters<'_> {
+    fn from(value: Vec<T>) -> Self {
+        let mut v = vec![];
+        for (idx, value) in value.into_iter().enumerate() {
+            v.push((ParameterIndex::Positional(idx), value.into().into()));
+        }
+
+        Parameters::Vec(v)
     }
 }
 

@@ -1,8 +1,9 @@
 use crate::platform::DatabasePlatform;
 use crate::schema::{Identifier, IntoIdentifier};
 use crc::{Crc, CRC_32_ISO_HDLC};
+use std::borrow::Cow;
 
-#[derive(Clone, Default, IntoIdentifier, PartialEq)]
+#[derive(Clone, Debug, Default, IntoIdentifier, PartialEq)]
 pub(crate) struct AbstractAsset {
     quoted: bool,
     namespace: Option<String>,
@@ -39,7 +40,7 @@ pub(super) fn generate_identifier_name<S: AsRef<str>, U: Into<Option<usize>>>(
 
 pub trait Asset: IntoIdentifier {
     /// Returns the name of this schema asset.
-    fn get_name(&self) -> String;
+    fn get_name(&self) -> Cow<'_, str>;
 
     /// Sets the name of this asset.
     fn set_name(&mut self, name: &str);
@@ -113,7 +114,7 @@ impl<A: Asset + ?Sized> IntoIdentifier for &mut A {
 impl<A: Asset + ?Sized> Asset for &mut A {
     delegate::delegate! {
         to(**self) {
-            fn get_name(&self) -> String;
+            fn get_name(&self) -> Cow<'_, str>;
             fn set_name(&mut self, name: &str);
             fn is_empty(&self) -> bool;
             fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
@@ -138,7 +139,7 @@ impl<A: Asset + ?Sized> IntoIdentifier for Box<A> {
 impl<A: Asset + ?Sized> Asset for Box<A> {
     delegate::delegate! {
         to(**self) {
-            fn get_name(&self) -> String;
+            fn get_name(&self) -> Cow<'_, str>;
             fn set_name(&mut self, name: &str);
             fn is_empty(&self) -> bool;
             fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
@@ -156,7 +157,7 @@ pub(crate) macro impl_asset($t:ident,$e:ident) {
     impl crate::schema::Asset for $t {
         delegate::delegate! {
             to(self.$e) {
-                fn get_name(&self) -> String;
+                fn get_name(&self) -> Cow<'_, str>;
                 fn set_name(&mut self, name: &str);
                 fn is_empty(&self) -> bool;
                 fn is_in_default_namespace(&self, default_namespace_name: &str) -> bool;
@@ -172,11 +173,11 @@ pub(crate) macro impl_asset($t:ident,$e:ident) {
 }
 
 impl Asset for AbstractAsset {
-    fn get_name(&self) -> String {
+    fn get_name(&self) -> Cow<str> {
         if let Some(namespace) = self.namespace.clone() {
-            format!("{}.{}", namespace, &self.name)
+            Cow::Owned(format!("{}.{}", namespace, &self.name))
         } else {
-            self.name.clone()
+            Cow::Borrowed(&self.name)
         }
     }
 

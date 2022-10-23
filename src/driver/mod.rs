@@ -92,9 +92,11 @@ impl Driver {
 mod tests {
     use crate::driver::Driver;
     use crate::{params, ConnectionOptions};
+    use serial_test::serial;
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
+    #[serial]
     async fn can_create_connection() {
         let options =
             ConnectionOptions::try_from(std::env::var("DATABASE_DSN").unwrap().as_ref()).unwrap();

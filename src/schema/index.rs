@@ -4,7 +4,7 @@ use crate::schema::{Identifier, IntoIdentifier};
 use crate::Value;
 use std::collections::HashMap;
 
-#[derive(Clone, IntoIdentifier)]
+#[derive(Clone, Debug, IntoIdentifier)]
 pub struct Index {
     asset: AbstractAsset,
     columns: Vec<Identifier>,
@@ -74,7 +74,10 @@ impl Index {
     }
 
     pub fn get_columns(&self) -> Vec<String> {
-        self.columns.iter().map(|c| c.get_name()).collect()
+        self.columns
+            .iter()
+            .map(|c| c.get_name().into_owned())
+            .collect()
     }
 
     pub fn get_quoted_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {

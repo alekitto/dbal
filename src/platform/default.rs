@@ -7,14 +7,14 @@ use crate::r#type::{
     IntoType, TypeManager, TypePtr, BIGINT, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
 };
 use crate::schema::{
-    string_from_value, Asset, CheckConstraint, Column, ColumnData, ColumnDiff,
+    get_database, string_from_value, Asset, CheckConstraint, Column, ColumnData, ColumnDiff,
     ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexOptions,
     IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableOptions, UniqueConstraint,
     View,
 };
 use crate::util::{filter_asset_names, function_name};
 use crate::{
-    params, AsyncResult, Connection, Error, Result, Row, SchemaAlterTableChangeColumnEvent,
+    params, AsyncResult, Error, Result, Row, SchemaAlterTableChangeColumnEvent,
     SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaCreateTableColumnEvent,
     SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
 };
@@ -23,14 +23,6 @@ use regex::Regex;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::fmt::Display;
-
-async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
-    if let Some(database) = conn.get_database().await {
-        Ok(database)
-    } else {
-        Err(Error::database_required(method_name))
-    }
-}
 
 pub fn get_ascii_string_type_declaration_sql(
     this: &dyn DatabasePlatform,

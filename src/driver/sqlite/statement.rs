@@ -92,7 +92,7 @@ impl<'conn> Debug for Statement<'conn> {
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
         let idx = match idx {
-            ParameterIndex::Positional(i) => i as usize,
+            ParameterIndex::Positional(i) => i,
             ParameterIndex::Named(name) => self
                 .statement
                 .lock()
@@ -111,7 +111,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<crate::driver::StatementResult> {
+    fn query(&self, params: Parameters) -> AsyncResult<StatementResult> {
         let result = self.internal_query(params);
         Box::pin(async move { Ok(StatementResult::new(result?)) })
     }

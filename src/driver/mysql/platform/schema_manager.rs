@@ -183,7 +183,7 @@ mod tests {
         UniqueConstraint,
     };
     use crate::tests::create_connection;
-    use creed::r#type::BOOLEAN;
+    use crate::r#type::BOOLEAN;
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -650,7 +650,7 @@ mod tests {
 
         assert_eq!(
             schema_manager
-                .get_index_declaration_sql(&"select", &index)
+                .get_index_declaration_sql("select", &index)
                 .unwrap(),
             "INDEX `select` (foo)"
         );
@@ -660,10 +660,7 @@ mod tests {
     pub async fn get_create_schema_sql() {
         let connection = create_connection().await.unwrap();
         let schema_manager = connection.create_schema_manager().unwrap();
-        assert_eq!(
-            schema_manager.get_create_schema_sql(&"schema").is_err(),
-            true
-        );
+        assert!(schema_manager.get_create_schema_sql(&"schema").is_err());
     }
 
     #[tokio::test]
@@ -683,10 +680,7 @@ mod tests {
         let schema_manager = connection.create_schema_manager().unwrap();
         let platform = schema_manager.get_platform().unwrap();
         let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
-        assert_eq!(
-            sql.join(";").contains(&platform.quote_identifier("select")),
-            true
-        );
+        assert!(sql.join(";").contains(&platform.quote_identifier("select")));
     }
 
     #[tokio::test]
@@ -860,7 +854,7 @@ mod tests {
 
         let comparator = schema_manager.create_comparator();
         let diff = comparator.diff_table(&from_table, &to_table).unwrap();
-        assert_eq!(diff.is_some(), true);
+        assert!(diff.is_some());
         assert_eq!(
             schema_manager
                 .get_alter_table_sql(&mut diff.unwrap())
@@ -949,7 +943,7 @@ mod tests {
         let comparator = schema_manager.create_comparator();
         let mut diff = comparator.diff_table(&from_table, &to_table).unwrap();
 
-        assert_eq!(diff.is_some(), true);
+        assert!(diff.is_some());
         assert_eq!(
             schema_manager
                 .get_alter_table_sql(diff.as_mut().unwrap())

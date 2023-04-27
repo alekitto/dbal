@@ -3,7 +3,7 @@ use crate::r#type::IntoType;
 use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
 use crate::schema::{CheckConstraint, IntoIdentifier};
 use crate::{Result, Value};
-use creed::r#type::TypePtr;
+use crate::r#type::TypePtr;
 
 #[derive(Clone)]
 pub struct ColumnData {
@@ -107,9 +107,9 @@ impl ColumnBuilder {
     }
 }
 
-impl Into<Column> for ColumnBuilder {
-    fn into(self) -> Column {
-        self.get_column()
+impl From<ColumnBuilder> for Column {
+    fn from(value: ColumnBuilder) -> Self {
+        value.get_column()
     }
 }
 

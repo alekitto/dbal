@@ -281,7 +281,7 @@ mod tests {
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
-    use creed::driver::mysql::MySQLVariant;
+    use crate::driver::mysql::MySQLVariant;
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {

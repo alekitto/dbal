@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![feature(decl_macro)]
 #![feature(type_alias_impl_trait)]
-#![feature(is_some_and)]
+#![feature(impl_trait_in_assoc_type)]
 
 extern crate creed_derive;
 extern crate self as creed;

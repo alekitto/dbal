@@ -9,7 +9,7 @@ use crate::r#type::{TypeManager, TypePtr};
 use crate::schema::ColumnData;
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 pub use create_flags::CreateFlags;
-use creed::schema::SchemaManager;
+use crate::schema::SchemaManager;
 pub use date_interval_unit::DateIntervalUnit;
 pub use keyword::{KeywordList, Keywords};
 pub use lock_mode::LockMode;

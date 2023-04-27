@@ -9,7 +9,7 @@ use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
     Value,
 };
-use creed::schema::SchemaManager;
+use crate::schema::SchemaManager;
 use std::io::Read;
 use std::sync::Arc;
 
@@ -163,7 +163,7 @@ impl Connection {
     ///
     /// # Events
     ///
-    /// A [`ConnectionEvent`](creed::event::ConnectionEvent) (async) event is fired and dispatched
+    /// A [`ConnectionEvent`](ConnectionEvent) (async) event is fired and dispatched
     /// through the event manager.
     ///
     /// # Errors

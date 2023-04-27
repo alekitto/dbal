@@ -4,8 +4,8 @@ use crate::schema::{
     Table, TableDiff,
 };
 use crate::{Result, Value};
-use creed::r#type::DECIMAL;
-use creed::schema::ColumnDiff;
+use crate::r#type::DECIMAL;
+use crate::schema::ColumnDiff;
 use itertools::Itertools;
 use std::collections::btree_map::Entry::{Occupied, Vacant};
 use std::collections::BTreeMap;

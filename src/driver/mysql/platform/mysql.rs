@@ -13,7 +13,7 @@ use crate::schema::{
 use crate::util::strtr;
 use crate::{Error, Result, Row, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::option::Option::Some;
-use creed::schema::SchemaManager;
+use crate::schema::SchemaManager;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -864,27 +864,27 @@ pub fn get_portable_table_column_definition(
         }
 
         "tinytext" => {
-            length = Some(LENGTH_LIMIT_TINYTEXT as usize);
+            length = Some(LENGTH_LIMIT_TINYTEXT);
         }
 
         "text" => {
-            length = Some(LENGTH_LIMIT_TEXT as usize);
+            length = Some(LENGTH_LIMIT_TEXT);
         }
 
         "mediumtext" => {
-            length = Some(LENGTH_LIMIT_MEDIUMTEXT as usize);
+            length = Some(LENGTH_LIMIT_MEDIUMTEXT);
         }
 
         "tinyblob" => {
-            length = Some(LENGTH_LIMIT_TINYBLOB as usize);
+            length = Some(LENGTH_LIMIT_TINYBLOB);
         }
 
         "blob" => {
-            length = Some(LENGTH_LIMIT_BLOB as usize);
+            length = Some(LENGTH_LIMIT_BLOB);
         }
 
         "mediumblob" => {
-            length = Some(LENGTH_LIMIT_MEDIUMBLOB as usize);
+            length = Some(LENGTH_LIMIT_MEDIUMBLOB);
         }
 
         "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint" | "year" => {
@@ -904,16 +904,16 @@ pub fn get_portable_table_column_definition(
     };
 
     let column_default = if let Value::String(s) = column_default {
-        Value::from(get_column_default(platform.as_dyn(), Some(s.clone())))
+        Value::from(get_column_default(platform.as_dyn(), Some(s)))
     } else {
         column_default
     };
 
-    let mut column = Column::new(&table_column.get("field")?.to_string(), ty)?;
+    let mut column = Column::new(table_column.get("field")?.to_string(), ty)?;
     column.set_length(length);
     column.set_unsigned(col_type.contains("unsigned"));
     column.set_fixed(fixed);
-    column.set_default(column_default.into());
+    column.set_default(column_default);
     column.set_notnull(table_column.get("null")? != &Value::from("YES"));
 
     if scale.is_some() && precision.is_some() {

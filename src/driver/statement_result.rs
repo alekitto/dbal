@@ -1,5 +1,5 @@
 use crate::{Result, Row, Rows};
-use creed::rows::RowsIterator;
+use crate::rows::RowsIterator;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 

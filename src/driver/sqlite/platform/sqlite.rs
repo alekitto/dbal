@@ -8,7 +8,7 @@ use crate::schema::{
     TableDiff, TableOptions,
 };
 use crate::{Error, Result, Row, TransactionIsolationLevel, Value};
-use creed::schema::IntoIdentifier;
+use crate::schema::IntoIdentifier;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -903,12 +903,8 @@ pub fn get_portable_table_column_definition(
     let ty = String::try_from(table_column.get("type").unwrap())?;
     let parts = Regex::new("[()]")?.split(&ty).collect::<Vec<_>>();
 
-    let db_type = parts.get(0).unwrap().to_lowercase();
-    let mut length = if let Some(len) = parts.get(1) {
-        Some(len.to_string())
-    } else {
-        None
-    };
+    let db_type = parts.first().unwrap().to_lowercase();
+    let mut length = parts.get(1).map(ToString::to_string);
 
     let unsigned = db_type.contains(" unsigned");
     let db_type = db_type.replace(" unsigned", "");
@@ -922,12 +918,7 @@ pub fn get_portable_table_column_definition(
     } else {
         let rx = Regex::new("^'(.*)'$")?;
         Some(if let Some(matches) = rx.captures(&default) {
-            matches
-                .get(1)
-                .unwrap()
-                .as_str()
-                .replace("''", "'")
-                .to_string()
+            matches.get(1).unwrap().as_str().replace("''", "'")
         } else {
             default
         })
@@ -979,7 +970,7 @@ pub fn get_portable_table_column_definition(
         Value::NULL
     };
 
-    let mut column = Column::new(&name, r#type)?;
+    let mut column = Column::new(name, r#type)?;
     column.set_length(length.and_then(|x| usize::from_str(&x).ok()));
     column.set_jsonb(unsigned);
     column.set_fixed(fixed);

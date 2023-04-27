@@ -6,9 +6,9 @@ use crate::schema::{
     ForeignKeyConstraint, Identifier, Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
 };
 use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
-use creed::params;
-use creed::platform::DatabasePlatform;
-use creed::schema::{remove_type_from_comment, SchemaManager};
+use crate::params;
+use crate::platform::DatabasePlatform;
+use crate::schema::{remove_type_from_comment, SchemaManager};
 use itertools::Itertools;
 use regex::Regex;
 
@@ -1014,7 +1014,7 @@ pub fn get_portable_table_column_definition(
     let domain_type = table_column.get("domain_type")?;
     let mut complete_type = table_column.get("complete_type")?.to_string();
     if !domain_type.is_null()
-        && &domain_type.to_string() != ""
+        && !domain_type.to_string().is_empty()
         && !platform.has_type_mapping_for(&db_type)
     {
         db_type = domain_type.to_string().to_lowercase();
@@ -1086,9 +1086,9 @@ pub fn get_portable_table_column_definition(
         }
     }
 
-    let mut column = Column::new(&table_column.get("field")?.to_string(), ty)?;
+    let mut column = Column::new(table_column.get("field")?.to_string(), ty)?;
     column.set_length(col_length.and_then(|v| usize::try_from(v).ok()));
-    column.set_notnull(table_column.get("isnotnull")?.to_string() == "true".to_string());
+    column.set_notnull(table_column.get("isnotnull")?.to_string() == "true");
     column.set_default(col_default);
     column.set_precision(precision);
     column.set_scale(scale);

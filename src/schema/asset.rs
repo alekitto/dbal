@@ -90,7 +90,6 @@ pub trait Asset: IntoIdentifier {
         let keywords = platform.create_reserved_keywords_list();
         self.get_name()
             .split('.')
-            .into_iter()
             .map(|v| {
                 if self.is_quoted() || keywords.is_keyword(v) {
                     platform.quote_identifier(v)

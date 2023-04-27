@@ -5,13 +5,12 @@ use crate::r#type;
 use crate::r#type::{IntoType, TypeManager, TypePtr};
 use crate::schema::{
     Asset, Column, ColumnData, ColumnDiff, Comparator, ForeignKeyConstraint,
-    ForeignKeyReferentialAction, Identifier, Index, IndexOptions, IntoIdentifier, Schema,
-    SchemaDiff, Sequence, Table, TableDiff, TableOptions, UniqueConstraint, View,
+    ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema, SchemaDiff, Sequence,
+    Table, TableDiff, TableOptions, UniqueConstraint, View,
 };
 use crate::util::{filter_asset_names, function_name, ToSqlStatementList};
 use crate::{
-    params, AsyncResult, Connection, Error, Result, Row, SchemaColumnDefinitionEvent,
-    SchemaIndexDefinitionEvent, Value,
+    params, AsyncResult, Connection, Error, Result, Row, SchemaColumnDefinitionEvent, Value,
 };
 use regex::Regex;
 use std::borrow::Cow;
@@ -20,7 +19,7 @@ use std::collections::HashMap;
 use std::ops::Index as _;
 use std::sync::Arc;
 
-async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
+pub(crate) async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
     if let Some(database) = conn.get_database().await {
         Ok(database)
     } else {
@@ -1147,7 +1146,6 @@ pub trait SchemaManager: Sync {
             }
 
             let column = column.unwrap();
-            let name = column.get_name().to_lowercase();
             list.push(column);
         }
 
@@ -1540,7 +1538,7 @@ mod tests {
         SchemaAlterTableRemoveColumnEvent, SchemaColumnDefinitionEvent,
         SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent, Value,
     };
-    use creed::SchemaAlterTableRenameColumnEvent;
+    use crate::SchemaAlterTableRenameColumnEvent;
     use itertools::Itertools;
     use serial_test::serial;
     use std::collections::HashMap;
@@ -1620,7 +1618,7 @@ mod tests {
             &[],
             HashMap::default(),
         );
-        index_def.r#where = Some(r#where.clone().into());
+        index_def.r#where = Some(r#where.to_string());
         let unique_constraint =
             UniqueConstraint::new("name", &["test", "test2"], &[], HashMap::default());
 

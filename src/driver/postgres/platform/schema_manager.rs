@@ -748,10 +748,7 @@ mod tests {
         let schema_manager = connection.create_schema_manager().unwrap();
         let platform = schema_manager.get_platform().unwrap();
         let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
-        assert_eq!(
-            sql.join(";").contains(&platform.quote_identifier("select")),
-            true
-        );
+        assert!(sql.join(";").contains(&platform.quote_identifier("select")));
     }
 
     #[tokio::test]
@@ -928,7 +925,7 @@ mod tests {
 
         let comparator = schema_manager.create_comparator();
         let diff = comparator.diff_table(&from_table, &to_table).unwrap();
-        assert_eq!(diff.is_some(), true);
+        assert!(diff.is_some());
         assert_eq!(
             schema_manager
                 .get_alter_table_sql(&mut diff.unwrap())
@@ -1019,7 +1016,7 @@ mod tests {
         let comparator = schema_manager.create_comparator();
         let mut diff = comparator.diff_table(&from_table, &to_table).unwrap();
 
-        assert_eq!(diff.is_some(), true);
+        assert!(diff.is_some());
         assert_eq!(
             schema_manager
                 .get_alter_table_sql(diff.as_mut().unwrap())

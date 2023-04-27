@@ -214,7 +214,7 @@ mod tests {
             &Url::parse(&std::env::var("DATABASE_DSN").unwrap()).unwrap(),
         ))
         .await;
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -227,9 +227,9 @@ mod tests {
         .expect("Must be connected");
 
         let statement = connection.prepare("SELECT 1");
-        assert_eq!(statement.is_ok(), true);
+        assert!(statement.is_ok());
         let statement = connection.prepare("NOT_A_COMMAND 1");
-        assert_eq!(statement.is_ok(), true);
+        assert!(statement.is_ok());
     }
 
     #[tokio::test]
@@ -242,7 +242,7 @@ mod tests {
         .expect("Must be connected");
 
         let statement = connection.query("SELECT 1 + 1", params![]).await;
-        assert_eq!(statement.is_ok(), true);
+        assert!(statement.is_ok());
         let mut statement = statement.unwrap();
         let row = statement.fetch_one().await?.unwrap();
 

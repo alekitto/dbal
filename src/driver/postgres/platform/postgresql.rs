@@ -176,7 +176,7 @@ pub fn get_list_table_indexes_sql(this: &dyn SchemaManager, table: &str) -> Resu
 pub fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
-    table_name: &str,
+    table_name: String,
 ) -> Result<Vec<Index>> {
     let mut buffer = vec![];
     for row in table_indexes {

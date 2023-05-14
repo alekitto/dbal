@@ -1,7 +1,10 @@
+use crate::platform::DatabasePlatform;
+use crate::util::PlatformBox;
 use crate::Error;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 use url::Url;
 
 #[derive(Clone, Copy, Debug)]
@@ -25,6 +28,7 @@ pub struct ConnectionOptions {
     pub file_path: Option<String>, // SQLite
     pub database_name: Option<String>,
     pub database_name_suffix: Option<String>,
+    pub platform: Option<PlatformBox>,
     pub ssl_mode: SslMode,
     pub application_name: Option<String>, // PostgreSQL
 
@@ -69,6 +73,14 @@ impl ConnectionOptions {
 
     pub fn with_database_name_suffix(mut self, database_name_suffix: Option<String>) -> Self {
         self.database_name_suffix = database_name_suffix;
+        self
+    }
+
+    pub fn with_platform(
+        mut self,
+        platform: Option<Box<(dyn DatabasePlatform + Sync + Send)>>,
+    ) -> Self {
+        self.platform = platform.map(Arc::new);
         self
     }
 

@@ -166,11 +166,11 @@ pub macro params {
         $crate::parameter::NO_PARAMS
     },
 
-    [($idx:expr=>$value:expr)] => {
+    [$idx:expr=>$value:expr] => {
         $crate::Parameters::Array(&[ ($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)) ])
     },
 
-    [$(($idx:expr=>$value:expr),)*] => {
+    [$($idx:expr=>$value:expr,)*] => {
         $crate::Parameters::Array(&[ $(($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)),)* ])
     }
 }

@@ -11,7 +11,10 @@ pub struct FunctionalTestsHelper {
 
 impl FunctionalTestsHelper {
     pub async fn default() -> Self {
-        let connection = create_connection().await.unwrap();
+        Self::new(create_connection().await.unwrap())
+    }
+
+    pub fn new(connection: Connection) -> Self {
         let platform = connection.get_platform().unwrap();
 
         Self {
@@ -21,18 +24,13 @@ impl FunctionalTestsHelper {
     }
 
     pub async fn with_configuration(configuration: Configuration) -> Self {
-        let connection =
+        Self::new(
             Connection::create_from_dsn(&get_database_dsn(), Some(configuration), None)
                 .unwrap()
                 .connect()
                 .await
-                .unwrap();
-        let platform = connection.get_platform().unwrap();
-
-        Self {
-            connection,
-            platform,
-        }
+                .unwrap(),
+        )
     }
 
     pub fn get_schema_manager(&self) -> Box<dyn SchemaManager + '_> {
@@ -89,6 +87,9 @@ impl FunctionalTestsHelper {
         table.add_column(col);
 
         table.add_column(Column::new("foreign_key_test", INTEGER)?);
+
+        table.set_primary_key(&["id"], None)?;
+
         Ok(table)
     }
 

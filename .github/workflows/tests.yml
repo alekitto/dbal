@@ -9,88 +9,53 @@ on:
 jobs:
   format:
     name: Format
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
       # this is cheaper than requesting the non-minimal profile
       - run: rustup component add rustfmt
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
 
   check:
     name: Check
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         runtime: [tokio]
         tls: [native-tls, rustls]
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-check-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: >
-            --no-default-features
-            --features sqlite,postgres,mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Run cargo check
+        run: cargo check --no-default-features --features sqlite,postgres,mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
 
   test:
     name: Unit Test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         runtime: [tokio]
         tls: [native-tls, rustls]
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Run unit tests
+        run: cargo test --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
@@ -103,38 +68,20 @@ jobs:
 
   sqlite:
     name: SQLite
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         runtime: [tokio]
     needs: check
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-sqlite-${{ matrix.runtime }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --no-default-features
-            --features sqlite,runtime-${{ matrix.runtime }}-rustls
-            --
-            --test-threads=1
+      - name: Run tests
+        run: cargo test --no-default-features --features sqlite,runtime-${{ matrix.runtime }}-rustls -- --test-threads=1
         env:
           DATABASE_DSN: 'sqlite://:memory:'
           CARGO_INCREMENTAL: '0'
@@ -148,7 +95,7 @@ jobs:
 
   postgres:
     name: Postgres
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         postgres: [14, 10]
@@ -157,33 +104,17 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-postgres-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
       - run: |
           docker-compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
           docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --no-default-features
-            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Run tests
+        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal
           CARGO_INCREMENTAL: '0'
@@ -206,7 +137,7 @@ jobs:
 
   mysql:
     name: MySQL
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         mysql: [8, 5_6]
@@ -215,32 +146,16 @@ jobs:
     needs: check
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: moonrepo/setup-rust@v0
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
       - run: docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
       - run: sleep 60
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --no-default-features
-            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Run tests
+        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'
@@ -254,7 +169,7 @@ jobs:
 
   mariadb:
     name: MariaDB
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         mariadb: [10_6, 10_2]
@@ -264,33 +179,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # same Cargo features as MySQL so the same cache can be used
-      - uses: actions/cache@v3
+      - uses: moonrepo/setup-rust@v0
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            !target/**/*.gcda
-          key: ${{ runner.os }}-mysql-${{ matrix.runtime }}-${{ matrix.tls }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
+          channel: nightly
 
       - run: docker-compose run -d -p 3306:3306 mariadb_${{ matrix.mariadb }}
       - run: sleep 30
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: >
-            --no-default-features
-            --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Run tests
+        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'

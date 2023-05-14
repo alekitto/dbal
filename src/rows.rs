@@ -62,6 +62,7 @@ impl Row {
                 for (i, column_name) in self.columns.iter().enumerate() {
                     if Ordering::Equal == name.cmp(column_name) {
                         result = Ok(i);
+                        break;
                     }
                 }
 

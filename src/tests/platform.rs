@@ -1,6 +1,6 @@
 use crate::platform::{DatabasePlatform, KeywordList, Keywords};
 use crate::schema::{ColumnData, SchemaManager};
-use crate::tests::schema_manager::MockSchemaManager;
+use crate::tests::MockSchemaManager;
 use crate::{Connection, EventDispatcher, Result};
 use std::any::TypeId;
 use std::fmt::{Debug, Formatter};

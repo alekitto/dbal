@@ -7,7 +7,7 @@ use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
-use crate::{Error, Result, Row, TransactionIsolationLevel, Value};
+use crate::{params, Error, Result, Row, TransactionIsolationLevel, Value};
 use crate::schema::IntoIdentifier;
 use itertools::Itertools;
 use regex::Regex;
@@ -981,4 +981,99 @@ pub fn get_portable_table_column_definition(
     column.set_autoincrement(false);
 
     Ok(column)
+}
+
+pub async fn get_portable_table_indexes_list(
+    this: &dyn SchemaManager,
+    table_indexes: Vec<Row>,
+    table_name: String,
+) -> Result<Vec<Index>> {
+    let mut buffer = vec![];
+    let mut primary = this
+        .get_connection()
+        .fetch_all(
+            "SELECT * FROM PRAGMA_TABLE_INFO (?)",
+            params![0 => Value::String(table_name.clone())],
+        )
+        .await?;
+
+    primary.sort_by(|a, b| {
+        let a_pk = a.get("pk").unwrap();
+        let b_pk = b.get("pk").unwrap();
+        if a_pk == b_pk {
+            let a = a.get("cid").unwrap();
+            let b = b.get("cid").unwrap();
+
+            i32::try_from(a).unwrap().cmp(&i32::try_from(b).unwrap())
+        } else {
+            i32::try_from(a_pk)
+                .unwrap()
+                .cmp(&i32::try_from(b_pk).unwrap())
+        }
+    });
+
+    for row in primary {
+        let pk = row.get("pk").unwrap();
+        if pk == &Value::Int(0) || pk == &Value::String("0".into()) {
+            continue;
+        }
+
+        buffer.push(Row::new(
+            vec![
+                "key_name".into(),
+                "primary".into(),
+                "non_unique".into(),
+                "column_name".into(),
+                "where".into(),
+                "flags".into(),
+            ],
+            vec![
+                Value::String("primary".into()),
+                Value::Boolean(true),
+                Value::Boolean(false),
+                row.get("name")?.clone(),
+                Value::NULL,
+                Value::NULL,
+            ],
+        ));
+    }
+
+    let conn = this.get_connection();
+    for row in table_indexes {
+        let key_name = String::try_from(row.get("name")?).unwrap();
+        if key_name.starts_with("sqlite_") {
+            continue;
+        }
+
+        let index_info = conn
+            .fetch_all(
+                "SELECT * FROM PRAGMA_INDEX_INFO (?)",
+                params![0 => Value::String(key_name.clone())],
+            )
+            .await?;
+        for col_row in index_info {
+            let row = Row::new(
+                vec![
+                    "key_name".into(),
+                    "primary".into(),
+                    "non_unique".into(),
+                    "column_name".into(),
+                    "where".into(),
+                    "flags".into(),
+                ],
+                vec![
+                    Value::String(key_name.clone()),
+                    Value::Boolean(false),
+                    Value::Boolean(i32::try_from(row.get("unique")?.clone())? == 0),
+                    col_row.get("name")?.clone(),
+                    Value::NULL,
+                    Value::NULL,
+                ],
+            );
+
+            buffer.push(row);
+        }
+    }
+
+    default::get_portable_table_indexes_list(this, buffer, table_name)
 }

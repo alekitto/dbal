@@ -177,8 +177,11 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> Result<Vec<Index>> {
-        postgresql::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
+    ) -> AsyncResult<Vec<Index>> {
+        let table_name = table_name.to_string();
+        Box::pin(async move {
+            postgresql::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
+        })
     }
 }
 

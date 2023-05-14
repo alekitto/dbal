@@ -1473,7 +1473,7 @@ pub fn list_sequences(this: &dyn SchemaManager) -> AsyncResult<Vec<Sequence>> {
 pub fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
-    table_name: &str,
+    table_name: String,
 ) -> Result<Vec<Index>> {
     let mut result = HashMap::new();
     let connection = this.get_connection();
@@ -1532,7 +1532,7 @@ pub fn get_portable_table_indexes_list(
     for (index_key, data) in result {
         let event = event_manager.dispatch_sync(SchemaIndexDefinitionEvent::new(
             &data,
-            table_name,
+            &table_name,
             this.get_platform()?,
         ))?;
         let index = if event.is_default_prevented() {

@@ -143,6 +143,17 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         sqlite::get_portable_table_column_definition(self.as_dyn(), table_column)
     }
 
+    fn get_portable_table_indexes_list(
+        &self,
+        table_indexes: Vec<Row>,
+        table_name: &str,
+    ) -> AsyncResult<Vec<Index>> {
+        let table_name = table_name.to_string();
+        Box::pin(async move {
+            sqlite::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name).await
+        })
+    }
+
     fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>> {
         let table = self.normalize_name(table);
 
@@ -152,7 +163,7 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
                 .await?
                 .fetch_all()
                 .await?;
-            self.get_portable_table_indexes_list(rows, &table)
+            self.get_portable_table_indexes_list(rows, &table).await
         })
     }
 
@@ -614,7 +625,7 @@ mod tests {
         let schema_manager = connection.create_schema_manager().unwrap();
         let platform = schema_manager.get_platform().unwrap();
         let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
-        assert_eq!(sql.join(";").contains(&platform.quote_identifier("select")));
+        assert!(sql.join(";").contains(&platform.quote_identifier("select")));
     }
 
     #[tokio::test]

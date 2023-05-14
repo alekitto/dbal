@@ -49,13 +49,17 @@ impl Connection {
         event_manager: Option<EventDispatcher>,
     ) -> Self {
         let connection_options = Self::add_database_suffix(connection_options);
-        let event_manager = Arc::new(event_manager.unwrap_or_default());
+        let platform = connection_options.platform.clone();
+        let event_manager = platform
+            .as_ref()
+            .map(|platform| platform.get_event_manager())
+            .unwrap_or_else(|| Arc::new(event_manager.unwrap_or_default()));
 
         Self {
             connection_options,
             configuration: Arc::new(configuration.unwrap_or_default()),
             driver: None,
-            platform: None,
+            platform,
             event_manager,
         }
     }
@@ -199,11 +203,12 @@ impl Connection {
         }
 
         let driver = Arc::new(Driver::create(&self.connection_options).await?);
-        let platform = Arc::new(driver.create_platform(self.event_manager.clone()).await);
+        if self.platform.is_none() {
+            let platform = Arc::new(driver.create_platform(self.event_manager.clone()).await);
+            let _ = self.platform.insert(platform);
+        }
 
         let _ = self.driver.insert(driver);
-        let _ = self.platform.insert(platform);
-
         let this = Arc::new(self);
 
         {

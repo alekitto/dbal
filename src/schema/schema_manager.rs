@@ -456,6 +456,7 @@ pub trait SchemaManager: Sync {
             let table_indexes = self.get_connection().fetch_all(sql, params!()).await?;
 
             self.get_portable_table_indexes_list(table_indexes, &table)
+                .await
         })
     }
 
@@ -1160,8 +1161,11 @@ pub trait SchemaManager: Sync {
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> Result<Vec<Index>> {
-        default::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
+    ) -> AsyncResult<Vec<Index>> {
+        let table_name = table_name.to_string();
+        Box::pin(async move {
+            default::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
+        })
     }
 
     fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>> {
@@ -1372,7 +1376,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
             fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> Result<Vec<Index>>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>>;
             fn get_portable_table_definition(&self, table: &Row) -> Result<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
@@ -1505,7 +1509,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
             fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> Result<Vec<Index>>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>>;
             fn get_portable_table_definition(&self, table: &Row) -> Result<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
@@ -1531,12 +1535,15 @@ mod tests {
         Asset, Column, ColumnDiff, Comparator, ForeignKeyReferentialAction, Index, IntoIdentifier,
         SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
     };
-    use crate::tests::{create_connection, FunctionalTestsHelper, MockConnection};
+    use crate::tests::{
+        create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
+    };
     use crate::{
-        params, Configuration, Connection, Error, EventDispatcher, Result,
+        params, Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
         SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
         SchemaAlterTableRemoveColumnEvent, SchemaColumnDefinitionEvent,
-        SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent, Value,
+        SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent,
+        SchemaIndexDefinitionEvent, Value,
     };
     use crate::SchemaAlterTableRenameColumnEvent;
     use itertools::Itertools;
@@ -1694,6 +1701,7 @@ mod tests {
         on_schema_alter_table_rename_column: usize,
 
         on_schema_column_definition: usize,
+        on_schema_index_definition: usize,
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
@@ -2360,6 +2368,79 @@ mod tests {
             .list_table_columns("list_table_columns", None)
             .await?;
         assert_eq!(listener.lock().unwrap().on_schema_column_definition, 7);
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_indexes_dispatch_event() -> Result<()> {
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let event_manager = helper.connection.get_event_manager();
+
+        let mut table = helper.get_test_table("list_table_indexes_test")?;
+        table.add_unique_index(&["test"], Some("test_index_name"), Default::default())?;
+        table.add_index(Index::new(
+            "test_composite_idx",
+            &["id", "test"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+
+        helper.drop_and_create_table(&table).await?;
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaIndexDefinitionEvent| {
+                listener.lock().unwrap().on_schema_index_definition += 1;
+                Ok(())
+            });
+        }
+
+        schema_manager
+            .list_table_indexes("list_table_indexes_test")
+            .await?;
+        assert_eq!(listener.lock().unwrap().on_schema_index_definition, 3); // 3 = primary, test_index_name, test_composite_idx
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn dispatch_event_when_database_platform_is_explicitly_passed() -> Result<()> {
+        let platform = {
+            let helper = FunctionalTestsHelper::default().await;
+            helper.connection.get_platform()?.clone()
+        };
+
+        let conn_opts = ConnectionOptions::try_from(get_database_dsn().as_str())?
+            .with_platform(Some(Arc::into_inner(platform).unwrap()));
+        let connection = Connection::create(conn_opts, None, None);
+
+        let helper = FunctionalTestsHelper::new(connection.connect().await?);
+        let schema_manager = helper.get_schema_manager();
+        let event_manager = helper.connection.get_event_manager();
+        let table = helper.get_test_table("explicit_db_platform_test")?;
+
+        let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
+
+        {
+            let listener = listener.clone();
+            event_manager.add_listener(move |_: &mut SchemaCreateTableEvent| {
+                listener.lock().unwrap().on_schema_create_table_calls += 1;
+                Ok(())
+            });
+        }
+
+        schema_manager.create_table(&table).await?;
+        assert_eq!(listener.lock().unwrap().on_schema_create_table_calls, 1);
 
         Ok(())
     }

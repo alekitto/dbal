@@ -54,6 +54,6 @@ impl Type for DateType {
         column: &ColumnData,
         platform: &dyn DatabasePlatform,
     ) -> Result<String> {
-        platform.get_date_time_type_declaration_sql(column)
+        platform.get_date_type_declaration_sql(column)
     }
 }

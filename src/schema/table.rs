@@ -184,7 +184,7 @@ impl Table {
     }
 
     pub fn has_primary_key(&self) -> bool {
-        self.primary_key_name.is_some()
+        self.indices.iter().any(|idx| idx.is_primary())
     }
 
     pub fn get_indices(&self) -> &Vec<Index> {

@@ -113,6 +113,11 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
     }
 
     #[inline]
+    fn columns_equal(&self, column1: &Column, column2: &Column) -> Result<bool> {
+        mysql::columns_equal(self.as_dyn(), column1, column2)
+    }
+
+    #[inline]
     fn get_drop_unique_constraint_sql(
         &self,
         name: &Identifier,

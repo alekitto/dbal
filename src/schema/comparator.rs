@@ -1,11 +1,11 @@
+use crate::r#type::DECIMAL;
 use crate::r#type::{IntoType, BINARY, GUID, STRING};
+use crate::schema::ColumnDiff;
 use crate::schema::{
     Asset, ChangedProperty, Column, ColumnData, Index, Schema, SchemaDiff, SchemaManager, Sequence,
     Table, TableDiff,
 };
 use crate::{Result, Value};
-use crate::r#type::DECIMAL;
-use crate::schema::ColumnDiff;
 use itertools::Itertools;
 use std::collections::btree_map::Entry::{Occupied, Vacant};
 use std::collections::BTreeMap;

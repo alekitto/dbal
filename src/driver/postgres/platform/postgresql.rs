@@ -1,14 +1,14 @@
 use crate::error::ErrorKind;
+use crate::params;
+use crate::platform::DatabasePlatform;
 use crate::platform::{default, DateIntervalUnit};
 use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
 use crate::schema::{
     extract_type_from_comment, Asset, ChangedProperty, Column, ColumnData, ColumnDiff,
     ForeignKeyConstraint, Identifier, Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
 };
-use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
-use crate::params;
-use crate::platform::DatabasePlatform;
 use crate::schema::{remove_type_from_comment, SchemaManager};
+use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
 use itertools::Itertools;
 use regex::Regex;
 

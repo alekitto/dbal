@@ -1,6 +1,5 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::driver::mysql::platform;
-use crate::driver::mysql::platform::MySQLPlatform;
 use crate::driver::statement::Statement;
 use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;

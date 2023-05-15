@@ -1,6 +1,6 @@
+use crate::schema::IntoIdentifier;
 use crate::schema::{Asset, Identifier};
 use crate::Value;
-use crate::schema::IntoIdentifier;
 use std::any::TypeId;
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};

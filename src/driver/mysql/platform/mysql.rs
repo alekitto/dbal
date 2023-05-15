@@ -6,6 +6,7 @@ use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
 use crate::driver::mysql::MySQLSchemaManager;
 use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
 use crate::r#type::{IntoType, BLOB, TEXT};
+use crate::schema::SchemaManager;
 use crate::schema::{
     extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData,
     ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
@@ -13,7 +14,6 @@ use crate::schema::{
 use crate::util::strtr;
 use crate::{Error, Result, Row, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::option::Option::Some;
-use crate::schema::SchemaManager;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -1008,22 +1008,26 @@ ORDER BY k.ORDINAL_POSITION
 
 pub fn get_list_table_indexes_sql(
     this: &MySQLSchemaManager,
-    database: &str,
     table: &str,
+    database: &str,
 ) -> Result<String> {
     Ok(format!(
-        "
+        r#"
 SELECT
-    NON_UNIQUE  AS Non_Unique,
-    INDEX_NAME  AS Key_name,
-    COLUMN_NAME AS Column_Name,
-    SUB_PART    AS Sub_Part,
-    INDEX_TYPE  AS Index_Type
+    NON_UNIQUE  AS non_unique,
+    INDEX_NAME  AS key_name,
+    COLUMN_NAME AS column_name,
+    SUB_PART    AS sub_part,
+    INDEX_TYPE  AS index_type,
+    0           AS length,
+    NULL        AS flags,
+    NULL        AS `where`,
+    IF(INDEX_NAME = 'PRIMARY', 1, 0) AS `primary`
 FROM information_schema.STATISTICS
 WHERE
     TABLE_SCHEMA = {} AND
     TABLE_NAME = {}
-ORDER BY SEQ_IN_INDEX",
+ORDER BY SEQ_IN_INDEX"#,
         this.quote_string_literal(database),
         this.quote_string_literal(table)
     ))

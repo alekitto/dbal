@@ -276,12 +276,12 @@ impl DatabasePlatform for MySQLPlatform {
 #[cfg(test)]
 mod tests {
     use crate::driver::mysql::MySQLPlatform;
+    use crate::driver::mysql::MySQLVariant;
     use crate::platform::DatabasePlatform;
     use crate::r#type::{BINARY, GUID, JSON};
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
-    use crate::driver::mysql::MySQLVariant;
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {

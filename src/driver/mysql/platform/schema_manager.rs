@@ -177,13 +177,13 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
 #[cfg(test)]
 mod tests {
     use crate::platform::CreateFlags;
+    use crate::r#type::BOOLEAN;
     use crate::r#type::{INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
         Asset, ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
     };
     use crate::tests::create_connection;
-    use crate::r#type::BOOLEAN;
     use std::collections::HashMap;
 
     #[tokio::test]

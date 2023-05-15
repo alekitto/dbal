@@ -1538,6 +1538,7 @@ mod tests {
     use crate::tests::{
         create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
     };
+    use crate::SchemaAlterTableRenameColumnEvent;
     use crate::{
         params, Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
         SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
@@ -1545,7 +1546,6 @@ mod tests {
         SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent,
         SchemaIndexDefinitionEvent, Value,
     };
-    use crate::SchemaAlterTableRenameColumnEvent;
     use itertools::Itertools;
     use serial_test::serial;
     use std::collections::HashMap;
@@ -2323,6 +2323,7 @@ mod tests {
         let schema_manager = helper.get_schema_manager();
 
         let table_name = "test_list_table_fixed_string";
+        helper.drop_table_if_exists(&table_name).await;
 
         let mut table = Table::new(table_name);
         table.add_column(
@@ -2427,6 +2428,9 @@ mod tests {
         let helper = FunctionalTestsHelper::new(connection.connect().await?);
         let schema_manager = helper.get_schema_manager();
         let event_manager = helper.connection.get_event_manager();
+        helper
+            .drop_table_if_exists(&"explicit_db_platform_test")
+            .await;
         let table = helper.get_test_table("explicit_db_platform_test")?;
 
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));

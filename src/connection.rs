@@ -4,12 +4,12 @@ use crate::driver::Driver;
 use crate::event::ConnectionEvent;
 use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
+use crate::schema::SchemaManager;
 use crate::util::PlatformBox;
 use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
     Value,
 };
-use crate::schema::SchemaManager;
 use std::io::Read;
 use std::sync::Arc;
 

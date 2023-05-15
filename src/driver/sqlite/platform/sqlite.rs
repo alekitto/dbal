@@ -3,12 +3,12 @@ use crate::driver::sqlite::platform::AbstractSQLiteSchemaManager;
 use crate::error::ErrorKind;
 use crate::platform::{default, CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode};
 use crate::r#type::{IntoType, BIGINT, DATE, DATETIME, INTEGER, STRING, TIME};
+use crate::schema::IntoIdentifier;
 use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
 use crate::{params, Error, Result, Row, TransactionIsolationLevel, Value};
-use crate::schema::IntoIdentifier;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;

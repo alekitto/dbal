@@ -1,9 +1,9 @@
 use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
+use crate::r#type::TypePtr;
 use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
 use crate::schema::{CheckConstraint, IntoIdentifier};
 use crate::{Result, Value};
-use crate::r#type::TypePtr;
 
 #[derive(Clone)]
 pub struct ColumnData {

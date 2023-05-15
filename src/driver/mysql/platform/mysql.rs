@@ -1,6 +1,7 @@
 use crate::driver::mysql::platform::mysql_platform::{
-    AbstractMySQLPlatform, LENGTH_LIMIT_BLOB, LENGTH_LIMIT_MEDIUMBLOB, LENGTH_LIMIT_MEDIUMTEXT,
-    LENGTH_LIMIT_TEXT, LENGTH_LIMIT_TINYBLOB, LENGTH_LIMIT_TINYTEXT,
+    AbstractMySQLPlatform, LENGTH_LIMIT_BLOB, LENGTH_LIMIT_LONGBLOB, LENGTH_LIMIT_LONGTEXT,
+    LENGTH_LIMIT_MEDIUMBLOB, LENGTH_LIMIT_MEDIUMTEXT, LENGTH_LIMIT_TEXT, LENGTH_LIMIT_TINYBLOB,
+    LENGTH_LIMIT_TINYTEXT,
 };
 use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
 use crate::driver::mysql::MySQLSchemaManager;
@@ -875,6 +876,10 @@ pub fn get_portable_table_column_definition(
             length = Some(LENGTH_LIMIT_MEDIUMTEXT);
         }
 
+        "longtext" => {
+            length = Some(LENGTH_LIMIT_LONGTEXT);
+        }
+
         "tinyblob" => {
             length = Some(LENGTH_LIMIT_TINYBLOB);
         }
@@ -885,6 +890,10 @@ pub fn get_portable_table_column_definition(
 
         "mediumblob" => {
             length = Some(LENGTH_LIMIT_MEDIUMBLOB);
+        }
+
+        "longblob" => {
+            length = Some(LENGTH_LIMIT_LONGBLOB);
         }
 
         "tinyint" | "smallint" | "mediumint" | "int" | "integer" | "bigint" | "year" => {
@@ -1035,4 +1044,18 @@ ORDER BY SEQ_IN_INDEX"#,
 
 pub fn get_list_tables_sql() -> Result<String> {
     Ok("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'".to_string())
+}
+
+pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Column) -> Result<bool> {
+    let mut column1 = column1.clone();
+    let mut column2 = column2.clone();
+
+    column1
+        .set_charset::<String, _>(None)
+        .set_collation::<String, _>(None);
+    column2
+        .set_charset::<String, _>(None)
+        .set_collation::<String, _>(None);
+
+    default::columns_equal(this.as_dyn(), &column1, &column2)
 }

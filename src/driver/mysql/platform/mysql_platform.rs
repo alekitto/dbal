@@ -16,10 +16,12 @@ use std::sync::Arc;
 pub const LENGTH_LIMIT_TINYTEXT: usize = 255;
 pub const LENGTH_LIMIT_TEXT: usize = 65535;
 pub const LENGTH_LIMIT_MEDIUMTEXT: usize = 16777215;
+pub const LENGTH_LIMIT_LONGTEXT: usize = 4294967295;
 
 pub const LENGTH_LIMIT_TINYBLOB: usize = 255;
 pub const LENGTH_LIMIT_BLOB: usize = 65535;
 pub const LENGTH_LIMIT_MEDIUMBLOB: usize = 16777215;
+pub const LENGTH_LIMIT_LONGBLOB: usize = 4294967295;
 
 pub trait AbstractMySQLPlatform: DatabasePlatform {}
 

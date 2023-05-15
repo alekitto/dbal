@@ -2448,4 +2448,28 @@ mod tests {
 
         Ok(())
     }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn diff_list_table_columns() -> Result<()> {
+        let offline_table = create_list_table_columns()?;
+        let helper = FunctionalTestsHelper::default().await;
+        helper.drop_and_create_table(&offline_table).await?;
+
+        let schema_manager = helper.get_schema_manager();
+
+        let online_table = schema_manager
+            .list_table_details("list_table_columns")
+            .await?;
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&online_table, &offline_table)?;
+
+        assert!(
+            diff.is_none(),
+            "No differences should be detected with the offline vs online schema."
+        );
+
+        Ok(())
+    }
 }

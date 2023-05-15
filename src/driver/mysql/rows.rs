@@ -1,6 +1,6 @@
 use crate::{Result, Row, Value};
 use futures::Stream;
-use mysql_async::prelude::{ConvIr, FromValue};
+use mysql_async::prelude::FromValue;
 use mysql_async::{BinaryProtocol, FromValueError, QueryResult};
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -10,8 +10,10 @@ pub struct IrValue {
     output: Value,
 }
 
-impl ConvIr<Value> for IrValue {
-    fn new(v: mysql_async::Value) -> core::result::Result<Self, FromValueError> {
+impl TryFrom<mysql_async::Value> for IrValue {
+    type Error = FromValueError;
+
+    fn try_from(v: mysql_async::Value) -> core::result::Result<Self, FromValueError> {
         let output = match &v {
             mysql_async::Value::NULL => Value::NULL,
             mysql_async::Value::Bytes(bytes) => {
@@ -41,13 +43,11 @@ impl ConvIr<Value> for IrValue {
 
         Ok(Self { value: v, output })
     }
+}
 
-    fn commit(self) -> Value {
-        self.output
-    }
-
-    fn rollback(self) -> mysql_async::Value {
-        self.value
+impl From<IrValue> for Value {
+    fn from(value: IrValue) -> Self {
+        value.output
     }
 }
 

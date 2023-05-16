@@ -1609,7 +1609,7 @@ mod tests {
         let table = Table::new("test".into_identifier());
         let result = schema_manager.get_create_table_sql(&table, None);
 
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
@@ -1644,9 +1644,8 @@ mod tests {
             .get_unique_constraint_declaration_sql("name", &unique_constraint)
             .unwrap();
 
-        assert_eq!(
-            unique_constraint_sql.ends_with(&expected),
-            false,
+        assert!(
+            !unique_constraint_sql.ends_with(&expected),
             "WHERE clause should NOT be present"
         );
 
@@ -1657,15 +1656,10 @@ mod tests {
         );
         for index in indexes {
             if schema_manager.get_platform().unwrap().get_name() == "postgresql" {
-                assert_eq!(
-                    index.ends_with(&expected),
-                    true,
-                    "WHERE clause should be present"
-                );
+                assert!(index.ends_with(&expected), "WHERE clause should be present");
             } else {
-                assert_eq!(
-                    index.ends_with(&expected),
-                    false,
+                assert!(
+                    !index.ends_with(&expected),
                     "WHERE clause should NOT be present"
                 );
             }
@@ -1905,7 +1899,7 @@ mod tests {
             let online_table = schema_manager.list_table_details("default_value").await?;
             let comparator = schema_manager.create_comparator();
             let diff = comparator.diff_table(&table, &online_table)?;
-            assert_eq!(true, diff.is_none());
+            assert!(diff.is_none());
         }
 
         Ok(())
@@ -1928,10 +1922,7 @@ mod tests {
         schema_manager
             .create_sequence(&Sequence::new(name, None, None, None))
             .await?;
-        assert_eq!(
-            helper.has_element_with_name(&schema_manager.list_sequences().await?, name),
-            true
-        );
+        assert!(helper.has_element_with_name(&schema_manager.list_sequences().await?, name));
 
         Ok(())
     }
@@ -1952,19 +1943,16 @@ mod tests {
                 .await?;
             let sequences = schema_manager.list_sequences().await?;
 
-            assert_eq!(
-                sequences.into_iter().any(|s| {
-                    if s.get_name().to_lowercase() == name {
-                        assert_eq!(s.get_allocation_size(), 20);
-                        assert_eq!(s.get_initial_value(), 10);
+            assert!(sequences.into_iter().any(|s| {
+                if s.get_name().to_lowercase() == name {
+                    assert_eq!(s.get_allocation_size(), 20);
+                    assert_eq!(s.get_initial_value(), 10);
 
-                        true
-                    } else {
-                        false
-                    }
-                }),
-                true
-            );
+                    true
+                } else {
+                    false
+                }
+            }));
         }
 
         Ok(())
@@ -1984,12 +1972,9 @@ mod tests {
             schema_manager.create_database(&name).await?;
 
             let databases = schema_manager.list_databases().await?;
-            assert_eq!(
-                databases
-                    .into_iter()
-                    .any(|d| d.get_name().to_lowercase() == name),
-                true
-            );
+            assert!(databases
+                .into_iter()
+                .any(|d| d.get_name().to_lowercase() == name));
         }
 
         Ok(())
@@ -2009,12 +1994,9 @@ mod tests {
             let _ = schema_manager.drop_schema(name).await;
 
             let schemas = schema_manager.list_schema_names().await?;
-            assert_eq!(
-                schemas
-                    .into_iter()
-                    .any(|d| d.get_name().to_lowercase() == name),
-                false
-            );
+            assert!(!schemas
+                .into_iter()
+                .any(|d| d.get_name().to_lowercase() == name));
 
             connection
                 .prepare(schema_manager.get_create_schema_sql(&name)?)?
@@ -2022,12 +2004,9 @@ mod tests {
                 .await?;
 
             let schemas = schema_manager.list_schema_names().await?;
-            assert_eq!(
-                schemas
-                    .into_iter()
-                    .any(|d| d.get_name().to_lowercase() == name),
-                true
-            );
+            assert!(schemas
+                .into_iter()
+                .any(|d| d.get_name().to_lowercase() == name));
         }
 
         Ok(())
@@ -2047,12 +2026,12 @@ mod tests {
         let tables = schema_manager.list_tables().await?;
         let table = tables.into_iter().find(|t| t.get_name() == name);
 
-        assert_eq!(table.is_some(), true);
+        assert!(table.is_some());
 
         let table = table.unwrap();
-        assert_eq!(table.has_column(&"id"), true);
-        assert_eq!(table.has_column(&"test"), true);
-        assert_eq!(table.has_column(&"foreign_key_test"), true);
+        assert!(table.has_column(&"id"));
+        assert!(table.has_column(&"test"));
+        assert!(table.has_column(&"foreign_key_test"));
 
         Ok(())
     }
@@ -2079,7 +2058,7 @@ mod tests {
 
         let tables = schema_manager.list_tables().await?;
         let view = tables.into_iter().find(|t| t.get_name() == "test_view");
-        assert_eq!(view.is_none(), true);
+        assert!(view.is_none());
 
         Ok(())
     }
@@ -2129,8 +2108,8 @@ mod tests {
             .rename_table(&"old_name", &"new_name")
             .await?;
 
-        assert_eq!(schema_manager.tables_exist(&["old_name"]).await?, false);
-        assert_eq!(schema_manager.tables_exist(&["new_name"]).await?, true);
+        assert!(!schema_manager.tables_exist(&["old_name"]).await?);
+        assert!(schema_manager.tables_exist(&["new_name"]).await?);
 
         Ok(())
     }
@@ -2165,6 +2144,21 @@ mod tests {
         Ok(table)
     }
 
+    fn get_test_composite_table(name: &str) -> Table {
+        let mut table = Table::new(name);
+        table.add_column(Column::builder("id", INTEGER).unwrap().set_notnull(true));
+        table.add_column(
+            Column::builder("other_id", INTEGER)
+                .unwrap()
+                .set_notnull(true),
+        );
+        table.add_column(Column::builder("test", STRING).unwrap().set_length(255));
+
+        table.set_primary_key(&["id", "other_id"], None).unwrap();
+
+        table
+    }
+
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
@@ -2185,7 +2179,7 @@ mod tests {
 
         let id_column = columns
             .iter()
-            .find(|c| c.get_name() == "id")
+            .find(|c| c.get_name().to_string().to_lowercase() == "id")
             .ok_or::<Error>("cannot find column 'id'".into())?;
         assert_eq!(
             column_keys.iter().find_position(|c| c == &"id").unwrap().0,
@@ -2195,12 +2189,12 @@ mod tests {
             id_column.get_type(),
             TypeManager::get_instance().get_type_by_name(INTEGER)?
         );
-        assert_eq!(id_column.is_unsigned().unwrap_or(false), false);
-        assert_eq!(id_column.is_notnull(), true);
+        assert!(!id_column.is_unsigned().unwrap_or(false));
+        assert!(id_column.is_notnull());
 
         let test_column = columns
             .iter()
-            .find(|c| c.get_name() == "test")
+            .find(|c| c.get_name().to_string().to_lowercase() == "test")
             .ok_or::<Error>("cannot find column 'test'".into())?;
         assert_eq!(
             column_keys
@@ -2215,8 +2209,8 @@ mod tests {
             TypeManager::get_instance().get_type_by_name(STRING)?
         );
         assert_eq!(test_column.get_length(), Some(255));
-        assert_eq!(test_column.is_fixed(), false);
-        assert_eq!(test_column.is_notnull(), false);
+        assert!(!test_column.is_fixed());
+        assert!(!test_column.is_notnull());
         assert_eq!(test_column.get_default(), &Value::from("expected default"));
 
         let foo_column = columns
@@ -2231,9 +2225,9 @@ mod tests {
             foo_column.get_type(),
             TypeManager::get_instance().get_type_by_name(TEXT)?
         );
-        assert_eq!(foo_column.is_unsigned().unwrap_or(false), false);
-        assert_eq!(foo_column.is_fixed(), false);
-        assert_eq!(foo_column.is_notnull(), true);
+        assert!(!foo_column.is_unsigned().unwrap_or(false));
+        assert!(!foo_column.is_fixed());
+        assert!(foo_column.is_notnull());
         assert_eq!(foo_column.get_default(), &Value::NULL);
 
         let bar_column = columns
@@ -2250,9 +2244,9 @@ mod tests {
         );
         assert_eq!(bar_column.get_precision(), Some(10));
         assert_eq!(bar_column.get_scale(), Some(4));
-        assert_eq!(bar_column.is_unsigned().unwrap_or(false), false);
-        assert_eq!(bar_column.is_fixed(), false);
-        assert_eq!(bar_column.is_notnull(), false);
+        assert!(!bar_column.is_unsigned().unwrap_or(false));
+        assert!(!bar_column.is_fixed());
+        assert!(!bar_column.is_notnull());
         assert_eq!(bar_column.get_default(), &Value::NULL);
 
         let baz1_column = columns
@@ -2271,7 +2265,7 @@ mod tests {
             baz1_column.get_type(),
             TypeManager::get_instance().get_type_by_name(DATETIME)?
         );
-        assert_eq!(baz1_column.is_notnull(), true);
+        assert!(baz1_column.is_notnull());
         assert_eq!(baz1_column.get_default(), &Value::NULL);
 
         let baz2_column = columns
@@ -2286,11 +2280,8 @@ mod tests {
                 .0,
             5
         );
-        assert_eq!(
-            [TIME, DATE, DATETIME].contains(&baz2_column.get_type().get_name()),
-            true
-        );
-        assert_eq!(baz2_column.is_notnull(), true);
+        assert!([TIME, DATE, DATETIME].contains(&baz2_column.get_type().get_name()));
+        assert!(baz2_column.is_notnull());
         assert_eq!(baz2_column.get_default(), &Value::NULL);
 
         let baz3_column = columns
@@ -2305,11 +2296,8 @@ mod tests {
                 .0,
             6
         );
-        assert_eq!(
-            [TIME, DATE, DATETIME].contains(&baz3_column.get_type().get_name()),
-            true
-        );
-        assert_eq!(baz3_column.is_notnull(), true);
+        assert!([TIME, DATE, DATETIME].contains(&baz3_column.get_type().get_name()));
+        assert!(baz3_column.is_notnull());
         assert_eq!(baz3_column.get_default(), &Value::NULL);
 
         Ok(())
@@ -2338,7 +2326,7 @@ mod tests {
         let col = columns.get(0).unwrap();
         assert_eq!(col.get_name(), "column_char");
         assert_eq!(col.get_type().get_name(), STRING);
-        assert_eq!(col.is_fixed(), true);
+        assert!(col.is_fixed());
         assert_eq!(col.get_length(), Some(2));
 
         Ok(())
@@ -2469,6 +2457,83 @@ mod tests {
             diff.is_none(),
             "No differences should be detected with the offline vs online schema."
         );
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_indexes() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = get_test_composite_table("list_table_indexes_test");
+        table.add_unique_index(&["test"], Some("test_index_name"), Default::default())?;
+        table.add_index(Index::new(
+            "test_composite_idx",
+            &["id", "test"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+
+        helper.drop_and_create_table(&table).await?;
+
+        let table_indexes = schema_manager
+            .list_table_indexes("list_table_indexes_test")
+            .await?;
+
+        assert_eq!(table_indexes.len(), 3);
+
+        let primary = table_indexes.iter().find(|idx| idx.is_primary());
+        assert!(
+            primary.is_some(),
+            r#"list_table_indexes() has to return a "primary" index."#
+        );
+
+        let primary = primary.unwrap();
+        assert_eq!(
+            primary
+                .get_columns()
+                .iter()
+                .map(|n| n.to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["id", "other_id"]
+        );
+        assert!(primary.is_primary());
+        assert!(primary.is_unique());
+
+        let test_index = table_indexes
+            .iter()
+            .find(|idx| idx.get_name() == "test_index_name")
+            .unwrap();
+        assert_eq!(
+            test_index
+                .get_columns()
+                .iter()
+                .map(|n| n.to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["test"]
+        );
+        assert!(!test_index.is_primary());
+        assert!(test_index.is_unique());
+
+        let test_index = table_indexes
+            .iter()
+            .find(|idx| idx.get_name() == "test_composite_idx")
+            .unwrap();
+        assert_eq!(
+            test_index
+                .get_columns()
+                .iter()
+                .map(|n| n.to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["id", "test"]
+        );
+        assert!(!test_index.is_primary());
+        assert!(!test_index.is_unique());
 
         Ok(())
     }

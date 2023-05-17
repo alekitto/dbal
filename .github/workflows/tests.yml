@@ -62,7 +62,7 @@ jobs:
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - name: Aggregate code coverage with grcov
-        uses: actions-rs/grcov@v0.1
+        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
       - name: Remove GCDA files
@@ -91,7 +91,7 @@ jobs:
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - name: Aggregate code coverage with grcov
-        uses: actions-rs/grcov@v0.1
+        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
       - name: Remove GCDA files
@@ -135,7 +135,7 @@ jobs:
 #          DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal?sslmode=verify-ca&sslrootcert=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
 
       - name: Aggregate code coverage with grcov
-        uses: actions-rs/grcov@v0.1
+        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
       - name: Remove GCDA files
@@ -169,7 +169,7 @@ jobs:
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - name: Aggregate code coverage with grcov
-        uses: actions-rs/grcov@v0.1
+        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
       - name: Remove GCDA files
@@ -203,7 +203,7 @@ jobs:
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - name: Aggregate code coverage with grcov
-        uses: actions-rs/grcov@v0.1
+        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
         uses: codecov/codecov-action@v3
       - name: Remove GCDA files

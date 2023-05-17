@@ -64,7 +64,3 @@ version = "0.4"
 
 [workspace]
 members = ["derive"]
-
-[profile.test]
-rustflags = [ '-Cinline-threshold=0', '-Clink-dead-code' ]
-codegen-units = 1

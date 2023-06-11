@@ -174,6 +174,13 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         mysql::get_portable_table_column_definition(self.as_dyn(), table_column)
     }
 
+    fn get_portable_table_foreign_keys_list(
+        &self,
+        table_foreign_keys: Vec<Row>,
+    ) -> Result<Vec<ForeignKeyConstraint>> {
+        mysql::get_portable_table_foreign_keys_list(self.as_dyn(), table_foreign_keys)
+    }
+
     fn create_comparator(&self) -> Box<dyn Comparator + Send + '_> {
         Box::new(MySQLComparator::new(self))
     }

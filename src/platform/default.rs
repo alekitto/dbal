@@ -1,4 +1,5 @@
 use super::{CreateFlags, DatabasePlatform, DateIntervalUnit, LockMode, TrimMode};
+use crate::driver::statement_result::StatementResult;
 use crate::event::{
     SchemaAlterTableAddColumnEvent, SchemaAlterTableRemoveColumnEvent, SchemaCreateTableEvent,
     SchemaDropTableEvent,
@@ -20,6 +21,7 @@ use crate::{
 };
 use itertools::Itertools;
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -1470,6 +1472,198 @@ pub fn list_sequences(this: &dyn SchemaManager) -> AsyncResult<Vec<Sequence>> {
     })
 }
 
+/// Lists the columns for a given table.
+pub async fn list_table_columns(
+    this: &dyn SchemaManager,
+    table: String,
+    database: Option<String>,
+) -> Result<Vec<Column>> {
+    let database = if let Some(database) = database {
+        database
+    } else {
+        get_database(this.get_connection(), function_name!()).await?
+    };
+
+    let sql = this.get_list_table_columns_sql(&table, &database)?;
+    let table_columns = this.get_connection().fetch_all(sql, params!()).await?;
+
+    this.get_portable_table_column_list(&table, &database, table_columns)
+}
+
+/// Lists the indexes for a given table returning an array of Index instances.
+/// Keys of the portable indexes list are all lower-cased.
+pub async fn list_table_indexes(this: &dyn SchemaManager, table: String) -> Result<Vec<Index>> {
+    let database = get_database(this.get_connection(), function_name!()).await?;
+    let sql = this.get_list_table_indexes_sql(&table, &database)?;
+
+    let table_indexes = this.get_connection().fetch_all(sql, params!()).await?;
+
+    this.get_portable_table_indexes_list(table_indexes, &table)
+        .await
+}
+
+/// Whether all the given tables exist.
+pub async fn tables_exist(this: &dyn SchemaManager, names: Vec<String>) -> Result<bool> {
+    let table_names = this
+        .list_table_names()
+        .await?
+        .iter()
+        .map(|s| s.to_lowercase())
+        .collect::<Vec<_>>();
+
+    Ok(names.iter().all(|n| {
+        let name = n.to_lowercase();
+        table_names.contains(&name)
+    }))
+}
+
+/// Returns a list of all tables in the current database.
+pub async fn list_table_names(this: &dyn SchemaManager) -> Result<Vec<String>> {
+    let sql = this.get_list_tables_sql()?;
+    let tables = this.get_connection().fetch_all(sql, params!()).await?;
+
+    Ok(filter_asset_names(
+        this.get_connection(),
+        this.get_portable_tables_list(tables)?,
+    )
+    .iter()
+    .map(Asset::get_name)
+    .map(Cow::into_owned)
+    .collect())
+}
+
+/// Lists the tables for this connection.
+pub async fn list_tables(this: &dyn SchemaManager) -> Result<Vec<Table>> {
+    let mut tables = vec![];
+    for table_name in this.list_table_names().await? {
+        tables.push(this.list_table_details(&table_name).await?)
+    }
+
+    Ok(tables)
+}
+
+pub async fn list_table_details(this: &dyn SchemaManager, name: String) -> Result<Table> {
+    let columns = this.list_table_columns(&name, None).await?;
+
+    let foreign_keys = if this
+        .get_platform()?
+        .as_dyn()
+        .supports_foreign_key_constraints()
+    {
+        this.list_table_foreign_keys(&name).await?
+    } else {
+        vec![]
+    };
+
+    let indexes = this.list_table_indexes(&name).await?;
+
+    let mut table = Table::new(Identifier::new(name, false));
+    table.add_columns(columns.into_iter());
+    table.add_indices(indexes.into_iter());
+    table.add_foreign_keys(foreign_keys.into_iter());
+
+    Ok(table)
+}
+
+/// Fetches definitions of table columns in the specified database and returns them grouped by table name.
+/// # Protected
+pub async fn fetch_table_columns_by_table(
+    this: &dyn SchemaManager,
+    database_name: String,
+) -> Result<HashMap<String, Vec<Row>>> {
+    fetch_all_associative_grouped(this, this.select_table_columns(&database_name, None).await?)
+        .await
+}
+
+/// Fetches definitions of index columns in the specified database and returns them grouped by table name.
+/// # Protected
+pub async fn fetch_index_columns_by_table(
+    this: &dyn SchemaManager,
+    database_name: String,
+) -> Result<HashMap<String, Vec<Row>>> {
+    fetch_all_associative_grouped(this, this.select_index_columns(&database_name, None).await?)
+        .await
+}
+
+async fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
+    schema_manager: &SM,
+    result: StatementResult,
+) -> Result<HashMap<String, Vec<Row>>> {
+    let mut data: HashMap<String, Vec<Row>> = HashMap::new();
+    for row in result.fetch_all().await? {
+        let table_name = schema_manager
+            .get_portable_table_definition(&row)?
+            .get_name()
+            .into_owned();
+
+        let e = data.entry(table_name);
+        match e {
+            Occupied(mut e) => {
+                e.get_mut().push(row);
+            }
+            Vacant(e) => {
+                e.insert(vec![row]);
+            }
+        }
+    }
+
+    Ok(data)
+}
+
+/// Fetches definitions of foreign key columns in the specified database and returns them grouped by table name.
+/// # Protected
+pub async fn fetch_foreign_key_columns_by_table(
+    this: &dyn SchemaManager,
+    database_name: String,
+) -> Result<HashMap<String, Vec<Row>>> {
+    if !this
+        .get_platform()?
+        .as_dyn()
+        .supports_foreign_key_constraints()
+    {
+        Ok(HashMap::new())
+    } else {
+        fetch_all_associative_grouped(
+            this,
+            this.select_foreign_key_columns(&database_name, None)
+                .await?,
+        )
+        .await
+    }
+}
+
+/// Introspects the table with the given name.
+pub async fn introspect_table(this: &dyn SchemaManager, name: String) -> Result<Table> {
+    let table = this.list_table_details(name.as_str()).await?;
+
+    if table.get_columns().is_empty() {
+        Err(Error::table_does_not_exist(&name))
+    } else {
+        Ok(table)
+    }
+}
+
+/// Lists the views this connection has.
+pub async fn list_views(this: &dyn SchemaManager) -> Result<Vec<View>> {
+    let database = get_database(this.get_connection(), function_name!()).await?;
+    let sql = this.get_list_views_sql(&database)?;
+    let views = this.get_connection().fetch_all(sql, params!()).await?;
+
+    this.get_portable_views_list(views)
+}
+
+/// Lists the foreign keys for the given table.
+pub async fn list_table_foreign_keys(
+    this: &dyn SchemaManager,
+    table: String,
+) -> Result<Vec<ForeignKeyConstraint>> {
+    let database = get_database(this.get_connection(), function_name!()).await?;
+    let sql = this.get_list_table_foreign_keys_sql(&table, &database)?;
+    let table_foreign_keys = this.get_connection().fetch_all(sql, params!()).await?;
+
+    this.get_portable_table_foreign_keys_list(table_foreign_keys)
+}
+
 pub fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
@@ -1547,4 +1741,16 @@ pub fn get_portable_table_indexes_list(
     }
 
     Ok(indexes.into_values().collect())
+}
+
+pub fn get_portable_table_foreign_keys_list(
+    this: &dyn SchemaManager,
+    table_foreign_keys: Vec<Row>,
+) -> Result<Vec<ForeignKeyConstraint>> {
+    let mut list = vec![];
+    for value in table_foreign_keys {
+        list.push(this.get_portable_table_foreign_key_definition(&value)?);
+    }
+
+    Ok(list)
 }

@@ -169,6 +169,21 @@ impl Table {
         Ok(())
     }
 
+    /// Checks if an index begins in the order of the given columns.
+    pub fn columns_are_indexed<S: IntoIdentifier + Clone>(&self, column_names: &[S]) -> bool {
+        let column_names = column_names
+            .iter()
+            .map(|cn| cn.into_identifier().to_string())
+            .collect::<Vec<_>>();
+        for index in &self.indices {
+            if index.spans_columns(column_names.as_slice()) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn get_max_identifier_length(&self) -> usize {
         // TODO
         65

@@ -7,17 +7,19 @@ use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
 use crate::driver::mysql::MySQLSchemaManager;
 use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
 use crate::r#type::{IntoType, BLOB, TEXT};
-use crate::schema::SchemaManager;
 use crate::schema::{
     extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData,
     ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
 };
+use crate::schema::{string_from_value, SchemaManager};
 use crate::util::strtr;
 use crate::{Error, Result, Row, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::option::Option::Some;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn build_table_options(
@@ -1058,4 +1060,82 @@ pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Colum
         .set_collation::<String, _>(None);
 
     default::columns_equal(this.as_dyn(), &column1, &column2)
+}
+
+pub fn get_portable_table_foreign_keys_list(
+    this: &dyn SchemaManager,
+    table_foreign_keys: Vec<Row>,
+) -> Result<Vec<ForeignKeyConstraint>> {
+    let connection = this.get_connection();
+    let mut list: HashMap<String, Row> = Default::default();
+    for value in table_foreign_keys {
+        let value = value.to_lowercase_columns();
+        let constraint_name = value.get("constraint_name")?.to_string();
+
+        let mut delete_rule = value.get("delete_rule")?.clone();
+        let mut update_rule = value.get("update_rule")?.clone();
+
+        let entry = list.entry(constraint_name.clone());
+        match entry {
+            Entry::Occupied(mut ent) => {
+                let row = ent.get();
+                let mut local_columns = string_from_value(connection, row.get("local_columns"))?;
+                let mut foreign_columns =
+                    string_from_value(connection, row.get("foreign_columns"))?;
+
+                local_columns += &string_from_value(connection, value.get("column_name"))?;
+                foreign_columns +=
+                    &string_from_value(connection, value.get("referenced_column_name"))?;
+
+                ent.insert(Row::new(
+                    vec![
+                        "constraint_name".into(),
+                        "local_columns".into(),
+                        "foreign_columns".into(),
+                        "foreign_table".into(),
+                        "on_delete".into(),
+                        "on_update".into(),
+                    ],
+                    vec![
+                        Value::String(constraint_name),
+                        Value::String(local_columns),
+                        Value::String(foreign_columns),
+                        row.get("foreign_table")?.clone(),
+                        row.get("on_delete")?.clone(),
+                        row.get("on_update")?.clone(),
+                    ],
+                ));
+            }
+            Entry::Vacant(ent) => {
+                if delete_rule.is_null() || delete_rule == Value::String("RESTRICT".to_string()) {
+                    delete_rule = Value::NULL;
+                }
+
+                if update_rule.is_null() || update_rule == Value::String("RESTRICT".to_string()) {
+                    update_rule = Value::NULL;
+                }
+
+                ent.insert(Row::new(
+                    vec![
+                        "constraint_name".into(),
+                        "local_columns".into(),
+                        "foreign_columns".into(),
+                        "foreign_table".into(),
+                        "on_delete".into(),
+                        "on_update".into(),
+                    ],
+                    vec![
+                        Value::String(constraint_name),
+                        value.get("column_name")?.clone(),
+                        value.get("referenced_column_name")?.clone(),
+                        value.get("referenced_table_name")?.clone(),
+                        delete_rule,
+                        update_rule,
+                    ],
+                ));
+            }
+        }
+    }
+
+    default::get_portable_table_foreign_keys_list(this, list.into_values().collect())
 }

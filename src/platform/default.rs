@@ -1754,3 +1754,17 @@ pub fn get_portable_table_foreign_keys_list(
 
     Ok(list)
 }
+
+/// Creates a new foreign key.
+pub async fn create_foreign_key(
+    this: &dyn SchemaManager,
+    foreign_key: ForeignKeyConstraint,
+    table_name: &str,
+) -> Result<()> {
+    let table = this.list_table_details(&table_name).await?;
+
+    let mut table_diff = TableDiff::new(table_name, &table);
+    table_diff.added_foreign_keys.push(foreign_key);
+
+    this.alter_table(table_diff).await
+}

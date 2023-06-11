@@ -712,10 +712,13 @@ pub trait SchemaManager: Sync {
         foreign_key: &ForeignKeyConstraint,
         table: &dyn IntoIdentifier,
     ) -> AsyncResult<()> {
-        _exec_sql(
-            self.get_connection(),
-            self.get_create_foreign_key_sql(foreign_key, &table.into_identifier()),
-        )
+        let table = table.into_identifier();
+        let table_name = table.get_name().to_string();
+        let foreign_key = foreign_key.clone();
+
+        Box::pin(async move {
+            default::create_foreign_key(self.as_dyn(), foreign_key, &table_name).await
+        })
     }
 
     /// Creates a unique constraint on a table.
@@ -2594,7 +2597,7 @@ mod tests {
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn testCreateForeignKeyWithTableObject() -> Result<()> {
+    pub async fn create_foreign_key_with_table_object() -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
         helper.create_test_table("test_create_fk1").await?;
         helper.create_test_table("test_create_fk2").await?;

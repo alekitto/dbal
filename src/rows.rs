@@ -46,9 +46,18 @@ impl PartialEq for Row {
 
 impl Row {
     /// Creates a new row.
-    /// Private outside dbal crate.
-    pub(crate) fn new(columns: Vec<String>, values: Vec<Value>) -> Self {
+    /// Should be used by a connection Driver ONLY.
+    pub fn new(columns: Vec<String>, values: Vec<Value>) -> Self {
         Self { columns, values }
+    }
+
+    /// Converts all the columns to lowercase.
+    /// Returns a new Row object.
+    pub fn to_lowercase_columns(&self) -> Self {
+        Self::new(
+            self.columns.iter().map(|s| s.to_lowercase()).collect(),
+            self.values.clone(),
+        )
     }
 
     /// Gets a column by index.

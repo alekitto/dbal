@@ -1,5 +1,6 @@
 use super::sqlite_platform::AbstractSQLitePlatform;
 use crate::driver::sqlite::platform::AbstractSQLiteSchemaManager;
+use crate::driver::statement_result::StatementResult;
 use crate::error::ErrorKind;
 use crate::platform::{default, CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode};
 use crate::r#type::{IntoType, BIGINT, DATE, DATETIME, INTEGER, STRING, TIME};
@@ -8,7 +9,7 @@ use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
-use crate::{params, Error, Result, Row, TransactionIsolationLevel, Value};
+use crate::{params, Error, Parameters, Result, Row, TransactionIsolationLevel, Value};
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -1076,4 +1077,40 @@ pub async fn get_portable_table_indexes_list(
     }
 
     default::get_portable_table_indexes_list(this, buffer, table_name)
+}
+
+pub async fn select_foreign_key_columns(
+    this: &dyn SchemaManager,
+    table_name: Option<String>,
+) -> Result<StatementResult> {
+    let mut sql = r#"
+SELECT t.name AS table_name,
+p.*
+    FROM sqlite_master t
+JOIN pragma_foreign_key_list(t.name) p
+ON p."seq" != "-1"
+"#
+    .to_string();
+
+    let mut conditions = vec![
+        "t.type = 'table'",
+        "t.name NOT IN ('geometry_columns', 'spatial_ref_sys', 'sqlite_sequence')",
+    ];
+
+    let mut params = vec![];
+
+    if let Some(table_name) = table_name {
+        conditions.push("t.name = ?");
+        params.push(table_name.replace('.', "__"));
+    }
+
+    sql += format!(
+        " WHERE {} ORDER BY t.name, p.id DESC, p.seq",
+        conditions.join(" AND ")
+    )
+    .as_str();
+
+    this.get_connection()
+        .query(sql, Parameters::from(params))
+        .await
 }

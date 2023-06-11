@@ -132,7 +132,7 @@ impl Index {
     }
 
     /// Checks if this index exactly spans the given column names in the correct order.
-    fn spans_columns(&self, column_names: &[String]) -> bool {
+    pub(crate) fn spans_columns(&self, column_names: &[String]) -> bool {
         self.columns.iter().enumerate().all(|(index, column)| {
             column_names.get(index).is_some_and(|column_name| {
                 self.trim_quotes(&column.get_name().to_lowercase())

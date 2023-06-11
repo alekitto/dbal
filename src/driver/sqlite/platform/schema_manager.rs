@@ -5,7 +5,16 @@ use crate::schema::{
     Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator, Identifier, Index,
     IntoIdentifier, SchemaManager, Table, TableDiff, TableOptions,
 };
-use crate::{AsyncResult, Connection, Error, Result, Row};
+use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
+use regex::Regex;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::HashMap;
+
+struct FkConstraintDetails {
+    constraint_name: Option<String>,
+    deferrable: bool,
+    deferred: bool,
+}
 
 pub struct SQLiteSchemaManager<'a> {
     connection: &'a Connection,
@@ -14,6 +23,130 @@ pub struct SQLiteSchemaManager<'a> {
 impl<'a> SQLiteSchemaManager<'a> {
     pub fn new(connection: &'a Connection) -> Self {
         Self { connection }
+    }
+
+    async fn add_details_to_table_foreign_key_columns(
+        &self,
+        table: &str,
+        columns: &Vec<Row>,
+    ) -> Result<Vec<Row>> {
+        let foreign_key_details = self.get_foreign_key_details(table).await?;
+        let foreign_key_count = foreign_key_details.len();
+
+        let mut result = vec![];
+
+        let mut local_columns_by_id = HashMap::new();
+        let mut foreign_columns_by_id = HashMap::new();
+        let mut table_by_id = HashMap::new();
+
+        for column in columns {
+            let id = column.get("id").unwrap().to_string();
+            let table = column.get("table").unwrap().clone();
+
+            match local_columns_by_id.entry(id.clone()) {
+                Vacant(e) => {
+                    e.insert(vec![column.get("from").unwrap().to_string()]);
+                }
+                Occupied(mut e) => {
+                    e.get_mut().push(column.get("from").unwrap().to_string());
+                }
+            };
+
+            match foreign_columns_by_id.entry(id.clone()) {
+                Vacant(e) => {
+                    e.insert(vec![column.get("to").unwrap().to_string()]);
+                }
+                Occupied(mut e) => {
+                    e.get_mut().push(column.get("to").unwrap().to_string());
+                }
+            };
+
+            table_by_id.insert(id, table);
+        }
+
+        for column in columns {
+            let id = column.get("id").unwrap().to_string();
+            let detail = foreign_key_details
+                .get(foreign_key_count - id.parse::<usize>().unwrap() - 1)
+                .unwrap();
+            let constraint_name = detail.constraint_name.clone().unwrap_or_default();
+
+            result.push(Row::new(
+                vec![
+                    "constraint_name".into(),
+                    "table_name".into(),
+                    "foreign_table".into(),
+                    "foreign_columns".into(),
+                    "local_columns".into(),
+                ],
+                vec![
+                    if constraint_name.is_empty() {
+                        Value::NULL
+                    } else {
+                        Value::from(constraint_name)
+                    },
+                    Value::from(table.to_string()),
+                    column.get("table").cloned().unwrap(),
+                    foreign_columns_by_id.get(&id).unwrap().join(",").into(),
+                    local_columns_by_id.get(&id).unwrap().join(",").into(),
+                ],
+            ))
+        }
+
+        Ok(result)
+    }
+
+    async fn get_foreign_key_details(&self, table: &str) -> Result<Vec<FkConstraintDetails>> {
+        let create_sql = self
+            .get_connection()
+            .query(
+                r#"
+    SELECT sql
+    FROM (
+        SELECT *
+            FROM sqlite_master
+        UNION ALL
+        SELECT *
+            FROM sqlite_temp_master
+    )
+    WHERE type = 'table'
+AND name = ?
+"#,
+                params![0  => Value::from(table)],
+            )
+            .await?
+            .fetch_one()
+            .await?;
+
+        if create_sql.is_none() {
+            return Ok(vec![]);
+        }
+
+        let create_sql = create_sql.unwrap().get("sql").unwrap().to_string();
+        let r = Regex::new(
+            r#"(?:CONSTRAINT\s+(\S+)\s+)?(?:FOREIGN\s+KEY[^)]+\)\s*)?REFERENCES\s+\S+\s*(?:\([^)]+\))?(?:[^,]*?(NOT\s+DEFERRABLE|DEFERRABLE)(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?)?"#,
+        )?;
+
+        let mut details = vec![];
+        for captures in r.captures_iter(&create_sql) {
+            let name = captures.get(1);
+            let deferrable = captures.get(2);
+            let deferred = captures.get(3);
+
+            details.push(FkConstraintDetails {
+                constraint_name: name.and_then(|n| {
+                    if n.is_empty() {
+                        None
+                    } else {
+                        Some(n.as_str().to_string())
+                    }
+                }),
+                deferrable: deferrable.is_some_and(|m| m.as_str().to_lowercase() == "deferrable"),
+                deferred: deferred.is_some_and(|m| m.as_str().to_lowercase() == "deferred"),
+            })
+        }
+
+        Ok(details)
     }
 }
 
@@ -171,9 +304,34 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         Box::new(GenericComparator::new(self))
     }
 
+    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>> {
+        let table = table.to_string();
+        Box::pin(async move {
+            let columns = self
+                .select_foreign_key_columns("", Some(table.as_str()))
+                .await?
+                .fetch_all()
+                .await?;
+            let columns = self
+                .add_details_to_table_foreign_key_columns(&table, &columns)
+                .await?;
+
+            self.get_portable_table_foreign_keys_list(columns)
+        })
+    }
+
+    fn select_foreign_key_columns(
+        &self,
+        _: &str,
+        table_name: Option<&str>,
+    ) -> AsyncResult<StatementResult> {
+        let table_name = table_name.map(|t| t.to_string());
+        Box::pin(async move { sqlite::select_foreign_key_columns(self.as_dyn(), table_name).await })
+    }
+
     fn select_index_columns(
         &self,
-        database_name: &str,
+        _database_name: &str,
         table_name: Option<&str>,
     ) -> AsyncResult<StatementResult> {
         let sql = r#"

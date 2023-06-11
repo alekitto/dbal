@@ -8,13 +8,11 @@ use crate::schema::{
     ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema, SchemaDiff, Sequence,
     Table, TableDiff, TableOptions, UniqueConstraint, View,
 };
-use crate::util::{filter_asset_names, function_name, ToSqlStatementList};
+use crate::util::{function_name, ToSqlStatementList};
 use crate::{
     params, AsyncResult, Connection, Error, Result, Row, SchemaColumnDefinitionEvent, Value,
 };
 use regex::Regex;
-use std::borrow::Cow;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::ops::Index as _;
 use std::sync::Arc;
@@ -25,31 +23,6 @@ pub(crate) async fn get_database(conn: &Connection, method_name: &str) -> Result
     } else {
         Err(Error::database_required(method_name))
     }
-}
-
-async fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
-    schema_manager: &SM,
-    result: StatementResult,
-) -> Result<HashMap<String, Vec<Row>>> {
-    let mut data: HashMap<String, Vec<Row>> = HashMap::new();
-    for row in result.fetch_all().await? {
-        let table_name = schema_manager
-            .get_portable_table_definition(&row)?
-            .get_name()
-            .into_owned();
-
-        let e = data.entry(table_name);
-        match e {
-            Occupied(mut e) => {
-                e.get_mut().push(row);
-            }
-            Vacant(e) => {
-                e.insert(vec![row]);
-            }
-        }
-    }
-
-    Ok(data)
 }
 
 pub(crate) fn string_from_value(conn: &Connection, value: Result<&Value>) -> Result<String> {
@@ -427,21 +400,10 @@ pub trait SchemaManager: Sync {
 
     /// Lists the columns for a given table.
     fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<Vec<Column>> {
-        let database = database.map(ToString::to_string);
         let table = table.to_string();
+        let database = database.map(ToString::to_string);
 
-        Box::pin(async move {
-            let database = if let Some(database) = database {
-                database
-            } else {
-                get_database(self.get_connection(), function_name!()).await?
-            };
-
-            let sql = self.get_list_table_columns_sql(&table, &database)?;
-            let table_columns = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_table_column_list(&table, &database, table_columns)
-        })
+        Box::pin(async move { default::list_table_columns(self.as_dyn(), table, database).await })
     }
 
     /// Lists the indexes for a given table returning an array of Index instances.
@@ -449,89 +411,30 @@ pub trait SchemaManager: Sync {
     fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>> {
         let table = table.to_string();
 
-        Box::pin(async move {
-            let database = get_database(self.get_connection(), function_name!()).await?;
-            let sql = self.get_list_table_indexes_sql(&table, &database)?;
-
-            let table_indexes = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_table_indexes_list(table_indexes, &table)
-                .await
-        })
+        Box::pin(async move { default::list_table_indexes(self.as_dyn(), table).await })
     }
 
     /// Whether all the given tables exist.
     fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool> {
         let names = names.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>();
 
-        Box::pin(async move {
-            let table_names = self
-                .list_table_names()
-                .await?
-                .iter()
-                .map(|s| s.to_lowercase())
-                .collect::<Vec<_>>();
-
-            Ok(names.iter().all(|n| {
-                let name = n.to_lowercase();
-                table_names.contains(&name)
-            }))
-        })
+        Box::pin(async move { default::tables_exist(self.as_dyn(), names).await })
     }
 
     /// Returns a list of all tables in the current database.
     fn list_table_names(&self) -> AsyncResult<Vec<String>> {
-        Box::pin(async move {
-            let sql = self.get_list_tables_sql()?;
-            let tables = self.get_connection().fetch_all(sql, params!()).await?;
-
-            Ok(filter_asset_names(
-                self.get_connection(),
-                self.get_portable_tables_list(tables)?,
-            )
-            .iter()
-            .map(Asset::get_name)
-            .map(Cow::into_owned)
-            .collect())
-        })
+        Box::pin(async move { default::list_table_names(self.as_dyn()).await })
     }
 
     /// Lists the tables for this connection.
     fn list_tables(&self) -> AsyncResult<Vec<Table>> {
-        Box::pin(async move {
-            let mut tables = vec![];
-            for table_name in self.list_table_names().await? {
-                tables.push(self.list_table_details(&table_name).await?)
-            }
-
-            Ok(tables)
-        })
+        Box::pin(async move { default::list_tables(self.as_dyn()).await })
     }
 
     fn list_table_details(&self, name: &str) -> AsyncResult<Table> {
         let name = name.to_string();
-        Box::pin(async move {
-            let columns = self.list_table_columns(&name, None).await?;
 
-            let foreign_keys = if self
-                .get_platform()?
-                .as_dyn()
-                .supports_foreign_key_constraints()
-            {
-                self.list_table_foreign_keys(&name).await?
-            } else {
-                vec![]
-            };
-
-            let indexes = self.list_table_indexes(&name).await?;
-
-            let mut table = Table::new(Identifier::new(name, false));
-            table.add_columns(columns.into_iter());
-            table.add_indices(indexes.into_iter());
-            table.add_foreign_keys(foreign_keys.into_iter());
-
-            Ok(table)
-        })
+        Box::pin(async move { default::list_table_details(self.as_dyn(), name).await })
     }
 
     /// An extension point for those platforms where case sensitivity of the object
@@ -600,11 +503,7 @@ pub trait SchemaManager: Sync {
     ) -> AsyncResult<HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
-            fetch_all_associative_grouped(
-                self,
-                self.select_table_columns(&database_name, None).await?,
-            )
-            .await
+            default::fetch_table_columns_by_table(self.as_dyn(), database_name).await
         })
     }
 
@@ -616,11 +515,7 @@ pub trait SchemaManager: Sync {
     ) -> AsyncResult<HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
-            fetch_all_associative_grouped(
-                self,
-                self.select_index_columns(&database_name, None).await?,
-            )
-            .await
+            default::fetch_index_columns_by_table(self.as_dyn(), database_name).await
         })
     }
 
@@ -632,20 +527,7 @@ pub trait SchemaManager: Sync {
     ) -> AsyncResult<HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
-            if !self
-                .get_platform()?
-                .as_dyn()
-                .supports_foreign_key_constraints()
-            {
-                Ok(HashMap::new())
-            } else {
-                fetch_all_associative_grouped(
-                    self,
-                    self.select_foreign_key_columns(&database_name, None)
-                        .await?,
-                )
-                .await
-            }
+            default::fetch_foreign_key_columns_by_table(self.as_dyn(), database_name).await
         })
     }
 
@@ -667,27 +549,21 @@ pub trait SchemaManager: Sync {
         Err(Error::platform_feature_unsupported("list views"))
     }
 
+    /// Introspects the table with the given name.
+    fn introspect_table(&self, name: &str) -> AsyncResult<Table> {
+        let name = name.to_string();
+        Box::pin(async move { default::introspect_table(self.as_dyn(), name).await })
+    }
+
     /// Lists the views this connection has.
     fn list_views(&self) -> AsyncResult<Vec<View>> {
-        Box::pin(async move {
-            let database = get_database(self.get_connection(), function_name!()).await?;
-            let sql = self.get_list_views_sql(&database)?;
-            let views = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_views_list(views)
-        })
+        Box::pin(async move { default::list_views(self.as_dyn()).await })
     }
 
     /// Lists the foreign keys for the given table.
     fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>> {
         let table = table.to_string();
-        Box::pin(async move {
-            let database = get_database(self.get_connection(), function_name!()).await?;
-            let sql = self.get_list_table_foreign_keys_sql(&table, &database)?;
-            let table_foreign_keys = self.get_connection().fetch_all(sql, params!()).await?;
-
-            self.get_portable_table_foreign_keys_list(table_foreign_keys)
-        })
+        Box::pin(async move { default::list_table_foreign_keys(self.as_dyn(), table).await })
     }
 
     /// Obtains DBMS specific SQL code portion needed to declare a generic type
@@ -1206,12 +1082,7 @@ pub trait SchemaManager: Sync {
         &self,
         table_foreign_keys: Vec<Row>,
     ) -> Result<Vec<ForeignKeyConstraint>> {
-        let mut list = vec![];
-        for value in table_foreign_keys {
-            list.push(self.get_portable_table_foreign_key_definition(&value)?);
-        }
-
-        Ok(list)
+        default::get_portable_table_foreign_keys_list(self.as_dyn(), table_foreign_keys)
     }
 
     fn get_portable_table_foreign_key_definition(
@@ -1224,14 +1095,23 @@ pub trait SchemaManager: Sync {
 
         let options = HashMap::new();
 
-        Ok(ForeignKeyConstraint::new(
+        let mut constraint = ForeignKeyConstraint::new(
             &local_columns.split(',').collect::<Vec<_>>(),
             &foreign_columns.split(',').collect::<Vec<_>>(),
             string_from_value(connection, foreign_key.get("foreign_table"))?,
             options,
             None,
             None,
-        ))
+        );
+
+        if let Ok(constraint_name) = foreign_key.get("constraint_name") {
+            let constraint_name = constraint_name.to_string();
+            if !constraint_name.is_empty() {
+                constraint.set_name(&constraint_name);
+            }
+        }
+
+        Ok(constraint)
     }
 
     /// Creates a schema instance for the current database.
@@ -1532,8 +1412,8 @@ mod tests {
         TypeManager, BOOLEAN, DATE, DATETIME, DECIMAL, INTEGER, STRING, TEXT, TIME,
     };
     use crate::schema::{
-        Asset, Column, ColumnDiff, Comparator, ForeignKeyReferentialAction, Index, IntoIdentifier,
-        SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
+        Asset, Column, ColumnDiff, Comparator, ForeignKeyConstraint, ForeignKeyReferentialAction,
+        Index, IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
     };
     use crate::tests::{
         create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
@@ -1896,7 +1776,7 @@ mod tests {
 
             helper.drop_and_create_table(&table).await?;
 
-            let online_table = schema_manager.list_table_details("default_value").await?;
+            let online_table = schema_manager.introspect_table("default_value").await?;
             let comparator = schema_manager.create_comparator();
             let diff = comparator.diff_table(&table, &online_table)?;
             assert!(diff.is_none());
@@ -2448,7 +2328,7 @@ mod tests {
         let schema_manager = helper.get_schema_manager();
 
         let online_table = schema_manager
-            .list_table_details("list_table_columns")
+            .introspect_table("list_table_columns")
             .await?;
         let comparator = schema_manager.create_comparator();
         let diff = comparator.diff_table(&online_table, &offline_table)?;
@@ -2534,6 +2414,238 @@ mod tests {
         );
         assert!(!test_index.is_primary());
         assert!(!test_index.is_unique());
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn drop_and_create_index() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = helper.get_test_table("test_create_index")?;
+        table.add_unique_index(&["test"], Some("test"), Default::default())?;
+        helper.drop_and_create_table(&table).await?;
+
+        let index = table.get_index(&"test").unwrap();
+        schema_manager.drop_index(&index, &table).await?;
+        schema_manager.create_index(&index, &table).await?;
+
+        let table_indexes = schema_manager
+            .list_table_indexes("test_create_index")
+            .await?;
+
+        let test_index = table_indexes
+            .iter()
+            .find(|i| i.get_name() == "test")
+            .unwrap();
+        assert_eq!(test_index.get_columns(), vec!["test"]);
+        assert!(test_index.is_unique());
+        assert!(!test_index.is_primary());
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn drop_and_create_unique_constraint() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("test_unique_constraint");
+        table.add_column(Column::new("id", INTEGER)?);
+
+        helper.drop_and_create_table(&table).await?;
+
+        let unique_constraint = UniqueConstraint::new("uniq_id", &["id"], &[], Default::default());
+        schema_manager
+            .create_unique_constraint(&unique_constraint, &table)
+            .await?;
+
+        // there's currently no API for introspecting unique constraints,
+        // so introspect the underlying indexes instead
+        let indexes = schema_manager
+            .list_table_indexes("test_unique_constraint")
+            .await?;
+        assert_eq!(indexes.len(), 1);
+
+        let index = indexes.first().unwrap();
+        assert_eq!(index.get_name(), "uniq_id");
+        assert!(index.is_unique());
+
+        schema_manager
+            .drop_unique_constraint(&unique_constraint, &table)
+            .await?;
+
+        let indexes = schema_manager
+            .list_table_indexes("test_unique_constraint")
+            .await?;
+        assert!(indexes.is_empty());
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn create_table_with_foreign_keys() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let table_b = helper.get_test_table("test_foreign")?;
+
+        let _ = schema_manager.drop_table(&"test_create_fk").await;
+        helper.drop_and_create_table(&table_b).await?;
+
+        let mut table_a = helper.get_test_table("test_create_fk")?;
+        table_a.add_foreign_key_constraint(
+            &["foreign_key_test"],
+            &["id"],
+            "test_foreign",
+            Default::default(),
+            None,
+            None,
+            Some("test_foreign"),
+        )?;
+
+        helper.drop_and_create_table(&table_a).await?;
+
+        let fk_table = schema_manager.introspect_table("test_create_fk").await?;
+        let fk_constraints = fk_table.get_foreign_keys();
+        assert_eq!(
+            fk_constraints.len(),
+            1,
+            "Table 'test_create_fk' has to have one foreign key."
+        );
+
+        let fk_constraint = fk_constraints.first().unwrap();
+        assert_eq!(
+            fk_constraint.get_local_columns(),
+            &vec!["foreign_key_test".into_identifier()]
+        );
+        assert_eq!(
+            fk_constraint.get_foreign_columns(),
+            &vec!["id".into_identifier()]
+        );
+
+        assert!(fk_table.columns_are_indexed(fk_constraint.get_local_columns().as_slice()));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn list_foreign_keys() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("test_create_fk1").await?;
+        helper.create_test_table("test_create_fk2").await?;
+
+        let foreign_key = ForeignKeyConstraint::new(
+            &["foreign_key_test"],
+            &["id"],
+            "test_create_fk2",
+            Default::default(),
+            None,
+            Some(ForeignKeyReferentialAction::Cascade),
+        );
+
+        let schema_manager = helper.get_schema_manager();
+        schema_manager
+            .create_foreign_key(&foreign_key, &"test_create_fk1")
+            .await?;
+
+        let fkeys = schema_manager
+            .list_table_foreign_keys("test_create_fk1")
+            .await?;
+        assert_eq!(
+            fkeys.len(),
+            1,
+            "Table 'test_create_fk1' has to have one foreign key."
+        );
+
+        let fkey = fkeys.get(0).unwrap();
+        let local_cols = fkey.get_local_columns();
+        let foreign_cols = fkey.get_foreign_columns();
+        assert_eq!(local_cols.len(), 1);
+        assert_eq!(
+            local_cols.get(0).unwrap().to_string().to_lowercase(),
+            "foreign_key_test"
+        );
+        assert_eq!(foreign_cols.len(), 1);
+        assert_eq!(
+            foreign_cols.get(0).unwrap().to_string().to_lowercase(),
+            "id"
+        );
+        assert_eq!(
+            fkey.get_foreign_table().to_string().to_lowercase(),
+            "test_create_fk2"
+        );
+
+        if let Some(on_delete) = fkey.on_delete {
+            assert_eq!(on_delete, ForeignKeyReferentialAction::Cascade);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn testCreateForeignKeyWithTableObject() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("test_create_fk1").await?;
+        helper.create_test_table("test_create_fk2").await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let mut table = schema_manager.introspect_table("test_create_fk1").await?;
+        table.add_foreign_key_constraint(
+            &["foreign_key_test"],
+            &["id"],
+            "test_create_fk2",
+            Default::default(),
+            None,
+            None,
+            Some("i"),
+        )?;
+
+        let foreignKey = table
+            .get_foreign_keys()
+            .iter()
+            .find(|c| c.get_name() == "i")
+            .unwrap();
+        schema_manager
+            .create_foreign_key(foreignKey, &table)
+            .await?;
+
+        let fkeys = schema_manager
+            .list_table_foreign_keys("test_create_fk1")
+            .await?;
+        assert_eq!(
+            fkeys.len(),
+            1,
+            "Table 'test_create_fk1' has to have one foreign key."
+        );
+
+        let fkey = fkeys.get(0).unwrap();
+        let local_cols = fkey.get_local_columns();
+        let foreign_cols = fkey.get_foreign_columns();
+        assert_eq!(local_cols.len(), 1);
+        assert_eq!(
+            local_cols.get(0).unwrap().to_string().to_lowercase(),
+            "foreign_key_test"
+        );
+        assert_eq!(foreign_cols.len(), 1);
+        assert_eq!(
+            foreign_cols.get(0).unwrap().to_string().to_lowercase(),
+            "id"
+        );
+        assert_eq!(
+            fkey.get_foreign_table().to_string().to_lowercase(),
+            "test_create_fk2"
+        );
 
         Ok(())
     }

@@ -26,6 +26,7 @@ pub enum ErrorKind {
     ForeignKeyDefinitionInvalid = 2002,
     IndexDefinitionInvalid = 2003,
     ColumnDoesNotExist = 2004,
+    TableDoesNotExist = 2005,
     NotConnected = 5000,
     DatabaseRequired = 5001,
 
@@ -182,6 +183,13 @@ impl Error {
         Self::new(
             ErrorKind::IndexDefinitionInvalid,
             format!("Incomplete definition. '{}' required.", invalid_component),
+        )
+    }
+
+    pub fn table_does_not_exist(invalid_table: &dyn IntoIdentifier) -> Self {
+        Self::new(
+            ErrorKind::ColumnDoesNotExist,
+            format!("Table '{}' does not exist.", invalid_table),
         )
     }
 

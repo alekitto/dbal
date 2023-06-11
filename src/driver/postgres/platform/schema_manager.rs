@@ -183,6 +183,13 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
             postgresql::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
         })
     }
+
+    fn get_portable_table_foreign_key_definition(
+        &self,
+        foreign_key: &Row,
+    ) -> Result<ForeignKeyConstraint> {
+        postgresql::get_portable_table_foreign_key_definition(foreign_key)
+    }
 }
 
 #[cfg(test)]

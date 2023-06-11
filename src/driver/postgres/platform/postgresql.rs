@@ -5,7 +5,8 @@ use crate::platform::{default, DateIntervalUnit};
 use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
 use crate::schema::{
     extract_type_from_comment, Asset, ChangedProperty, Column, ColumnData, ColumnDiff,
-    ForeignKeyConstraint, Identifier, Index, IntoIdentifier, Sequence, TableDiff, TableOptions,
+    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Sequence,
+    TableDiff, TableOptions,
 };
 use crate::schema::{remove_type_from_comment, SchemaManager};
 use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
@@ -206,6 +207,74 @@ pub fn get_portable_table_indexes_list(
     }
 
     default::get_portable_table_indexes_list(this, buffer, table_name)
+}
+
+pub fn get_portable_table_foreign_key_definition(
+    foreign_key: &Row,
+) -> Result<ForeignKeyConstraint> {
+    let on_update_regex = Regex::new("(ON UPDATE ([a-zA-Z0-9]+( (NULL|ACTION|DEFAULT))?))")?;
+    let on_delete_regex = Regex::new("(ON DELETE ([a-zA-Z0-9]+( (NULL|ACTION|DEFAULT))?))")?;
+
+    let con_def = foreign_key.get("condef").unwrap().to_string();
+
+    let on_update = if let Some(m) = on_update_regex.captures(&con_def) {
+        match m.get(4).map(|m| m.as_str()) {
+            Some("NULL") => Some(ForeignKeyReferentialAction::SetNull),
+            Some("DEFAULT") => Some(ForeignKeyReferentialAction::SetDefault),
+            Some("ACTION") => Some(ForeignKeyReferentialAction::NoAction),
+            _ => match m.get(2).unwrap().as_str() {
+                "CASCADE" => Some(ForeignKeyReferentialAction::Cascade),
+                _ => Some(ForeignKeyReferentialAction::Restrict),
+            },
+        }
+    } else {
+        None
+    };
+
+    let on_delete = if let Some(m) = on_delete_regex.captures(&con_def) {
+        match m.get(4).map(|m| m.as_str()) {
+            Some("NULL") => Some(ForeignKeyReferentialAction::SetNull),
+            Some("DEFAULT") => Some(ForeignKeyReferentialAction::SetDefault),
+            Some("ACTION") => Some(ForeignKeyReferentialAction::NoAction),
+            _ => match m.get(2).unwrap().as_str() {
+                "CASCADE" => Some(ForeignKeyReferentialAction::Cascade),
+                _ => Some(ForeignKeyReferentialAction::Restrict),
+            },
+        }
+    } else {
+        None
+    };
+
+    let values = Regex::new("FOREIGN KEY \\((.+)\\) REFERENCES (.+)\\((.+)\\)")?
+        .captures(&con_def)
+        .unwrap();
+
+    // PostgreSQL returns identifiers that are keywords with quotes, we need them later, don't get
+    // the idea to trim them here.
+    let local_columns = values
+        .get(1)
+        .unwrap()
+        .as_str()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect::<Vec<_>>();
+    let foreign_columns = values
+        .get(3)
+        .unwrap()
+        .as_str()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect::<Vec<_>>();
+    let foreign_table = values.get(2).unwrap().as_str().to_string();
+
+    Ok(ForeignKeyConstraint::new(
+        &local_columns,
+        &foreign_columns,
+        foreign_table,
+        Default::default(),
+        on_update,
+        on_delete,
+    ))
 }
 
 fn get_table_where_clause(
@@ -969,15 +1038,13 @@ pub fn get_portable_table_column_definition(
     let mut autoincrement = false;
 
     let mut col_default = table_column.get("default")?.clone();
-    let mut col_sequence = Value::NULL;
     if !col_default.is_null() {
         let def = col_default.to_string();
 
         let next_val_re = Regex::new("^nextval\\('(.*)'(::.*)?\\)$")?;
         let default_val_re = Regex::new("^['(](.*)[')]::")?;
         let null_val_re = Regex::new("^NULL::")?;
-        if let Some(matches) = next_val_re.captures(&def) {
-            col_sequence = matches.get(1).unwrap().as_str().into();
+        if next_val_re.captures(&def).is_some() {
             col_default = Value::NULL;
             autoincrement = true;
         } else if let Some(matches) = default_val_re.captures(&def) {

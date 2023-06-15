@@ -1,14 +1,14 @@
 use crate::r#type::DECIMAL;
 use crate::r#type::{IntoType, BINARY, GUID, STRING};
-use crate::schema::ColumnDiff;
 use crate::schema::{
     Asset, ChangedProperty, Column, ColumnData, Index, Schema, SchemaDiff, SchemaManager, Sequence,
     Table, TableDiff,
 };
+use crate::schema::{ColumnDiff, ForeignKeyConstraint};
 use crate::{Result, Value};
 use itertools::Itertools;
 use std::collections::btree_map::Entry::{Occupied, Vacant};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 fn is_auto_increment_sequence_in_schema(schema: &Schema, sequence: &Sequence) -> bool {
     schema
@@ -226,7 +226,7 @@ pub trait Comparator {
         }
 
         for namespace in from_schema.get_schema_names() {
-            if !to_schema.has_schema_name(&namespace) {
+            if !to_schema.has_schema_name(namespace) {
                 removed_schema_names.push(namespace);
             }
         }
@@ -250,7 +250,7 @@ pub trait Comparator {
         /* Check if there are tables removed */
         for table in from_schema.get_tables() {
             let table_name = table.get_shortest_name(&src_schema_name);
-            if to_schema.has_table(&table_name) {
+            if !to_schema.has_table(&table_name) {
                 removed_tables.push(table);
             }
 
@@ -349,7 +349,7 @@ pub trait Comparator {
         /* See if all the columns in "from" table exist in "to" table */
         for column in to_table_columns {
             let column_name = column.get_name();
-            if from_table.has_column(&column_name) {
+            if from_table.has_column(column_name) {
                 continue;
             }
 
@@ -361,7 +361,7 @@ pub trait Comparator {
         for column in from_table_columns {
             // See if column is removed in "to" table.
             let column_name = column.get_name();
-            if let Some(to_column) = to_table.get_column(&column_name) {
+            if let Some(to_column) = to_table.get_column(column_name) {
                 // See if column has changed properties in "to" table.
                 let changed_properties = self.diff_column(column, to_column);
                 if !schema_manager.columns_equal(column, to_column)? {
@@ -389,7 +389,7 @@ pub trait Comparator {
         for index in to_table_indexes {
             let index_name = index.get_name();
             if (index.is_primary() && from_table.has_primary_key())
-                || from_table.has_index(&index_name)
+                || from_table.has_index(index_name)
             {
                 continue;
             }
@@ -409,7 +409,7 @@ pub trait Comparator {
                     changes += 1;
                     continue;
                 }
-            } else if !to_table.has_index(&index_name) {
+            } else if !to_table.has_index(index_name.as_ref()) {
                 table_differences.removed_indexes.push(index.clone());
                 changes += 1;
                 continue;
@@ -418,7 +418,7 @@ pub trait Comparator {
             if let Some(to_table_index) = if index.is_primary() {
                 to_table.get_primary_key()
             } else {
-                to_table.get_index(&index_name)
+                to_table.get_index(index_name)
             } {
                 if self.diff_index(index, to_table_index) {
                     table_differences
@@ -431,30 +431,40 @@ pub trait Comparator {
 
         detect_index_renames(self, &mut table_differences);
 
-        let from_foreign_keys = from_table.get_foreign_keys();
-        let to_foreign_keys = to_table.get_foreign_keys();
+        let from_foreign_keys: HashMap<usize, &ForeignKeyConstraint> =
+            HashMap::from_iter(from_table.get_foreign_keys().iter().enumerate());
+        let to_foreign_keys: HashMap<usize, &ForeignKeyConstraint> =
+            HashMap::from_iter(to_table.get_foreign_keys().iter().enumerate());
+        let mut rem_from_keys = from_foreign_keys.clone();
+        let mut rem_to_keys = to_foreign_keys.clone();
 
-        for from_constraint in from_foreign_keys {
-            for to_constraint in to_foreign_keys {
-                if from_constraint == to_constraint {
-                    if from_constraint.get_name().to_lowercase()
-                        == to_constraint.get_name().to_lowercase()
-                    {
-                        table_differences
-                            .changed_foreign_keys
-                            .push(to_constraint.clone());
-                    } else {
-                        table_differences
-                            .removed_foreign_keys
-                            .push(from_constraint.clone());
-                        table_differences
-                            .added_foreign_keys
-                            .push(to_constraint.clone());
-                    }
-
-                    changes += 1;
+        for (from_key, from_constraint) in from_foreign_keys {
+            for (to_key, to_constraint) in &to_foreign_keys {
+                if from_constraint == *to_constraint {
+                    rem_from_keys.remove(&from_key);
+                    rem_to_keys.remove(&to_key);
+                } else if from_constraint.get_name().to_lowercase()
+                    == to_constraint.get_name().to_lowercase()
+                {
+                    table_differences
+                        .changed_foreign_keys
+                        .push((*to_constraint).clone());
+                    rem_from_keys.remove(&from_key);
+                    rem_to_keys.remove(&to_key);
                 }
             }
+        }
+
+        for (_, foreign_key) in rem_from_keys.into_iter() {
+            table_differences
+                .removed_foreign_keys
+                .push(foreign_key.clone());
+        }
+
+        for (_, foreign_key) in rem_to_keys.into_iter() {
+            table_differences
+                .added_foreign_keys
+                .push(foreign_key.clone());
         }
 
         Ok(if changes > 0 {
@@ -479,7 +489,7 @@ pub trait Comparator {
     /// Finds the difference between the indexes $index1 and $index2.
     /// Compares index1 with index2 and returns if there are any differences.
     fn diff_index(&self, index1: &Index, index2: &Index) -> bool {
-        !index1.is_fulfilled_by(index2) && index2.is_fulfilled_by(index1)
+        !(index1.is_fulfilled_by(index2) && index2.is_fulfilled_by(index1))
     }
 }
 

@@ -150,11 +150,11 @@ impl Index {
 
         // Check if columns are the same, and even in the same order
         if self.spans_columns(&other.get_columns()) {
-            if self.same_partial_index(other) || !self.has_same_column_lengths(other) {
+            if !self.same_partial_index(other) || !self.has_same_column_lengths(other) {
                 return false;
             }
 
-            if !self.is_unique() && self.is_primary() {
+            if !self.is_unique() && !self.is_primary() {
                 // this is a special case: If the current key is neither primary or unique, any unique or
                 // primary key will always have the same effect for the index and there cannot be any constraint
                 // overlaps. This means a primary or unique index can always fulfill the requirements of just an
@@ -170,12 +170,38 @@ impl Index {
 
     /// Return whether the two indexes have the same partial index
     fn same_partial_index(&self, other: &Index) -> bool {
-        self.get_option("where") == other.get_option("where")
+        (self.has_option("where")
+            && other.has_option("where")
+            && self.get_option("where") == other.get_option("where"))
+            || (!self.has_option("where") && !other.has_option("where"))
     }
 
     /// Returns whether the index has the same column lengths as the other
     fn has_same_column_lengths(&self, other: &Index) -> bool {
-        self.options.get("lengths") == other.options.get("lengths")
+        let s_lens = self
+            .options
+            .get("lengths")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(vec![]));
+        let o_lens = other
+            .options
+            .get("lengths")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(vec![]));
+
+        let Ok(s_lens) = s_lens.try_into_vec() else { return false; };
+        let Ok(o_lens) = o_lens.try_into_vec() else { return false; };
+
+        let s_lens = s_lens
+            .into_iter()
+            .filter(|v| v != &Value::NULL)
+            .collect::<Vec<_>>();
+        let o_lens = o_lens
+            .into_iter()
+            .filter(|v| v != &Value::NULL)
+            .collect::<Vec<_>>();
+
+        s_lens == o_lens
     }
 }
 
@@ -197,7 +223,13 @@ impl IndexOptions {
             self.options_lengths
                 .iter()
                 .map(|v| match v {
-                    Some(s) => Value::from(s),
+                    Some(s) => {
+                        if *s == 0 {
+                            Value::NULL
+                        } else {
+                            Value::from(s)
+                        }
+                    }
                     None => Value::NULL,
                 })
                 .collect(),
@@ -208,7 +240,13 @@ impl IndexOptions {
         options.insert(
             "where".to_string(),
             match self.options_where {
-                Some(s) => Value::String(s),
+                Some(s) => {
+                    if s.is_empty() {
+                        Value::NULL
+                    } else {
+                        Value::String(s)
+                    }
+                }
                 None => Value::NULL,
             },
         );

@@ -147,7 +147,7 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         table_name: &Identifier,
     ) -> Result<Vec<String>> {
         match self.variant {
-            MySQLVariant::MySQL | MySQLVariant::MySQL80 => mysql::get_rename_index_sql(
+            MySQLVariant::MySQL57 | MySQLVariant::MySQL80 => mysql::get_rename_index_sql(
                 self.get_platform()?.as_dyn(),
                 old_index_name,
                 index,

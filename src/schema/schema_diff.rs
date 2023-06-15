@@ -9,14 +9,14 @@ use std::collections::BTreeMap;
 ///
 /// The object contains the operations to change the schema stored in $fromSchema
 /// to a target schema.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SchemaDiff<'a> {
     /// The optional "from" schema.
     from_schema: Option<&'a Schema>,
     /// All added namespaces.
-    new_namespaces: Vec<String>,
+    pub new_namespaces: Vec<String>,
     /// All removed namespaces.
-    removed_namespaces: Vec<String>,
+    pub removed_namespaces: Vec<String>,
     /// All added tables.
     new_tables: Vec<&'a Table>,
     /// All changed tables.

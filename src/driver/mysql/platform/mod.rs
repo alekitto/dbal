@@ -4,7 +4,8 @@ mod schema_manager;
 
 #[derive(Copy, Clone)]
 pub enum MySQLVariant {
-    MySQL,
+    MySQL56,
+    MySQL57,
     MySQL80,
     MariaDB,
 }

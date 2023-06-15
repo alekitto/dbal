@@ -397,6 +397,7 @@ fn get_column_names_in_altered_table(
 }
 
 fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Index> {
+    let mut empty_index_idx = 0;
     let indexes = from_table.get_indices().clone();
     let column_names = get_column_names_in_altered_table(diff, from_table);
 
@@ -407,7 +408,18 @@ fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Ind
         .map(|i| i.0.to_lowercase())
         .collect::<Vec<_>>();
 
-    let mut new_indexes = vec![];
+    let mut new_indexes = HashMap::new();
+    let mut add_index = |new_indexes: &mut HashMap<String, Index>, index: Index| {
+        let name = if !index.get_name().is_empty() {
+            index.get_name().into_owned()
+        } else {
+            empty_index_idx += 1;
+            format!("{}", empty_index_idx).into()
+        };
+
+        new_indexes.insert(name, index);
+    };
+
     'a: for index in &indexes {
         let index_name = index.get_name();
         if renamed_indexes.contains(&index_name.to_lowercase()) {
@@ -431,39 +443,51 @@ fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Ind
         }
 
         if changed {
-            new_indexes.push(Index::new(
-                index.get_name(),
-                &index_columns,
-                index.is_unique(),
-                index.is_primary(),
-                index.get_flags(),
-                index.get_options().clone(),
-            ));
+            add_index(
+                &mut new_indexes,
+                Index::new(
+                    index.get_name(),
+                    &index_columns,
+                    index.is_unique(),
+                    index.is_primary(),
+                    index.get_flags(),
+                    index.get_options().clone(),
+                ),
+            );
         } else {
-            new_indexes.push(index.clone());
+            add_index(&mut new_indexes, index.clone());
         }
     }
 
     for index in &diff.removed_indexes {
         let index_name = index.get_name().to_lowercase();
-        if index_name.is_empty() || !indexes.iter().any(|ix| ix.get_name() == index_name) {
-            new_indexes.push(index.clone());
+        if !index_name.is_empty() {
+            if !indexes.iter().any(|ix| ix.get_name() == index_name) {
+                add_index(&mut new_indexes, index.clone());
+            } else {
+                new_indexes.remove(index.get_name().as_ref());
+            }
+        } else {
+            add_index(&mut new_indexes, index.clone());
         }
     }
 
     for index in &diff.changed_indexes {
-        new_indexes.push(index.clone());
+        add_index(&mut new_indexes, index.clone());
     }
 
     for index in &diff.added_indexes {
-        new_indexes.push(index.clone());
+        add_index(&mut new_indexes, index.clone());
     }
 
     for (_, index) in &diff.renamed_indexes {
-        new_indexes.push(index.clone());
+        add_index(&mut new_indexes, index.clone());
     }
 
     new_indexes
+        .into_values()
+        .sorted_by_key(|i| i.get_name().to_string())
+        .collect()
 }
 
 // /** @return ForeignKeyConstraint[] */

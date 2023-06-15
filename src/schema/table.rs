@@ -107,13 +107,25 @@ impl Table {
         }
     }
 
-    pub fn has_column(&self, name: &dyn IntoIdentifier) -> bool {
+    pub fn has_column<T: IntoIdentifier>(&self, name: T) -> bool {
         let name = name.into_identifier();
         let name = name.get_name();
         self.columns.iter().any(|column| column.get_name() == name)
     }
 
-    pub fn get_column(&self, name: &dyn IntoIdentifier) -> Option<&Column> {
+    pub fn drop_column<T: IntoIdentifier>(&mut self, name: T) {
+        let name = name.into_identifier();
+        let name = name.get_name();
+        if let Some(pos) = self
+            .columns
+            .iter()
+            .position(|column| column.get_name() == name)
+        {
+            self.columns.remove(pos);
+        }
+    }
+
+    pub fn get_column<T: IntoIdentifier>(&self, name: T) -> Option<&Column> {
         let name = name.into_identifier();
         let name = name.get_name();
         self.columns
@@ -121,7 +133,7 @@ impl Table {
             .find(|&column| column.get_name() == name)
     }
 
-    fn get_column_mut(&mut self, name: &dyn IntoIdentifier) -> Option<&mut Column> {
+    fn get_column_mut<T: IntoIdentifier>(&mut self, name: T) -> Option<&mut Column> {
         let name = name.into_identifier();
         let name = name.get_name();
         self.columns
@@ -184,14 +196,21 @@ impl Table {
         false
     }
 
-    fn get_max_identifier_length(&self) -> usize {
-        // TODO
-        65
-    }
-
     pub fn add_indices<T: Iterator<Item = Index>>(&mut self, indices: T) {
         for index in indices {
             self.add_index(index)
+        }
+    }
+
+    pub fn drop_index<T: IntoIdentifier>(&mut self, name: T) {
+        let name = name.into_identifier();
+        let name = name.get_name();
+        if let Some(pos) = self
+            .indices
+            .iter()
+            .position(|index| index.get_name() == name)
+        {
+            self.indices.remove(pos);
         }
     }
 
@@ -203,13 +222,13 @@ impl Table {
         &self.indices
     }
 
-    pub fn has_index(&self, index_name: &dyn IntoIdentifier) -> bool {
+    pub fn has_index<T: IntoIdentifier>(&self, index_name: T) -> bool {
         let name = index_name.into_identifier();
         let name = name.get_name();
         self.indices.iter().any(|i| i.get_name() == name)
     }
 
-    pub fn get_index(&self, index_name: &dyn IntoIdentifier) -> Option<&Index> {
+    pub fn get_index<T: IntoIdentifier>(&self, index_name: T) -> Option<&Index> {
         let name = index_name.into_identifier();
         let name = name.get_name();
         self.indices.iter().find(|i| i.get_name() == name)
@@ -240,6 +259,11 @@ impl Table {
         }
 
         Ok(())
+    }
+
+    fn get_max_identifier_length(&self) -> usize {
+        // TODO
+        65
     }
 
     pub fn get_unique_constraints(&self) -> &Vec<UniqueConstraint> {
@@ -478,13 +502,13 @@ impl Table {
             name.get_name().into_owned()
         });
 
-        /* Add an implicit index (defined by the DBAL) on the foreign key
-        columns. If there is already a user-defined index that fulfills these
-        requirements drop the request. In the case of "new" calling
-        this method during hydration from schema-details, all the explicitly
-        added indexes lead to duplicates. This creates computation overhead in
-        this case, however no duplicate indexes are ever added (based on
-        columns). */
+        // Add an implicit index (creed-defined) on the foreign key
+        // columns. If there is already a user-defined index that fulfills these
+        // requirements drop the request. In the case of "new" calling
+        // this method during hydration from schema-details, all the explicitly
+        // added indexes lead to duplicates. This creates computation overhead in
+        // this case, however no duplicate indexes are ever added (based on
+        // columns).
         let index_name = generate_identifier_name(&names, "idx", self.get_max_identifier_length());
         let index_candidate = self.create_index(
             constraint.get_local_columns(),

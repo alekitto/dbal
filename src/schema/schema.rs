@@ -32,7 +32,7 @@ impl Schema {
         &self.schema_names
     }
 
-    pub fn has_schema_name(&self, name: &dyn IntoIdentifier) -> bool {
+    pub fn has_schema_name<T: IntoIdentifier>(&self, name: T) -> bool {
         let name = name.into_identifier();
         let name = name.get_name();
         self.schema_names.iter().any(|i| i.get_name() == name)
@@ -42,10 +42,16 @@ impl Schema {
         &self.tables
     }
 
-    pub fn get_table(&self, name: &dyn IntoIdentifier) -> Option<&Table> {
+    pub fn get_table<T: IntoIdentifier>(&self, name: T) -> Option<&Table> {
         let name = name.into_identifier();
         let name = name.get_name();
         self.tables.iter().find(|i| i.get_name() == name)
+    }
+
+    pub fn get_table_mut<T: IntoIdentifier>(&mut self, name: T) -> Option<&mut Table> {
+        let name = name.into_identifier();
+        let name = name.get_name();
+        self.tables.iter_mut().find(|i| i.get_name() == name)
     }
 
     /// Gets the first table matching name and unwraps the value.
@@ -53,23 +59,46 @@ impl Schema {
     /// # Safety
     ///
     /// Calling this method without checking if table exists will _panic_.
-    pub unsafe fn get_table_unchecked(&self, name: &dyn IntoIdentifier) -> &Table {
+    pub unsafe fn get_table_unchecked<T: IntoIdentifier>(&self, name: T) -> &Table {
         let name = name.into_identifier();
         let name = name.get_name();
         self.tables.iter().find(|i| i.get_name() == name).unwrap()
     }
 
-    pub fn has_table(&self, name: &dyn IntoIdentifier) -> bool {
+    pub fn has_table<T: IntoIdentifier>(&self, name: T) -> bool {
         let name = name.into_identifier();
         let name = name.get_name();
         self.tables.iter().any(|i| i.get_name() == name)
+    }
+
+    pub fn create_table<T: IntoIdentifier>(&mut self, table: T) -> Result<&mut Table> {
+        let name = table.into_identifier();
+        let name = name.get_name();
+        if self.has_table(&name) {
+            Err(format!(r#"Table "{}" already exists."#, name).into())
+        } else {
+            self.tables.push(Table::new(&name));
+            Ok(self.get_table_mut(name).unwrap())
+        }
+    }
+
+    pub fn drop_table<T: IntoIdentifier>(&mut self, name: T) {
+        let name = name.into_identifier();
+        let name = name.get_name();
+        if let Some(pos) = self
+            .tables
+            .iter()
+            .position(|table| table.get_name() == name)
+        {
+            self.tables.remove(pos);
+        }
     }
 
     pub fn get_sequences(&self) -> &Vec<Sequence> {
         &self.sequences
     }
 
-    pub fn get_sequence(&self, name: &dyn IntoIdentifier) -> Option<&Sequence> {
+    pub fn get_sequence<T: IntoIdentifier>(&self, name: T) -> Option<&Sequence> {
         let name = name.into_identifier();
         let name = name.get_name();
         self.sequences.iter().find(|i| i.get_name() == name)
@@ -80,7 +109,7 @@ impl Schema {
     /// # Safety
     ///
     /// Calling this method without checking if sequence exists will _panic_.
-    pub unsafe fn get_sequence_unchecked(&self, name: &dyn IntoIdentifier) -> &Sequence {
+    pub unsafe fn get_sequence_unchecked<T: IntoIdentifier>(&self, name: T) -> &Sequence {
         let name = name.into_identifier();
         let name = name.get_name();
         self.sequences
@@ -89,7 +118,7 @@ impl Schema {
             .unwrap()
     }
 
-    pub fn has_sequence(&self, name: &dyn IntoIdentifier) -> bool {
+    pub fn has_sequence<T: IntoIdentifier>(&self, name: T) -> bool {
         let name = name.into_identifier();
         let name = name.get_name();
         self.sequences.iter().any(|i| i.get_name() == name)

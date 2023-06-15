@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 pub struct IrValue {
-    value: mysql_async::Value,
     output: Value,
 }
 
@@ -41,7 +40,7 @@ impl TryFrom<mysql_async::Value> for IrValue {
             )),
         };
 
-        Ok(Self { value: v, output })
+        Ok(Self { output })
     }
 }
 

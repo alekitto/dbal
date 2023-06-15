@@ -1524,7 +1524,7 @@ pub async fn list_table_names(this: &dyn SchemaManager) -> Result<Vec<String>> {
 
     Ok(filter_asset_names(
         this.get_connection(),
-        this.get_portable_tables_list(tables)?,
+        this.get_portable_tables_list(tables).await?,
     )
     .iter()
     .map(Asset::get_name)
@@ -1592,7 +1592,8 @@ async fn fetch_all_associative_grouped<SM: SchemaManager + ?Sized>(
     let mut data: HashMap<String, Vec<Row>> = HashMap::new();
     for row in result.fetch_all().await? {
         let table_name = schema_manager
-            .get_portable_table_definition(&row)?
+            .get_portable_table_definition(&row)
+            .await?
             .get_name()
             .into_owned();
 

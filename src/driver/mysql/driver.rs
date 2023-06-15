@@ -143,17 +143,16 @@ impl<'conn> Connection<'conn> for Driver {
             } else {
                 let version = get_oracle_mysql_version_number(version)
                     .unwrap_or_else(|_| "5.7.9".to_string());
-                if compare_to(version, "8", Cmp::Ge).unwrap_or(false) {
-                    Box::new(platform::MySQLPlatform::new(
-                        platform::MySQLVariant::MySQL80,
-                        ev,
-                    )) as Box<dyn DatabasePlatform + Send + Sync>
+                let variant = if compare_to(&version, "8", Cmp::Ge).unwrap_or(false) {
+                    platform::MySQLVariant::MySQL80
+                } else if compare_to(&version, "5.7", Cmp::Ge).unwrap_or(false) {
+                    platform::MySQLVariant::MySQL57
                 } else {
-                    Box::new(platform::MySQLPlatform::new(
-                        platform::MySQLVariant::MySQL,
-                        ev,
-                    )) as Box<dyn DatabasePlatform + Send + Sync>
-                }
+                    platform::MySQLVariant::MySQL56
+                };
+
+                Box::new(platform::MySQLPlatform::new(variant, ev))
+                    as Box<dyn DatabasePlatform + Send + Sync>
             }
         })
     }

@@ -103,6 +103,11 @@ impl Connection {
         self.driver.is_some()
     }
 
+    /// Gets the options this connections has been generated from.
+    pub fn get_params(&self) -> &ConnectionOptions {
+        &self.connection_options
+    }
+
     /// Returns a pointer to the connection configuration for this connection.
     pub fn get_configuration(&self) -> Arc<Configuration> {
         self.configuration.clone()

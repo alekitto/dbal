@@ -287,7 +287,7 @@ mod tests {
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {
-        MySQLPlatform::new(MySQLVariant::MySQL, Arc::new(EventDispatcher::new()))
+        MySQLPlatform::new(MySQLVariant::MySQL57, Arc::new(EventDispatcher::new()))
     }
 
     pub fn create_mysql80_platform() -> MySQLPlatform {

@@ -1,23 +1,91 @@
 use super::postgresql;
 use crate::schema::{
-    Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator, Identifier, Index,
-    IntoIdentifier, SchemaManager, Sequence, TableDiff, TableOptions,
+    string_from_value, Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator,
+    Identifier, Index, IntoIdentifier, SchemaManager, Sequence, TableDiff, TableOptions,
 };
-use crate::{AsyncResult, Connection, Result, Row};
+use crate::{params, AsyncResult, Connection, Result, Row};
+use std::sync::OnceLock;
 
 pub struct PostgreSQLSchemaManager<'a> {
     connection: &'a Connection,
+    existing_schema_search_path: OnceLock<Vec<String>>,
 }
 
 impl<'a> PostgreSQLSchemaManager<'a> {
     pub fn new(connection: &'a Connection) -> Self {
-        Self { connection }
+        Self {
+            connection,
+            existing_schema_search_path: Default::default(),
+        }
+    }
+
+    async fn get_schema_search_paths(&self) -> Result<Vec<String>> {
+        let user = self.connection.get_params().username.as_ref();
+        let search_paths = self
+            .connection
+            .query("SHOW search_path", params!())
+            .await?
+            .fetch_one()
+            .await?
+            .unwrap()
+            .get(0)
+            .unwrap()
+            .to_string();
+
+        Ok(search_paths
+            .split(',')
+            .into_iter()
+            .map(|p| {
+                if let Some(user) = user {
+                    p.replace(r#""$user""#, user)
+                } else {
+                    p.to_string()
+                }
+                .trim()
+                .to_string()
+            })
+            .collect())
     }
 }
 
-pub trait AbstractPostgreSQLSchemaManager: SchemaManager {}
+pub trait AbstractPostgreSQLSchemaManager: SchemaManager {
+    /// Gets names of all existing schemas in the current users search path.
+    /// This is a PostgreSQL only function.
+    fn get_existing_schema_search_paths(&self) -> AsyncResult<&Vec<String>>;
 
-impl AbstractPostgreSQLSchemaManager for PostgreSQLSchemaManager<'_> {}
+    /// Returns the name of the current schema.
+    fn get_current_schema(&self) -> AsyncResult<String> {
+        Box::pin(async {
+            Ok(self
+                .get_existing_schema_search_paths()
+                .await?
+                .first()
+                .cloned()
+                .unwrap_or_default())
+        })
+    }
+}
+
+impl AbstractPostgreSQLSchemaManager for PostgreSQLSchemaManager<'_> {
+    fn get_existing_schema_search_paths(&self) -> AsyncResult<&Vec<String>> {
+        Box::pin(async {
+            if let Some(sp) = self.existing_schema_search_path.get() {
+                Ok(sp)
+            } else {
+                let names = self.list_schema_names().await?;
+                let paths = self.get_schema_search_paths().await?;
+
+                let esp = paths
+                    .into_iter()
+                    .filter(|sp| names.contains(&sp.into_identifier()))
+                    .collect::<Vec<_>>();
+
+                let _ = self.existing_schema_search_path.set(esp);
+                Ok(self.existing_schema_search_path.get().unwrap())
+            }
+        })
+    }
+}
 impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
     fn get_connection(&self) -> &'a Connection {
         self.connection
@@ -49,6 +117,24 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
     #[inline]
     fn get_list_tables_sql(&self) -> Result<String> {
         postgresql::get_list_tables_sql()
+    }
+
+    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier> {
+        let schema_name = string_from_value(self.connection, table.get("schema_name"));
+        let table_name = string_from_value(self.connection, table.get("table_name"));
+
+        Box::pin(async {
+            let current_schema = self.get_current_schema().await?;
+            let schema_name = schema_name?;
+            let table_name = table_name?;
+
+            Ok(if schema_name == current_schema {
+                table_name
+            } else {
+                format!("{}.{}", schema_name, table_name)
+            }
+            .into_identifier())
+        })
     }
 
     #[inline]

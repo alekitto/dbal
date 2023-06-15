@@ -19,12 +19,6 @@ impl ::core::fmt::Display for {0} {{
         f.write_str(&self.get_name())
     }}
 }}
-
-impl ::creed::schema::IntoIdentifier for &{0} {{
-    fn into_identifier(&self) -> ::creed::schema::Identifier {{
-        ::creed::schema::Identifier::new(self.get_name(), self.is_quoted())
-    }}
-}}
     "#,
         input.ident,
     )

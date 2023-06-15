@@ -52,6 +52,12 @@ impl IntoIdentifier for String {
     }
 }
 
+impl<T: IntoIdentifier> IntoIdentifier for &T {
+    fn into_identifier(&self) -> Identifier {
+        (*self).into_identifier()
+    }
+}
+
 impl From<&str> for Identifier {
     fn from(s: &str) -> Self {
         Identifier::new(s, false)

@@ -100,7 +100,13 @@ pub trait SchemaManager: Sync {
         table: &Table,
         create_flags: Option<CreateFlags>,
     ) -> Result<Vec<String>> {
-        default::get_create_table_sql(self.as_dyn(), table, create_flags)
+        default::get_create_table_sql(
+            self.as_dyn(),
+            table,
+            create_flags.or(Some(
+                CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS,
+            )),
+        )
     }
 
     fn get_create_tables_sql(&self, tables: &[Table]) -> Result<Vec<String>> {
@@ -284,6 +290,11 @@ pub trait SchemaManager: Sync {
     /// Returns the SQL to create inline comment on a column.
     fn get_inline_column_comment_sql(&self, comment: &str) -> Result<String> {
         default::get_inline_column_comment_sql(self.get_platform()?.as_dyn(), comment)
+    }
+
+    /// Generates SQL statements that can be used to apply the diff.
+    fn get_alter_schema_sql(&self, diff: SchemaDiff) -> Result<Vec<String>> {
+        diff.to_sql(self)
     }
 
     /// Gets the SQL statements for altering an existing table.
@@ -755,7 +766,7 @@ pub trait SchemaManager: Sync {
     fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()> {
         Box::pin(async move {
             let comparator = self.create_comparator();
-            let from_schema = self.create_schema().await?;
+            let from_schema = self.introspect_schema().await?;
             let schema_diff = comparator.compare_schemas(&from_schema, &to_schema)?;
 
             self.alter_schema(schema_diff).await
@@ -1047,18 +1058,20 @@ pub trait SchemaManager: Sync {
         })
     }
 
-    fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>> {
-        let mut list = vec![];
-        for table in &tables {
-            list.push(self.get_portable_table_definition(table)?);
-        }
+    fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>> {
+        Box::pin(async move {
+            let mut list = vec![];
+            for table in &tables {
+                list.push(self.get_portable_table_definition(table).await?);
+            }
 
-        Ok(list)
+            Ok(list)
+        })
     }
 
-    fn get_portable_table_definition(&self, table: &Row) -> Result<Identifier> {
-        let name = string_from_value(self.get_connection(), table.get(0))?;
-        Ok(Identifier::new(name, false))
+    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier> {
+        let name = string_from_value(self.get_connection(), table.get(0));
+        Box::pin(async move { Ok(Identifier::new(name?, false)) })
     }
 
     fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>> {
@@ -1118,7 +1131,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Creates a schema instance for the current database.
-    fn create_schema(&self) -> AsyncResult<Schema> {
+    fn introspect_schema(&self) -> AsyncResult<Schema> {
         Box::pin(async move {
             let platform = self.get_platform()?;
             let schema_names = if platform.supports_schemas() {
@@ -1260,13 +1273,13 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
             fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
-            fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>>;
-            fn get_portable_table_definition(&self, table: &Row) -> Result<Identifier>;
+            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
+            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
             fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<Vec<ForeignKeyConstraint>>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
-            fn create_schema(&self) -> AsyncResult<Schema>;
+            fn introspect_schema(&self) -> AsyncResult<Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
         }
     }
@@ -1393,13 +1406,13 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
             fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
-            fn get_portable_tables_list(&self, tables: Vec<Row>) -> Result<Vec<Identifier>>;
-            fn get_portable_table_definition(&self, table: &Row) -> Result<Identifier>;
+            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
+            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
             fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<Vec<ForeignKeyConstraint>>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
-            fn create_schema(&self) -> AsyncResult<Schema>;
+            fn introspect_schema(&self) -> AsyncResult<Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
         }
     }
@@ -1414,9 +1427,11 @@ mod tests {
     use crate::r#type::{
         TypeManager, BOOLEAN, DATE, DATETIME, DECIMAL, INTEGER, STRING, TEXT, TIME,
     };
+    use crate::schema::schema_manager::_exec_sql;
     use crate::schema::{
         Asset, Column, ColumnDiff, Comparator, ForeignKeyConstraint, ForeignKeyReferentialAction,
-        Index, IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
+        Index, IntoIdentifier, SchemaDiff, SchemaManager, Sequence, Table, TableDiff,
+        UniqueConstraint, View,
     };
     use crate::tests::{
         create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
@@ -2614,13 +2629,13 @@ mod tests {
             Some("i"),
         )?;
 
-        let foreignKey = table
+        let foreign_key = table
             .get_foreign_keys()
             .iter()
             .find(|c| c.get_name() == "i")
             .unwrap();
         schema_manager
-            .create_foreign_key(foreignKey, &table)
+            .create_foreign_key(foreign_key, &table)
             .await?;
 
         let fkeys = schema_manager
@@ -2649,6 +2664,282 @@ mod tests {
             fkey.get_foreign_table().to_string().to_lowercase(),
             "test_create_fk2"
         );
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn schema_introspection() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("test_table").await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let schema = schema_manager.introspect_schema().await?;
+
+        assert!(schema.has_table("test_table"));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn migrate_schema() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("table_to_alter").await?;
+        helper.create_test_table("table_to_drop").await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let mut schema = schema_manager.introspect_schema().await?;
+
+        let table_to_alter = schema.get_table_mut("table_to_alter").unwrap();
+        table_to_alter.add_column(Column::new("number", INTEGER)?);
+        table_to_alter.drop_column("foreign_key_test");
+
+        schema.drop_table("table_to_drop");
+
+        let table_to_create = schema.create_table("table_to_create")?;
+        table_to_create.add_column(Column::builder("id", INTEGER)?.set_notnull(true));
+        table_to_create.set_primary_key(&["id"], None)?;
+
+        schema_manager.migrate_schema(schema).await?;
+        let schema = schema_manager.introspect_schema().await?;
+
+        assert!(!schema.has_table("table_to_drop"));
+        assert!(schema.has_table("table_to_create"));
+        assert!(schema.has_table("table_to_alter"));
+        assert!(!schema
+            .get_table("table_to_alter")
+            .unwrap()
+            .has_column("foreign_key_test"));
+        assert!(schema
+            .get_table("table_to_alter")
+            .unwrap()
+            .has_column("number"));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn alter_table_scenario() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("alter_table").await?;
+        helper.create_test_table("alter_table_foreign").await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let table = schema_manager.introspect_table("alter_table").await?;
+
+        assert!(table.has_column("id"));
+        assert!(table.has_column("test"));
+        assert!(table.has_column("foreign_key_test"));
+        assert!(table.get_foreign_keys().is_empty());
+        assert_eq!(table.get_indices().len(), 1);
+
+        let mut new_table = table.clone();
+        new_table.add_column(Column::new("foo", INTEGER)?);
+        new_table.drop_column("test");
+
+        let comparator = schema_manager.create_comparator();
+
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        schema_manager.alter_table(diff).await?;
+
+        let table = schema_manager.introspect_table("alter_table").await?;
+        assert!(!table.has_column("test"));
+        assert!(table.has_column("foo"));
+
+        let mut new_table = table.clone();
+        new_table.add_index(Index::new(
+            "foo_idx",
+            &["foo"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        schema_manager.alter_table(diff).await?;
+
+        let table = schema_manager.introspect_table("alter_table").await?;
+        assert_eq!(table.get_indices().len(), 2);
+        assert!(table.has_index("foo_idx"));
+        let index = table.get_index("foo_idx").unwrap();
+        assert_eq!(
+            index
+                .get_columns()
+                .iter()
+                .map(|c| c.to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["foo".to_string()]
+        );
+        assert!(!index.is_primary());
+        assert!(!index.is_unique());
+
+        let mut new_table = table.clone();
+        new_table.drop_index("foo_idx");
+        new_table.add_index(Index::new(
+            "foo_idx",
+            &["foo", "foreign_key_test"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        schema_manager.alter_table(diff).await?;
+
+        let table = schema_manager.introspect_table("alter_table").await?;
+        assert_eq!(table.get_indices().len(), 2);
+        assert!(table.has_index("foo_idx"));
+        assert_eq!(
+            table
+                .get_index("foo_idx")
+                .unwrap()
+                .get_columns()
+                .iter()
+                .map(|c| c.to_lowercase())
+                .sorted()
+                .collect::<Vec<_>>(),
+            vec!["foo".to_string(), "foreign_key_test".to_string()]
+        );
+
+        let mut new_table = table.clone();
+        new_table.drop_index("foo_idx");
+        new_table.add_index(Index::new(
+            "bar_idx",
+            &["foo", "foreign_key_test"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        schema_manager.alter_table(diff).await?;
+
+        let table = schema_manager.introspect_table("alter_table").await?;
+        assert_eq!(table.get_indices().len(), 2);
+        assert!(table.has_index("bar_idx"));
+        assert!(!table.has_index("foo_idx"));
+        assert_eq!(
+            table
+                .get_index("bar_idx")
+                .unwrap()
+                .get_columns()
+                .iter()
+                .map(|c| c.to_lowercase())
+                .sorted()
+                .collect::<Vec<_>>(),
+            vec!["foo".to_string(), "foreign_key_test".to_string()]
+        );
+        assert!(!table.get_index("bar_idx").unwrap().is_primary());
+        assert!(!table.get_index("bar_idx").unwrap().is_unique());
+
+        let mut new_table = table.clone();
+        new_table.drop_index("bar_idx");
+        new_table.add_foreign_key_constraint(
+            &["foreign_key_test"],
+            &["id"],
+            "alter_table_foreign",
+            Default::default(),
+            None,
+            None,
+            None::<&str>,
+        )?;
+
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        let diff = diff.unwrap();
+        schema_manager.alter_table(diff).await?;
+
+        let table = schema_manager.introspect_table("alter_table").await?;
+
+        // don't check for index size here, some platforms automatically add indexes for foreign keys.
+        assert!(!table.has_index("bar_idx"));
+
+        let fks = table.get_foreign_keys();
+        assert_eq!(fks.len(), 1);
+
+        let foreign_key = fks.first().unwrap();
+        assert_eq!(
+            foreign_key.get_foreign_table().get_name().to_lowercase(),
+            "alter_table_foreign"
+        );
+        assert_eq!(
+            foreign_key
+                .get_local_columns()
+                .iter()
+                .map(|c| c.get_name().to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["foreign_key_test"]
+        );
+        assert_eq!(
+            foreign_key
+                .get_foreign_columns()
+                .iter()
+                .map(|c| c.get_name().to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["id"]
+        );
+
+        Ok(())
+    }
+
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    #[serial]
+    pub async fn table_in_namespace() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut diff = SchemaDiff::default();
+        diff.new_namespaces.push("testschema".to_string());
+
+        _exec_sql(
+            &helper.connection,
+            schema_manager.get_alter_schema_sql(diff)?,
+        )
+        .await?;
+
+        // Test if table is create in namespace
+        helper
+            .create_test_table("testschema.my_table_in_namespace")
+            .await?;
+        assert!(schema_manager
+            .list_table_names()
+            .await?
+            .iter()
+            .any(|n| n == "testschema.my_table_in_namespace"));
+
+        // Tables without namespace should be created in default namespace
+        // Default namespaces are ignored in table listings
+        helper
+            .create_test_table("my_table_not_in_namespace")
+            .await?;
+        assert!(schema_manager
+            .list_table_names()
+            .await?
+            .iter()
+            .any(|n| n == "my_table_not_in_namespace"));
 
         Ok(())
     }

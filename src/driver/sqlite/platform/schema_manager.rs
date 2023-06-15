@@ -842,8 +842,8 @@ mod tests {
                 r#"CREATE TABLE "table" (id INTEGER NOT NULL, PRIMARY KEY(id))"#,
                 r#"INSERT INTO "table" (id) SELECT id FROM __temp__table"#,
                 r#"DROP TABLE __temp__table"#,
-                r#"CREATE INDEX "select" ON "table" (id)"#,
                 r#"CREATE INDEX "bar" ON "table" (id)"#,
+                r#"CREATE INDEX "select" ON "table" (id)"#,
             ]
         );
     }

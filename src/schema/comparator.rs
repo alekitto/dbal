@@ -442,7 +442,7 @@ pub trait Comparator {
             for (to_key, to_constraint) in &to_foreign_keys {
                 if from_constraint == *to_constraint {
                     rem_from_keys.remove(&from_key);
-                    rem_to_keys.remove(&to_key);
+                    rem_to_keys.remove(to_key);
                 } else if from_constraint.get_name().to_lowercase()
                     == to_constraint.get_name().to_lowercase()
                 {
@@ -450,7 +450,7 @@ pub trait Comparator {
                         .changed_foreign_keys
                         .push((*to_constraint).clone());
                     rem_from_keys.remove(&from_key);
-                    rem_to_keys.remove(&to_key);
+                    rem_to_keys.remove(to_key);
                 }
             }
         }

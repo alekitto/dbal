@@ -1762,7 +1762,7 @@ pub async fn create_foreign_key(
     foreign_key: ForeignKeyConstraint,
     table_name: &str,
 ) -> Result<()> {
-    let table = this.list_table_details(&table_name).await?;
+    let table = this.list_table_details(table_name).await?;
 
     let mut table_diff = TableDiff::new(table_name, &table);
     table_diff.added_foreign_keys.push(foreign_key);

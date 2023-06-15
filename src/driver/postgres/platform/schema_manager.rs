@@ -34,7 +34,6 @@ impl<'a> PostgreSQLSchemaManager<'a> {
 
         Ok(search_paths
             .split(',')
-            .into_iter()
             .map(|p| {
                 if let Some(user) = user {
                     p.replace(r#""$user""#, user)

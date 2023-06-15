@@ -414,7 +414,7 @@ fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Ind
             index.get_name().into_owned()
         } else {
             empty_index_idx += 1;
-            format!("{}", empty_index_idx).into()
+            format!("{}", empty_index_idx)
         };
 
         new_indexes.insert(name, index);

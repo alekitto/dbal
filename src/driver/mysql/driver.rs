@@ -1,12 +1,10 @@
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::driver::mysql::platform;
 use crate::driver::statement::Statement;
-use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;
 use crate::sync::Mutex;
-use crate::{Async, Error, EventDispatcher, Result};
+use crate::{Async, EventDispatcher, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
-use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
@@ -93,36 +91,6 @@ impl DriverConnection<ConnectionOptions> for Driver {
     }
 }
 
-/// Get a normalized 'version number' from the server string
-/// returned by Oracle MySQL servers.
-fn get_oracle_mysql_version_number(version_string: String) -> Result<String> {
-    let rx = Regex::new(r"^(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?)?")?;
-    let version_parts = rx
-        .captures(&version_string)
-        .ok_or_else(|| Error::new(ErrorKind::UnknownError, "mysql: invalid version string"))?;
-
-    let major_version = version_parts.name("major").unwrap().as_str();
-    let minor_version = version_parts
-        .name("minor")
-        .map(|m| m.as_str())
-        .unwrap_or("0");
-    let patch_version = version_parts
-        .name("minor")
-        .map(|m| m.as_str())
-        .unwrap_or_else(|| {
-            if major_version == "5" && minor_version == "7" {
-                "9"
-            } else {
-                "0"
-            }
-        });
-
-    Ok(format!(
-        "{}.{}.{}",
-        major_version, minor_version, patch_version
-    ))
-}
-
 impl<'conn> Connection<'conn> for Driver {
     fn create_platform(
         &self,
@@ -133,34 +101,35 @@ impl<'conn> Connection<'conn> for Driver {
                 .server_version()
                 .await
                 .unwrap_or_else(|| "5.7.9".to_string());
-            if version.contains("mariadb")
-                && compare_to(&version, "10.2.7", Cmp::Ge).unwrap_or(false)
+            let variant = if compare_to(version.replace("mariadb", "").trim(), "10.2.7", Cmp::Ge)
+                .unwrap_or(false)
             {
-                Box::new(platform::MySQLPlatform::new(
-                    platform::MySQLVariant::MariaDB,
-                    ev,
-                )) as Box<dyn DatabasePlatform + Send + Sync>
+                platform::MySQLVariant::MariaDB
+            } else if compare_to(&version, "10", Cmp::Ge).unwrap_or(false) {
+                platform::MySQLVariant::MySQL56 // MariaDB 10
+            } else if compare_to(&version, "8", Cmp::Ge).unwrap_or(false) {
+                platform::MySQLVariant::MySQL80
+            } else if compare_to(&version, "5.7", Cmp::Ge).unwrap_or(false) {
+                platform::MySQLVariant::MySQL57
             } else {
-                let version = get_oracle_mysql_version_number(version)
-                    .unwrap_or_else(|_| "5.7.9".to_string());
-                let variant = if compare_to(&version, "8", Cmp::Ge).unwrap_or(false) {
-                    platform::MySQLVariant::MySQL80
-                } else if compare_to(&version, "5.7", Cmp::Ge).unwrap_or(false) {
-                    platform::MySQLVariant::MySQL57
-                } else {
-                    platform::MySQLVariant::MySQL56
-                };
+                platform::MySQLVariant::MySQL56
+            };
 
-                Box::new(platform::MySQLPlatform::new(variant, ev))
-                    as Box<dyn DatabasePlatform + Send + Sync>
-            }
+            Box::new(platform::MySQLPlatform::new(variant, ev))
+                as Box<dyn DatabasePlatform + Send + Sync>
         })
     }
 
     fn server_version(&self) -> Async<Option<String>> {
         Box::pin(async move {
             let connection = self.connection.lock().await;
-            let (major, minor, patch) = connection.server_version();
+            let (major, minor, mut patch) = connection.server_version();
+
+            if major == 5 && minor == 7 {
+                patch = 9
+            } else if major < 10 {
+                patch = 0
+            }
 
             Some(format!("{}.{}.{}", major, minor, patch))
         })

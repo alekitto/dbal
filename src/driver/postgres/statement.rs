@@ -97,7 +97,7 @@ impl<'conn> Statement<'conn> {
             sql: sql.to_string(),
             parameters: DashMap::new(),
             row_count: AtomicUsize::new(usize::MAX),
-            phantom_data: PhantomData::default(),
+            phantom_data: PhantomData,
         }
     }
 

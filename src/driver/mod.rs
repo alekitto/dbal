@@ -59,6 +59,10 @@ impl Driver {
         self.inner_driver.create_platform(ev).await
     }
 
+    pub async fn server_version(&self) -> String {
+        self.inner_driver.server_version().await.unwrap_or_default()
+    }
+
     pub fn prepare<St: Into<String>>(&self, sql: St) -> Result<Box<dyn Statement<'_> + '_>> {
         self.inner_driver.prepare(sql.into().as_str())
     }

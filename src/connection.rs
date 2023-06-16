@@ -310,6 +310,11 @@ impl Connection {
         }
     }
 
+    pub async fn server_version(&self) -> Result<String> {
+        let Some(ref driver) = self.driver else { return Err(Error::not_connected()); };
+        Ok(driver.server_version().await)
+    }
+
     fn add_database_suffix(connection_options: ConnectionOptions) -> ConnectionOptions {
         let mut options = connection_options.clone();
         if let Some(db_suffix) = connection_options.database_name_suffix {

@@ -310,7 +310,7 @@ pub fn get_list_tables_sql() -> Result<String> {
 }
 
 pub fn get_list_views_sql() -> Result<String> {
-    Ok("SELECT name, sql FROM sqlite_master WHERE type='view' AND sql NOT NULL".to_string())
+    Ok("SELECT name AS viewname, NULL AS schemaname, sql AS definition FROM sqlite_master WHERE type='view' AND sql NOT NULL".to_string())
 }
 
 pub fn get_advanced_foreign_key_options_sql(

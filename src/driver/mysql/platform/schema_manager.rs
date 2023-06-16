@@ -147,12 +147,14 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         table_name: &Identifier,
     ) -> Result<Vec<String>> {
         match self.variant {
-            MySQLVariant::MySQL57 | MySQLVariant::MySQL80 => mysql::get_rename_index_sql(
-                self.get_platform()?.as_dyn(),
-                old_index_name,
-                index,
-                table_name,
-            ),
+            MySQLVariant::MySQL5_7 | MySQLVariant::MySQL8_0 | MySQLVariant::MariaDB => {
+                mysql::get_rename_index_sql(
+                    self.get_platform()?.as_dyn(),
+                    old_index_name,
+                    index,
+                    table_name,
+                )
+            }
             _ => default::get_rename_index_sql(self.as_dyn(), old_index_name, index, table_name),
         }
     }
@@ -196,7 +198,9 @@ mod tests {
         UniqueConstraint,
     };
     use crate::tests::create_connection;
+    use crate::Result;
     use std::collections::HashMap;
+    use version_compare::{compare_to, Cmp};
 
     #[tokio::test]
     pub async fn generates_table_creation_sql() {
@@ -696,34 +700,51 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn alter_table_rename_index() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn alter_table_rename_index() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("mytable");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER)?);
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("mytable", &table);
         table_diff.renamed_indexes.push((
             "idx_foo".to_string(),
-            Index::new("idx_bar", &["id"], false, false, &[], HashMap::default()),
+            Index::new("idx_bar", &["id"], false, false, &[], Default::default()),
         ));
 
-        assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
-            &["ALTER TABLE mytable RENAME INDEX idx_foo TO idx_bar"]
-        );
+        let alter_table_sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
+        let version = connection.server_version().await?;
+        if compare_to(&version, "5.7", Cmp::Lt).unwrap()
+            || (compare_to(&version, "10", Cmp::Ge).unwrap()
+                && compare_to(&version, "10.5.2", Cmp::Lt).unwrap())
+        {
+            assert_eq!(
+                alter_table_sql,
+                &[
+                    "DROP INDEX idx_foo ON mytable",
+                    "CREATE INDEX idx_bar ON mytable (id)"
+                ]
+            )
+        } else {
+            assert_eq!(
+                alter_table_sql,
+                &["ALTER TABLE mytable RENAME INDEX idx_foo TO idx_bar"]
+            );
+        }
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_alter_table_rename_index() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quotes_alter_table_rename_index() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("table");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER)?);
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("table", &table);
 
@@ -736,13 +757,32 @@ mod tests {
             Index::new("`bar`", &["id"], false, false, &[], HashMap::default()),
         ));
 
-        assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
-            &[
-                "ALTER TABLE `table` RENAME INDEX `create` TO `select`",
-                "ALTER TABLE `table` RENAME INDEX `foo` TO `bar`",
-            ]
-        );
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
+        let version = connection.server_version().await?;
+        if compare_to(&version, "5.7", Cmp::Lt).unwrap()
+            || (compare_to(&version, "10", Cmp::Ge).unwrap()
+                && compare_to(&version, "10.5.2", Cmp::Lt).unwrap())
+        {
+            assert_eq!(
+                sql,
+                &[
+                    "DROP INDEX `create` ON `table`",
+                    "CREATE INDEX `select` ON `table` (id)",
+                    "DROP INDEX `foo` ON `table`",
+                    "CREATE INDEX `bar` ON `table` (id)",
+                ]
+            );
+        } else {
+            assert_eq!(
+                sql,
+                &[
+                    "ALTER TABLE `table` RENAME INDEX `create` TO `select`",
+                    "ALTER TABLE `table` RENAME INDEX `foo` TO `bar`",
+                ]
+            );
+        }
+
+        Ok(())
     }
 
     #[tokio::test]
@@ -971,10 +1011,10 @@ mod tests {
     }
 
     #[tokio::test]
-    pub async fn alter_table_rename_index_in_schema() {
+    pub async fn alter_table_rename_index_in_schema() -> Result<()> {
         let mut table = Table::new("myschema.mytable");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER)?);
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("myschema.mytable", &table);
         table_diff.renamed_indexes.push((
@@ -982,19 +1022,37 @@ mod tests {
             Index::new("idx_bar", &["id"], false, false, &[], HashMap::default()),
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
-            &["ALTER TABLE myschema.mytable RENAME INDEX idx_foo TO idx_bar"]
-        );
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
+
+        let version = connection.server_version().await?;
+        if compare_to(&version, "5.7", Cmp::Lt).unwrap()
+            || (compare_to(&version, "10", Cmp::Ge).unwrap()
+                && compare_to(&version, "10.5.2", Cmp::Lt).unwrap())
+        {
+            assert_eq!(
+                sql,
+                &[
+                    "DROP INDEX idx_foo ON myschema.mytable",
+                    "CREATE INDEX idx_bar ON myschema.mytable (id)"
+                ]
+            );
+        } else {
+            assert_eq!(
+                sql,
+                &["ALTER TABLE myschema.mytable RENAME INDEX idx_foo TO idx_bar"]
+            );
+        }
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_alter_table_rename_index_in_schema() {
+    pub async fn quotes_alter_table_rename_index_in_schema() -> Result<()> {
         let mut table = Table::new("`schema`.table");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER)?);
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("`schema`.table", &table);
         table_diff.renamed_indexes.push((
@@ -1006,15 +1064,35 @@ mod tests {
             Index::new("`bar`", &["id"], false, false, &[], HashMap::default()),
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
-            &[
-                "ALTER TABLE `schema`.`table` RENAME INDEX `create` TO `select`",
-                "ALTER TABLE `schema`.`table` RENAME INDEX `foo` TO `bar`",
-            ]
-        );
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
+
+        let version = connection.server_version().await?;
+        if compare_to(&version, "5.7", Cmp::Lt).unwrap()
+            || (compare_to(&version, "10", Cmp::Ge).unwrap()
+                && compare_to(&version, "10.5.2", Cmp::Lt).unwrap())
+        {
+            assert_eq!(
+                sql,
+                &[
+                    "DROP INDEX `create` ON `schema`.`table`",
+                    "CREATE INDEX `select` ON `schema`.`table` (id)",
+                    "DROP INDEX `foo` ON `schema`.`table`",
+                    "CREATE INDEX `bar` ON `schema`.`table` (id)",
+                ]
+            );
+        } else {
+            assert_eq!(
+                sql,
+                &[
+                    "ALTER TABLE `schema`.`table` RENAME INDEX `create` TO `select`",
+                    "ALTER TABLE `schema`.`table` RENAME INDEX `foo` TO `bar`",
+                ]
+            );
+        }
+
+        Ok(())
     }
 
     #[tokio::test]

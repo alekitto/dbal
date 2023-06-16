@@ -1088,8 +1088,8 @@ pub trait SchemaManager: Sync {
     }
 
     fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>> {
-        let name = string_from_value(self.get_connection(), view.get(0))?;
-        let sql = string_from_value(self.get_connection(), view.get(1))?;
+        let name = string_from_value(self.get_connection(), view.get("viewname"))?;
+        let sql = string_from_value(self.get_connection(), view.get("definition"))?;
 
         Ok(Some(View::new(name, &sql)))
     }
@@ -2940,6 +2940,32 @@ mod tests {
             .await?
             .iter()
             .any(|n| n == "my_table_not_in_namespace"));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn create_and_list_views() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        helper.create_test_table("view_test_table").await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let view = View::new("creed_test_view", "SELECT * FROM view_test_table");
+
+        schema_manager.create_view(&view).await?;
+        let views = schema_manager
+            .list_views()
+            .await?
+            .into_iter()
+            .filter(|v| {
+                v.get_shortest_name(&v.get_namespace_name().unwrap_or_default()) == view.get_name()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(views.len(), 1);
+        assert!(views.get(0).unwrap().get_sql().contains("view_test_table"));
 
         Ok(())
     }

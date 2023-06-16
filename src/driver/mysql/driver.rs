@@ -101,18 +101,16 @@ impl<'conn> Connection<'conn> for Driver {
                 .server_version()
                 .await
                 .unwrap_or_else(|| "5.7.9".to_string());
-            let variant = if compare_to(version.replace("mariadb", "").trim(), "10.2.7", Cmp::Ge)
-                .unwrap_or(false)
-            {
+            let variant = if compare_to(&version, "10.5.2", Cmp::Ge).unwrap_or(false) {
                 platform::MySQLVariant::MariaDB
             } else if compare_to(&version, "10", Cmp::Ge).unwrap_or(false) {
-                platform::MySQLVariant::MySQL56 // MariaDB 10
+                platform::MySQLVariant::MySQL5_6 // MariaDB 10
             } else if compare_to(&version, "8", Cmp::Ge).unwrap_or(false) {
-                platform::MySQLVariant::MySQL80
+                platform::MySQLVariant::MySQL8_0
             } else if compare_to(&version, "5.7", Cmp::Ge).unwrap_or(false) {
-                platform::MySQLVariant::MySQL57
+                platform::MySQLVariant::MySQL5_7
             } else {
-                platform::MySQLVariant::MySQL56
+                platform::MySQLVariant::MySQL5_6
             };
 
             Box::new(platform::MySQLPlatform::new(variant, ev))

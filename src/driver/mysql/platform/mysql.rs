@@ -172,7 +172,11 @@ pub fn get_list_databases_sql() -> Result<String> {
 
 pub fn get_list_views_sql(this: &dyn SchemaManager, database: &str) -> Result<String> {
     Ok(format!(
-        "SELECT * FROM information_schema.VIEWS WHERE TABLE_SCHEMA = {}",
+        "SELECT TABLE_NAME AS viewname, \
+               TABLE_SCHEMA AS schemaname, \
+               VIEW_DEFINITION AS definition \
+        FROM information_schema.VIEWS \
+        WHERE TABLE_SCHEMA = {}",
         this.quote_string_literal(database)
     ))
 }

@@ -227,7 +227,7 @@ impl DatabasePlatform for MySQLPlatform {
 
     fn create_reserved_keywords_list(&self) -> KeywordList {
         match self.variant {
-            MySQLVariant::MySQL80 => KeywordList::mysql80_keywords(),
+            MySQLVariant::MySQL8_0 => KeywordList::mysql80_keywords(),
             MySQLVariant::MariaDB => KeywordList::mariadb_keywords(),
             _ => KeywordList::mysql_keywords(),
         }
@@ -287,11 +287,11 @@ mod tests {
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {
-        MySQLPlatform::new(MySQLVariant::MySQL57, Arc::new(EventDispatcher::new()))
+        MySQLPlatform::new(MySQLVariant::MySQL5_7, Arc::new(EventDispatcher::new()))
     }
 
     pub fn create_mysql80_platform() -> MySQLPlatform {
-        MySQLPlatform::new(MySQLVariant::MySQL80, Arc::new(EventDispatcher::new()))
+        MySQLPlatform::new(MySQLVariant::MySQL8_0, Arc::new(EventDispatcher::new()))
     }
 
     pub fn create_mariadb_platform() -> MySQLPlatform {

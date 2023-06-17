@@ -16,6 +16,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Index as _;
 use std::sync::Arc;
+use crate::schema::schema_config::SchemaConfig;
 
 pub(crate) async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
     if let Some(database) = conn.get_database().await {
@@ -1128,6 +1129,10 @@ pub trait SchemaManager: Sync {
         }
 
         Ok(constraint)
+    }
+
+    fn create_schema_config(&self) -> SchemaConfig {
+        SchemaConfig::default()
     }
 
     /// Creates a schema instance for the current database.
@@ -2966,6 +2971,27 @@ mod tests {
 
         assert_eq!(views.len(), 1);
         assert!(views.get(0).unwrap().get_sql().contains("view_test_table"));
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[tokio::test]
+    #[serial]
+    pub async fn autoincrement_detection() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("test_autoincrement");
+        table.set_schema_config(schema_manager.create_schema_config());
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.set_primary_key(&["id"], None)?;
+
+        schema_manager.create_table(&table).await?;
+
+        let inferred_table = schema_manager.introspect_table("test_autoincrement").await?;
+        assert!(inferred_table.has_column("id"));
+        assert!(inferred_table.get_column("id").unwrap().is_autoincrement());
 
         Ok(())
     }

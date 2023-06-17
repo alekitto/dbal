@@ -185,9 +185,9 @@ fn get_non_autoincrement_primary_key_definition(
         if vec.is_empty() {
             "".to_string()
         } else {
-            let mut key_columns = vec.iter().unique();
-            let joined_columns = { key_columns.join(", ") };
-            for key_column in key_columns {
+            let key_columns = vec.iter().unique();
+            let joined_columns = { key_columns.clone().join(", ") };
+            for key_column in key_columns.into_iter() {
                 if let Some(column) = columns
                     .iter()
                     .find(|c| c.name.cmp(key_column) == Ordering::Equal)

@@ -16,8 +16,8 @@ use crate::schema::{
 use crate::util::{filter_asset_names, function_name};
 use crate::{
     params, AsyncResult, Error, Result, Row, SchemaAlterTableChangeColumnEvent,
-    SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaCreateTableColumnEvent,
-    SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
+    SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaColumnDefinitionEvent,
+    SchemaCreateTableColumnEvent, SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
 };
 use itertools::Itertools;
 use regex::Regex;
@@ -1488,6 +1488,7 @@ pub async fn list_table_columns(
     let table_columns = this.get_connection().fetch_all(sql, params!()).await?;
 
     this.get_portable_table_column_list(&table, &database, table_columns)
+        .await
 }
 
 /// Lists the indexes for a given table returning an array of Index instances.
@@ -1768,4 +1769,42 @@ pub async fn create_foreign_key(
     table_diff.added_foreign_keys.push(foreign_key);
 
     this.alter_table(table_diff).await
+}
+
+pub fn get_portable_table_column_list(
+    this: &dyn SchemaManager,
+    table: &str,
+    database: &str,
+    table_columns: Vec<Row>,
+) -> Result<Vec<Column>> {
+    let table = table.to_string();
+    let database = database.to_string();
+
+    let platform = this.get_platform()?;
+    let event_manager = platform.get_event_manager();
+    let mut list = vec![];
+
+    for table_column in table_columns {
+        let event = event_manager.dispatch_sync(SchemaColumnDefinitionEvent::new(
+            &table_column,
+            &table,
+            &database,
+            platform.clone(),
+        ))?;
+
+        let column = if event.is_default_prevented() {
+            event.column()
+        } else {
+            Some(this.get_portable_table_column_definition(&table_column)?)
+        };
+
+        if column.is_none() {
+            continue;
+        }
+
+        let column = column.unwrap();
+        list.push(column);
+    }
+
+    Ok(list)
 }

@@ -7,6 +7,7 @@ mod foreign_key_constraint;
 mod identifier;
 mod index;
 mod schema;
+mod schema_config;
 mod schema_diff;
 mod schema_manager;
 mod sequence;

@@ -395,7 +395,7 @@ mod tests {
             .get_create_table_sql(&table, None)
             .expect("Failed to generate table SQL");
         assert_eq!(sql, vec![
-            "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL, PRIMARY KEY(id))"
+            "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL)"
         ]);
     }
 
@@ -540,7 +540,7 @@ mod tests {
         assert_eq!(sql, &[
             "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id, bar, bloo FROM mytable",
             "DROP TABLE mytable",
-            "CREATE TABLE mytable (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, baz VARCHAR(255) DEFAULT 'def' NOT NULL, bloo BOOLEAN DEFAULT 0 NOT NULL, quota INTEGER DEFAULT NULL, PRIMARY KEY(id))",
+            "CREATE TABLE mytable (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, baz VARCHAR(255) DEFAULT 'def' NOT NULL, bloo BOOLEAN DEFAULT 0 NOT NULL, quota INTEGER DEFAULT NULL)",
             "INSERT INTO mytable (id, baz, bloo) SELECT id, bar, bloo FROM __temp__mytable",
             "DROP TABLE __temp__mytable",
             "ALTER TABLE mytable RENAME TO userlist",

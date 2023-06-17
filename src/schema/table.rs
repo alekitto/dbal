@@ -6,6 +6,7 @@ use crate::schema::{
 use crate::{Error, Result, Value};
 use regex::Regex;
 use std::collections::HashMap;
+use crate::schema::schema_config::SchemaConfig;
 
 #[derive(Clone, Default)]
 pub struct TableOptions {
@@ -42,6 +43,7 @@ pub struct Table {
     table_options: Option<String>,
     partition_options: Option<String>,
     alter: bool,
+    schema_config: SchemaConfig,
 }
 
 impl Table {
@@ -62,6 +64,7 @@ impl Table {
             table_options: None,
             partition_options: None,
             alter: false,
+            schema_config: SchemaConfig::default(),
         }
     }
 
@@ -82,6 +85,7 @@ impl Table {
             table_options: self.table_options.clone(),
             partition_options: self.partition_options.clone(),
             alter: false,
+            schema_config: self.schema_config.clone(),
         }
     }
 
@@ -262,8 +266,7 @@ impl Table {
     }
 
     fn get_max_identifier_length(&self) -> usize {
-        // TODO
-        65
+        self.schema_config.max_identifier_length
     }
 
     pub fn get_unique_constraints(&self) -> &Vec<UniqueConstraint> {
@@ -422,6 +425,10 @@ impl Table {
 
     pub fn set_alter(&mut self, alter: bool) {
         self.alter = alter;
+    }
+
+    pub fn set_schema_config(&mut self, schema_config: SchemaConfig) {
+        self.schema_config = schema_config;
     }
 
     /// Normalizes a given identifier.

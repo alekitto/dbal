@@ -3,6 +3,7 @@ use crate::driver::statement_result::StatementResult;
 use crate::platform::{default, CreateFlags, DatabasePlatform};
 use crate::r#type;
 use crate::r#type::{IntoType, TypeManager, TypePtr};
+use crate::schema::schema_config::SchemaConfig;
 use crate::schema::{
     Asset, Column, ColumnData, ColumnDiff, Comparator, ForeignKeyConstraint,
     ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema, SchemaDiff, Sequence,
@@ -16,7 +17,6 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Index as _;
 use std::sync::Arc;
-use crate::schema::schema_config::SchemaConfig;
 
 pub(crate) async fn get_database(conn: &Connection, method_name: &str) -> Result<String> {
     if let Some(database) = conn.get_database().await {
@@ -1011,37 +1011,13 @@ pub trait SchemaManager: Sync {
         table: &str,
         database: &str,
         table_columns: Vec<Row>,
-    ) -> Result<Vec<Column>> {
+    ) -> AsyncResult<Vec<Column>> {
         let table = table.to_string();
         let database = database.to_string();
 
-        let platform = self.get_platform()?;
-        let event_manager = platform.get_event_manager();
-        let mut list = vec![];
-
-        for table_column in table_columns {
-            let event = event_manager.dispatch_sync(SchemaColumnDefinitionEvent::new(
-                &table_column,
-                &table,
-                &database,
-                platform.clone(),
-            ))?;
-
-            let column = if event.is_default_prevented() {
-                event.column()
-            } else {
-                Some(self.get_portable_table_column_definition(&table_column)?)
-            };
-
-            if column.is_none() {
-                continue;
-            }
-
-            let column = column.unwrap();
-            list.push(column);
-        }
-
-        Ok(list)
+        Box::pin(async move {
+            default::get_portable_table_column_list(self.as_dyn(), &table, &database, table_columns)
+        })
     }
 
     /// Gets Table Column Definition.
@@ -1275,7 +1251,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
             fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
@@ -1408,7 +1384,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> Result<Vec<Column>>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<Vec<Column>>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
             fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
@@ -2989,7 +2965,9 @@ mod tests {
 
         schema_manager.create_table(&table).await?;
 
-        let inferred_table = schema_manager.introspect_table("test_autoincrement").await?;
+        let inferred_table = schema_manager
+            .introspect_table("test_autoincrement")
+            .await?;
         assert!(inferred_table.has_column("id"));
         assert!(inferred_table.get_column("id").unwrap().is_autoincrement());
 

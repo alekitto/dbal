@@ -1,9 +1,10 @@
 use super::sqlite;
 use crate::driver::statement_result::StatementResult;
-use crate::platform::CreateFlags;
+use crate::platform::{default, CreateFlags};
 use crate::schema::{
-    Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator, Identifier, Index,
-    IntoIdentifier, SchemaManager, Table, TableDiff, TableOptions,
+    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData, Comparator,
+    ForeignKeyConstraint, GenericComparator, Identifier, Index, IntoIdentifier, SchemaManager,
+    Table, TableDiff, TableOptions,
 };
 use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
 use regex::Regex;
@@ -150,6 +151,27 @@ AND name = ?
     }
 }
 
+fn parse_column_comment_from_sql(column: &str, quoted_column: &str, sql: &str) -> Option<String> {
+    let pattern = format!(
+        "[\\s(,](?:\\W{}\\W|\\W{}\\W)(?:\\([^)]*?\\)|[^,(])*?,?((?:[^\\S\\r\\n]*--[^\\n]*\\n?)+)",
+        regex::escape(quoted_column),
+        regex::escape(column)
+    );
+    let pattern = Regex::new(&pattern).unwrap();
+
+    let Some(m) = pattern.captures(sql) else { return None; };
+    let comment = Regex::new("^\\s*--")
+        .unwrap()
+        .replace(m.get(1).unwrap().as_str().trim_end(), "")
+        .to_string();
+
+    if comment.is_empty() {
+        None
+    } else {
+        Some(comment)
+    }
+}
+
 pub trait AbstractSQLiteSchemaManager: SchemaManager {}
 impl AbstractSQLiteSchemaManager for SQLiteSchemaManager<'_> {}
 
@@ -274,6 +296,99 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
 
     fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column> {
         sqlite::get_portable_table_column_definition(self.as_dyn(), table_column)
+    }
+
+    fn get_portable_table_column_list(
+        &self,
+        table: &str,
+        database: &str,
+        table_columns: Vec<Row>,
+    ) -> AsyncResult<Vec<Column>> {
+        let table = table.to_string();
+        let database = database.to_string();
+
+        Box::pin(async move {
+            let mut list = default::get_portable_table_column_list(
+                self.as_dyn(),
+                &table,
+                &database,
+                table_columns.clone(),
+            )?;
+
+            let Some(create_sql) = self
+                .get_connection()
+                .query(
+                    r#"
+    SELECT sql
+    FROM (
+        SELECT *
+            FROM sqlite_master
+        UNION ALL
+        SELECT *
+            FROM sqlite_temp_master
+    )
+    WHERE type = 'table'
+AND name = ?
+"#,
+                    params![0  => Value::from(table)],
+                )
+                .await?
+                .fetch_one()
+                .await? else {
+                return Ok(vec![]);
+            };
+
+            let create_sql = create_sql.get("sql").unwrap().to_string();
+            if create_sql.contains("AUTOINCREMENT") {
+                // find column with autoincrement
+                let mut autoincrement_column = None;
+                let mut autoincrement_count = 0;
+
+                for table_column in table_columns {
+                    if table_column.get("pk").unwrap().to_string() == "0" {
+                        continue;
+                    }
+
+                    autoincrement_count += 1;
+                    if autoincrement_column.is_some()
+                        || table_column.get("type").unwrap().to_string().to_lowercase() != "integer"
+                    {
+                        continue;
+                    }
+
+                    autoincrement_column = Some(table_column.get("name").unwrap().to_string());
+                }
+
+                if autoincrement_count == 1 && autoincrement_column.is_some() {
+                    let autoincrement_column = autoincrement_column.unwrap();
+                    for column in list.iter_mut() {
+                        if autoincrement_column != column.get_name() {
+                            continue;
+                        }
+
+                        column.set_autoincrement(true);
+                    }
+                }
+            }
+
+            let platform = self.get_platform()?;
+            for column in list.iter_mut() {
+                let column_name = column.get_name();
+                let mut r#type = column.get_type();
+
+                let comment = parse_column_comment_from_sql(
+                    column_name.as_ref(),
+                    &platform.quote_single_identifier(column_name.as_ref()),
+                    &create_sql,
+                );
+                r#type = extract_type_from_comment(comment.clone(), r#type)?;
+
+                let comment = remove_type_from_comment(comment, r#type);
+                column.set_comment::<String, Option<String>>(comment);
+            }
+
+            Ok(list)
+        })
     }
 
     fn get_portable_table_indexes_list(

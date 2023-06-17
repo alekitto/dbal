@@ -1,4 +1,5 @@
 use crate::schema::asset::{generate_identifier_name, impl_asset, Asset};
+use crate::schema::schema_config::SchemaConfig;
 use crate::schema::{
     Column, ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier,
     UniqueConstraint,
@@ -6,7 +7,6 @@ use crate::schema::{
 use crate::{Error, Result, Value};
 use regex::Regex;
 use std::collections::HashMap;
-use crate::schema::schema_config::SchemaConfig;
 
 #[derive(Clone, Default)]
 pub struct TableOptions {

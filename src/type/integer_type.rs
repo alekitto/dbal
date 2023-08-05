@@ -37,4 +37,21 @@ impl Type for IntegerType {
     fn get_binding_type(&self) -> ParameterType {
         ParameterType::Integer
     }
+
+    fn convert_to_default_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<String> {
+        match value {
+            Value::NULL => Ok(0.to_string()),
+            Value::Int(n) => Ok(n.to_string()),
+            Value::UInt(n) => Ok(n.to_string()),
+            Value::String(s) => {
+                let n: i64 = s.parse()?;
+                Ok(n.to_string())
+            }
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "Integer"],
+            )),
+        }
+    }
 }

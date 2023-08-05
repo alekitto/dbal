@@ -20,7 +20,7 @@ impl<'a> SchemaManager for MockSchemaManager<'a> {
         self
     }
 
-    fn get_portable_table_column_definition(&self, table_column: &Row) -> crate::Result<Column> {
+    fn get_portable_table_column_definition(&self, _: &Row) -> crate::Result<Column> {
         todo!()
     }
 

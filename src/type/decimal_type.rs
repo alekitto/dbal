@@ -62,4 +62,19 @@ impl Type for DecimalType {
     fn get_binding_type(&self) -> ParameterType {
         ParameterType::Binary
     }
+
+    fn convert_to_default_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<String> {
+        match value {
+            Value::NULL => Ok(0.to_string()),
+            Value::Int(n) => Ok(n.to_string()),
+            Value::UInt(n) => Ok(n.to_string()),
+            Value::Float(n) => Ok(n.to_string()),
+            Value::String(s) => Ok(s.clone()),
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "Float", "Int", "UInt"],
+            )),
+        }
+    }
 }

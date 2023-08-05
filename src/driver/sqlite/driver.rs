@@ -40,8 +40,18 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
     }
 }
 
+impl Default for ConnectionOptions {
+    fn default() -> Self {
+        Self {
+            path: None,
+            memory: true,
+            user_defined_functions: Self::builtin_user_defined_functions(),
+        }
+    }
+}
+
 impl ConnectionOptions {
-    fn create<T: Into<String>>(dsn: T) -> Result<Self> {
+    pub fn new<T: Into<String>>(dsn: T) -> Result<Self> {
         let dsn = dsn.into();
         if !dsn.starts_with("sqlite:") {
             return Ok(Self::new_with_path(dsn));
@@ -62,7 +72,7 @@ impl ConnectionOptions {
         Ok(Self::new_with_path(target))
     }
 
-    fn new_with_path<T: Into<String>>(path: T) -> Self {
+    pub fn new_with_path<T: Into<String>>(path: T) -> Self {
         ConnectionOptions {
             path: Some(path.into()),
             memory: false,
@@ -70,19 +80,11 @@ impl ConnectionOptions {
         }
     }
 
-    fn new_from_memory() -> Self {
+    pub fn new_from_memory() -> Self {
         ConnectionOptions {
             path: None,
             memory: true,
             ..Self::default()
-        }
-    }
-
-    fn default() -> Self {
-        ConnectionOptions {
-            path: None,
-            memory: true,
-            user_defined_functions: Self::builtin_user_defined_functions(),
         }
     }
 
@@ -125,8 +127,7 @@ impl ConnectionOptions {
                         0
                     };
 
-                    // SQL's LOCATE function works on 1-based positions, while PHP's strpos works on 0-based positions.
-                    // So we have to make them compatible if an offset is given.
+                    // SQL's LOCATE function works on 1-based positions, so we have to make them compatible if an offset is given.
                     if offset > 0 {
                         offset -= 1;
                         str = str[offset..].to_string();

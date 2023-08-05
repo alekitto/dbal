@@ -1,17 +1,19 @@
 use crate::error::ErrorKind;
+use crate::parameter::NO_PARAMS;
 use crate::params;
 use crate::platform::DatabasePlatform;
 use crate::platform::{default, DateIntervalUnit};
-use crate::r#type::{IntoType, TypeManager, BINARY, BLOB};
+use crate::r#type::{IntoType, TypeManager, BINARY, BLOB, STRING};
 use crate::schema::{
     extract_type_from_comment, Asset, ChangedProperty, Column, ColumnData, ColumnDiff,
-    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Sequence,
-    TableDiff, TableOptions,
+    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexList,
+    IntoIdentifier, Sequence, TableDiff, TableOptions,
 };
 use crate::schema::{remove_type_from_comment, SchemaManager};
 use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
 use itertools::Itertools;
 use regex::Regex;
+use std::collections::HashMap;
 
 // const TRUE_BOOLEAN_LITERALS: [&str; 6] = ["t", "true", "y", "yes", "on", "1"];
 const FALSE_BOOLEAN_LITERALS: [&str; 6] = ["f", "false", "n", "no", "off", "0"];
@@ -178,7 +180,7 @@ pub fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
     table_name: String,
-) -> Result<Vec<Index>> {
+) -> Result<IndexList> {
     let mut buffer = vec![];
     for row in table_indexes {
         let attrs = row.get("attrs")?.clone().try_into_vec()?;
@@ -215,6 +217,7 @@ pub fn get_portable_table_foreign_key_definition(
     let on_update_regex = Regex::new("(ON UPDATE ([a-zA-Z0-9]+( (NULL|ACTION|DEFAULT))?))")?;
     let on_delete_regex = Regex::new("(ON DELETE ([a-zA-Z0-9]+( (NULL|ACTION|DEFAULT))?))")?;
 
+    let name = foreign_key.get("conname").unwrap().to_string();
     let con_def = foreign_key.get("condef").unwrap().to_string();
 
     let on_update = if let Some(m) = on_update_regex.captures(&con_def) {
@@ -267,14 +270,17 @@ pub fn get_portable_table_foreign_key_definition(
         .collect::<Vec<_>>();
     let foreign_table = values.get(2).unwrap().as_str().to_string();
 
-    Ok(ForeignKeyConstraint::new(
+    let mut fk = ForeignKeyConstraint::new(
         &local_columns,
         &foreign_columns,
         foreign_table,
         Default::default(),
         on_update,
         on_delete,
-    ))
+    );
+    fk.set_name(&name);
+
+    Ok(fk)
 }
 
 fn get_table_where_clause(
@@ -766,7 +772,7 @@ pub fn _get_create_table_sql(
 
 /// Converts a single boolean value.
 ///
-/// First converts the value to its native PHP boolean type
+/// First converts the value to its native boolean type
 /// and passes it to the given callback function to be reconverted
 /// into any custom representation.
 fn convert_single_boolean_value(
@@ -821,7 +827,7 @@ fn convert_single_boolean_value(
 
 /// Converts one or multiple boolean values.
 ///
-/// First converts the value(s) to their native PHP boolean type
+/// First converts the value(s) to their native boolean type
 /// and passes them to the given callback function to be reconverted
 /// into any custom representation.
 fn do_convert_booleans(item: &Value, callback: fn(Option<bool>) -> String) -> Result<Value> {
@@ -1144,16 +1150,20 @@ pub fn get_portable_table_column_definition(
             jsonb = Some(true);
         }
 
-        _ => { /* Do nothing. */ }
-    }
+        _ => {
+            if !col_default.is_null() {
+                if let Some(matches) =
+                    Regex::new("('([^']+)'::)")?.captures(&col_default.to_string())
+                {
+                    col_default = Value::String(matches.get(1).unwrap().as_str().to_string());
+                }
+            }
 
-    if !col_default.is_null() {
-        if let Some(matches) = Regex::new("('([^']+)'::)")?.captures(&col_default.to_string()) {
-            col_default = Value::String(matches.get(1).unwrap().as_str().to_string());
+            col_default = ty.convert_to_value(&col_default, this.get_platform()?.as_dyn())?;
         }
     }
 
-    let mut column = Column::new(table_column.get("field")?.to_string(), ty)?;
+    let mut column = Column::new(table_column.get("field")?.to_string(), ty);
     column.set_length(col_length.and_then(|v| usize::try_from(v).ok()));
     column.set_notnull(table_column.get("isnotnull")?.to_string() == "true");
     column.set_default(col_default);
@@ -1180,8 +1190,8 @@ pub fn get_portable_sequence_definition(row: &Row) -> Result<Sequence> {
     let sequence_name = if row.get("schemaname")? != &Value::from("public") {
         format!(
             "{}.{}",
-            row.get("schemaname")?.to_string(),
-            row.get("relname")?.to_string()
+            row.get("schemaname")?,
+            row.get("relname")?
         )
     } else {
         row.get("relname")?.to_string()
@@ -1224,4 +1234,69 @@ pub fn list_schema_names(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier
             .map(|r| r.get(0).unwrap().to_string().into_identifier())
             .collect())
     })
+}
+
+fn build_query_conditions(this: &dyn SchemaManager, mut table_name: &str) -> Vec<String> {
+    let platform = this.get_platform().unwrap();
+    let mut conditions = vec![];
+
+    if !table_name.is_empty() {
+        if let Some(dot_pos) = table_name.find('.') {
+            let (schema_name, tn) = table_name.split_at(dot_pos);
+            table_name = tn;
+
+            conditions.push(format!(
+                "n.nspname = {}",
+                platform.quote_string_literal(schema_name)
+            ));
+        } else {
+            conditions.push("n.nspname = ANY(current_schemas(false))".to_string());
+        }
+
+        let identifier = Identifier::new(table_name, true);
+        conditions.push(format!(
+            "c.relname = {}",
+            platform.quote_string_literal(&identifier.get_name())
+        ));
+    }
+
+    conditions
+        .push("n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')".to_string());
+    conditions
+}
+
+pub async fn fetch_table_options_by_table(
+    this: &dyn SchemaManager,
+    table_name: Option<&str>,
+) -> Result<HashMap<String, Row>> {
+    let string_type = STRING.into_type()?;
+    let platform = this.get_platform()?;
+    let mut conditions = build_query_conditions(this, table_name.unwrap_or(""));
+    conditions.push("c.relkind = 'r'".to_string());
+
+    let sql = format!(
+        r#"
+SELECT c.relname,
+       obj_description(c.oid, 'pg_class') AS comment
+FROM pg_class c
+     INNER JOIN pg_namespace n
+         ON n.oid = c.relnamespace
+WHERE {}
+"#,
+        conditions.join(" AND ")
+    );
+
+    let connection = this.get_connection();
+    let rows: Vec<(String, Row)> = connection
+        .fetch_all(sql, NO_PARAMS)
+        .await?
+        .into_iter()
+        .map(|row| {
+            let value: Value =
+                string_type.convert_to_value(row.get("relname").unwrap(), platform.as_dyn())?;
+            Ok::<_, Error>((value.to_string(), row))
+        })
+        .try_collect()?;
+
+    Ok(HashMap::from_iter(rows))
 }

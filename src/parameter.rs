@@ -160,7 +160,6 @@ impl<T: Into<Value>> From<Vec<T>> for Parameters<'_> {
 }
 
 pub const NO_PARAMS: Parameters = Parameters::Array(&[]);
-
 pub macro params {
     [] => {
         $crate::parameter::NO_PARAMS

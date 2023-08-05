@@ -39,7 +39,7 @@ impl<'conn> ConnectionTrait<'conn> for MockConnection {
         Box::pin(async { None })
     }
 
-    fn prepare(&'conn self, sql: &str) -> crate::Result<Box<dyn Statement + 'conn>> {
-        todo!()
+    fn prepare(&'conn self, _: &str) -> crate::Result<Box<dyn Statement + 'conn>> {
+        unreachable!()
     }
 }

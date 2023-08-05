@@ -2,10 +2,13 @@ use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
 use crate::r#type::TypePtr;
 use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
-use crate::schema::{CheckConstraint, IntoIdentifier};
+use crate::schema::{CheckConstraint, IntoIdentifier, NamedListIndex};
 use crate::{Result, Value};
+use itertools::Itertools;
+use std::slice::Iter;
+use std::vec::IntoIter;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ColumnData {
     pub name: String,
     pub r#type: TypePtr,
@@ -113,7 +116,7 @@ impl From<ColumnBuilder> for Column {
     }
 }
 
-#[derive(Clone, Debug, IntoIdentifier)]
+#[derive(Clone, Debug, Eq, IntoIdentifier, PartialEq)]
 pub struct Column {
     asset: AbstractAsset,
     r#type: TypePtr,
@@ -136,12 +139,11 @@ pub struct Column {
 }
 
 impl Column {
-    pub fn new<S: AsRef<str>, I: IntoType>(name: S, r#type: I) -> Result<Self> {
-        let r#type = r#type.into_type()?;
+    pub fn new<S: AsRef<str>>(name: S, r#type: TypePtr) -> Self {
         let mut asset = AbstractAsset::default();
         asset.set_name(name.as_ref());
 
-        Ok(Self {
+        Self {
             asset,
             r#type,
             default: Value::NULL,
@@ -160,11 +162,11 @@ impl Column {
             charset: None,
             check: None,
             jsonb: None,
-        })
+        }
     }
 
     pub fn builder<S: AsRef<str>, I: IntoType>(name: S, r#type: I) -> Result<ColumnBuilder> {
-        Ok(ColumnBuilder::new(Self::new(name, r#type)?))
+        Ok(ColumnBuilder::new(Self::new(name, r#type.into_type()?)))
     }
 
     pub fn get_type(&self) -> TypePtr {
@@ -178,6 +180,10 @@ impl Column {
     pub fn set_default(&mut self, default: Value) -> &mut Self {
         self.default = default;
         self
+    }
+
+    pub fn get_comment(&self) -> &Option<String> {
+        &self.comment
     }
 
     pub fn set_comment<T: AsRef<str>, S: Into<Option<T>>>(&mut self, comment: S) -> &mut Self {
@@ -196,8 +202,8 @@ impl Column {
         self
     }
 
-    pub fn get_comment(&self) -> &Option<String> {
-        &self.comment
+    pub fn get_collation(&self) -> &Option<String> {
+        &self.collation
     }
 
     pub fn set_collation<T: AsRef<str>, S: Into<Option<T>>>(&mut self, collation: S) -> &mut Self {
@@ -205,8 +211,8 @@ impl Column {
         self
     }
 
-    pub fn get_collation(&self) -> &Option<String> {
-        &self.collation
+    pub fn get_charset(&self) -> &Option<String> {
+        &self.charset
     }
 
     pub fn set_charset<T: AsRef<str>, S: Into<Option<T>>>(&mut self, charset: S) -> &mut Self {
@@ -224,8 +230,8 @@ impl Column {
         self
     }
 
-    pub fn get_charset(&self) -> &Option<String> {
-        &self.charset
+    pub fn is_notnull(&self) -> bool {
+        self.notnull
     }
 
     pub fn set_notnull(&mut self, notnull: bool) -> &mut Self {
@@ -233,17 +239,13 @@ impl Column {
         self
     }
 
-    pub fn is_notnull(&self) -> bool {
-        self.notnull
+    pub fn is_autoincrement(&self) -> bool {
+        self.autoincrement.unwrap_or(false)
     }
 
     pub fn set_autoincrement<T: Into<Option<bool>>>(&mut self, autoincrement: T) -> &mut Self {
         self.autoincrement = autoincrement.into();
         self
-    }
-
-    pub fn is_autoincrement(&self) -> bool {
-        self.autoincrement.unwrap_or(false)
     }
 
     pub fn get_column_definition(&self) -> &Option<String> {
@@ -255,13 +257,13 @@ impl Column {
         self
     }
 
+    pub fn get_length(&self) -> Option<usize> {
+        self.length
+    }
+
     pub fn set_length<S: Into<Option<usize>>>(&mut self, length: S) -> &mut Self {
         self.length = length.into();
         self
-    }
-
-    pub fn get_length(&self) -> Option<usize> {
-        self.length
     }
 
     pub fn is_fixed(&self) -> bool {
@@ -337,3 +339,112 @@ impl Column {
 }
 
 impl_asset!(Column, asset);
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ColumnList {
+    inner: Vec<Column>,
+}
+
+impl ColumnList {
+    pub fn has<T: NamedListIndex>(&self, index: T) -> bool {
+        self.get(index).is_some()
+    }
+
+    pub fn filter<P>(&self, predicate: P) -> impl Iterator<Item = &Column>
+    where
+        Self: Sized,
+        P: FnMut(&&Column) -> bool,
+    {
+        self.inner.iter().filter(predicate)
+    }
+
+    pub fn get<T: NamedListIndex>(&self, index: T) -> Option<&Column> {
+        if index.is_usize() {
+            self.inner.get(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_mut<T: NamedListIndex>(&mut self, index: T) -> Option<&mut Column> {
+        if index.is_usize() {
+            self.inner.get_mut(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter_mut()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_position<T: NamedListIndex>(&self, index: T) -> Option<(usize, &Column)> {
+        if index.is_usize() {
+            let idx = index.as_usize();
+            self.inner.get(idx).map(|i| (idx, i))
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find_position(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = String> + '_ {
+        self.inner.iter().map(|c| c.get_name().into_owned())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Column> {
+        self.inner.iter_mut()
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn push(&mut self, column: Column) {
+        self.inner.push(column);
+    }
+
+    pub fn remove<T: NamedListIndex>(&mut self, index: T) -> Option<Column> {
+        let Some((pos, _)) = self.get_position(index) else {
+            return None;
+        };
+        Some(self.inner.remove(pos))
+    }
+
+    pub fn replace(&mut self, index: usize, column: Column) {
+        self.inner.remove(index);
+        self.inner.insert(index, column);
+    }
+}
+
+impl IntoIterator for ColumnList {
+    type Item = Column;
+    type IntoIter = IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ColumnList {
+    type Item = &'a Column;
+    type IntoIter = Iter<'a, Column>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl From<Vec<Column>> for ColumnList {
+    fn from(value: Vec<Column>) -> Self {
+        Self { inner: value }
+    }
+}

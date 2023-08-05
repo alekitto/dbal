@@ -2,9 +2,9 @@ use super::sqlite;
 use crate::driver::statement_result::StatementResult;
 use crate::platform::{default, CreateFlags};
 use crate::schema::{
-    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData, Comparator,
-    ForeignKeyConstraint, GenericComparator, Identifier, Index, IntoIdentifier, SchemaManager,
-    Table, TableDiff, TableOptions,
+    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData, ColumnList,
+    Comparator, FKConstraintList, ForeignKeyConstraint, GenericComparator, Identifier, Index,
+    IndexList, IntoIdentifier, SchemaManager, Table, TableDiff, TableOptions,
 };
 use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
 use regex::Regex;
@@ -39,11 +39,13 @@ impl<'a> SQLiteSchemaManager<'a> {
         let mut local_columns_by_id = HashMap::new();
         let mut foreign_columns_by_id = HashMap::new();
         let mut table_by_id = HashMap::new();
+        let mut foreign_key_ids = HashMap::new();
 
         for column in columns {
             let id = column.get("id").unwrap().to_string();
             let table = column.get("table").unwrap().clone();
 
+            foreign_key_ids.insert(id.clone(), table.clone());
             match local_columns_by_id.entry(id.clone()) {
                 Vacant(e) => {
                     e.insert(vec![column.get("from").unwrap().to_string()]);
@@ -65,8 +67,7 @@ impl<'a> SQLiteSchemaManager<'a> {
             table_by_id.insert(id, table);
         }
 
-        for column in columns {
-            let id = column.get("id").unwrap().to_string();
+        for (id, foreign_table) in foreign_key_ids {
             let detail = foreign_key_details
                 .get(foreign_key_count - id.parse::<usize>().unwrap() - 1)
                 .unwrap();
@@ -79,6 +80,8 @@ impl<'a> SQLiteSchemaManager<'a> {
                     "foreign_table".into(),
                     "foreign_columns".into(),
                     "local_columns".into(),
+                    "deferrable".into(),
+                    "deferred".into(),
                 ],
                 vec![
                     if constraint_name.is_empty() {
@@ -87,9 +90,11 @@ impl<'a> SQLiteSchemaManager<'a> {
                         Value::from(constraint_name)
                     },
                     Value::from(table.to_string()),
-                    column.get("table").cloned().unwrap(),
+                    foreign_table.clone(),
                     foreign_columns_by_id.get(&id).unwrap().join(",").into(),
                     local_columns_by_id.get(&id).unwrap().join(",").into(),
+                    detail.deferrable.into(),
+                    detail.deferred.into(),
                 ],
             ))
         }
@@ -125,7 +130,7 @@ AND name = ?
 
         let create_sql = create_sql.unwrap().get("sql").unwrap().to_string();
         let r = Regex::new(
-            r#"(?:CONSTRAINT\s+(\S+)\s+)?(?:FOREIGN\s+KEY[^)]+\)\s*)?REFERENCES\s+\S+\s*(?:\([^)]+\))?(?:[^,]*?(NOT\s+DEFERRABLE|DEFERRABLE)(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?)?"#,
+            r"(?:CONSTRAINT\s+(\S+)\s+)?(?:FOREIGN\s+KEY[^)]+\)\s*)?REFERENCES\s+\S+\s*(?:\([^)]+\))?(?:[^,]*?(NOT\s+DEFERRABLE|DEFERRABLE)(?:\s+INITIALLY\s+(DEFERRED|IMMEDIATE))?)?",
         )?;
 
         let mut details = vec![];
@@ -159,7 +164,9 @@ fn parse_column_comment_from_sql(column: &str, quoted_column: &str, sql: &str) -
     );
     let pattern = Regex::new(&pattern).unwrap();
 
-    let Some(m) = pattern.captures(sql) else { return None; };
+    let Some(m) = pattern.captures(sql) else {
+        return None;
+    };
     let comment = Regex::new("^\\s*--")
         .unwrap()
         .replace(m.get(1).unwrap().as_str().trim_end(), "")
@@ -303,7 +310,7 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         table: &str,
         database: &str,
         table_columns: Vec<Row>,
-    ) -> AsyncResult<Vec<Column>> {
+    ) -> AsyncResult<ColumnList> {
         let table = table.to_string();
         let database = database.to_string();
 
@@ -334,8 +341,9 @@ AND name = ?
                 )
                 .await?
                 .fetch_one()
-                .await? else {
-                return Ok(vec![]);
+                .await?
+            else {
+                return Ok(ColumnList::default());
             };
 
             let create_sql = create_sql.get("sql").unwrap().to_string();
@@ -359,14 +367,15 @@ AND name = ?
                     autoincrement_column = Some(table_column.get("name").unwrap().to_string());
                 }
 
-                if autoincrement_count == 1 && autoincrement_column.is_some() {
-                    let autoincrement_column = autoincrement_column.unwrap();
-                    for column in list.iter_mut() {
-                        if autoincrement_column != column.get_name() {
-                            continue;
-                        }
+                if autoincrement_count == 1 {
+                    if let Some(autoincrement_column) = autoincrement_column {
+                        for column in list.iter_mut() {
+                            if autoincrement_column != column.get_name() {
+                                continue;
+                            }
 
-                        column.set_autoincrement(true);
+                            column.set_autoincrement(true);
+                        }
                     }
                 }
             }
@@ -395,14 +404,14 @@ AND name = ?
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> AsyncResult<Vec<Index>> {
+    ) -> AsyncResult<IndexList> {
         let table_name = table_name.to_string();
         Box::pin(async move {
             sqlite::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name).await
         })
     }
 
-    fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>> {
+    fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList> {
         let table = self.normalize_name(table);
 
         Box::pin(async move {
@@ -419,7 +428,7 @@ AND name = ?
         Box::new(GenericComparator::new(self))
     }
 
-    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>> {
+    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList> {
         let table = table.to_string();
         Box::pin(async move {
             let columns = self
@@ -474,30 +483,42 @@ JOIN pragma_index_list(t.name) i
         );
         Box::pin(self.connection.query(sql, params.into()))
     }
+
+    fn fetch_table_options_by_table(
+        &self,
+        _: &str,
+        table_name: Option<&str>,
+    ) -> AsyncResult<HashMap<String, Row>> {
+        let table_name = table_name.map(|t| t.to_string());
+        Box::pin(
+            async move { sqlite::fetch_table_options_by_table(self.as_dyn(), table_name).await },
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::platform::CreateFlags;
-    use crate::r#type::{BOOLEAN, INTEGER, STRING};
+    use crate::r#type::{IntoType, BOOLEAN, INTEGER, STRING};
     use crate::schema::{
         ChangedProperty, Column, ColumnDiff, Index, Table, TableDiff, UniqueConstraint,
     };
     use crate::tests::create_connection;
+    use crate::Result;
     use std::collections::HashMap;
 
     #[tokio::test]
-    pub async fn generates_table_creation_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn generates_table_creation_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("test");
-        let mut id_column = Column::new("id", INTEGER).unwrap();
+        let mut id_column = Column::new("id", INTEGER.into_type()?);
         id_column.set_notnull(true);
         id_column.set_autoincrement(true);
         table.add_column(id_column);
 
-        let mut test_column = Column::new("test", STRING).unwrap();
+        let mut test_column = Column::new("test", STRING.into_type()?);
         test_column.set_notnull(false);
         test_column.set_length(255);
         table.add_column(test_column);
@@ -512,20 +533,22 @@ mod tests {
         assert_eq!(sql, vec![
             "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL)"
         ]);
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn generate_table_with_multi_column_unique_index() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn generate_table_with_multi_column_unique_index() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("test");
-        let mut foo_column = Column::new("foo", STRING).unwrap();
+        let mut foo_column = Column::new("foo", STRING.into_type()?);
         foo_column.set_notnull(false);
         foo_column.set_length(255);
         table.add_column(foo_column);
 
-        let mut bar_column = Column::new("bar", STRING).unwrap();
+        let mut bar_column = Column::new("bar", STRING.into_type()?);
         bar_column.set_notnull(false);
         bar_column.set_length(255);
         table.add_column(bar_column);
@@ -542,12 +565,14 @@ mod tests {
                 "CREATE UNIQUE INDEX UNIQ_D87F7E0C8C73652176FF8CAA ON test (foo, bar)"
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn generates_index_creation_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn generates_index_creation_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let index_def = Index::new(
             "my_idx",
@@ -557,20 +582,20 @@ mod tests {
             &[],
             HashMap::default(),
         );
-        let sql = schema_manager
-            .get_create_index_sql(&index_def, &"mytable")
-            .unwrap();
+        let sql = schema_manager.get_create_index_sql(&index_def, &"mytable")?;
 
         assert_eq!(
             sql,
             "CREATE INDEX my_idx ON mytable (user_name, last_login)"
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn generates_unique_index_creation_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn generates_unique_index_creation_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let index_def = Index::new(
             "index_name",
@@ -580,49 +605,49 @@ mod tests {
             &[],
             HashMap::default(),
         );
-        let sql = schema_manager
-            .get_create_index_sql(&index_def, &"test")
-            .unwrap();
 
+        let sql = schema_manager.get_create_index_sql(&index_def, &"test")?;
         assert_eq!(sql, "CREATE UNIQUE INDEX index_name ON test (test, test2)");
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn test_generates_constraint_creation_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn test_generates_constraint_creation_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let idx = UniqueConstraint::new("constraint_name", &["test"], &[], HashMap::default());
-        let sql = schema_manager
-            .get_create_unique_constraint_sql(&idx, &"test")
-            .unwrap();
+        let sql = schema_manager.get_create_unique_constraint_sql(&idx, &"test")?;
         assert_eq!(
             sql,
             "ALTER TABLE test ADD CONSTRAINT constraint_name UNIQUE (test)"
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn generates_table_alteration_sql() {
+    pub async fn generates_table_alteration_sql() -> Result<()> {
         let mut table = Table::new("mytable");
-        let mut id_column = Column::new("id", INTEGER).unwrap();
+        let mut id_column = Column::new("id", INTEGER.into_type()?);
         id_column.set_autoincrement(true);
         table.add_column(id_column);
-        table.add_column(Column::new("foo", INTEGER).unwrap());
-        table.add_column(Column::new("bar", STRING).unwrap());
-        table.add_column(Column::new("bloo", BOOLEAN).unwrap());
+        table.add_column(Column::new("foo", INTEGER.into_type()?));
+        table.add_column(Column::new("bar", STRING.into_type()?));
+        table.add_column(Column::new("bloo", BOOLEAN.into_type()?));
         table.set_primary_key(&["id"], None).unwrap();
 
         let mut table_diff = TableDiff::new("mytable", Some(&table));
         table_diff.new_name = "userlist".to_string().into();
-        let mut quota = Column::new("quota", INTEGER).unwrap();
+        let mut quota = Column::new("quota", INTEGER.into_type()?);
         quota.set_notnull(false);
         table_diff.added_columns.push(quota);
         table_diff
             .removed_columns
-            .push(Column::new("foo", INTEGER).unwrap());
+            .push(Column::new("foo", INTEGER.into_type()?));
 
-        let mut baz = Column::new("baz", STRING).unwrap();
+        let mut baz = Column::new("baz", STRING.into_type()?);
         baz.set_length(255);
         baz.set_default("def".into());
         table_diff.changed_columns.push(ColumnDiff::new(
@@ -636,7 +661,7 @@ mod tests {
             None,
         ));
 
-        let mut bloo_column = Column::new("bloo", BOOLEAN).unwrap();
+        let mut bloo_column = Column::new("bloo", BOOLEAN.into_type()?);
         bloo_column.set_default(false.into());
         table_diff.changed_columns.push(ColumnDiff::new(
             "bloo",
@@ -649,9 +674,9 @@ mod tests {
             None,
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
         assert_eq!(sql, &[
             "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id, bar, bloo FROM mytable",
             "DROP TABLE mytable",
@@ -660,29 +685,33 @@ mod tests {
             "DROP TABLE __temp__mytable",
             "ALTER TABLE mytable RENAME TO userlist",
         ]);
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quoted_column_in_primary_key_propagation() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quoted_column_in_primary_key_propagation() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("`quoted`");
-        let mut col = Column::new("create", STRING).unwrap();
+        let mut col = Column::new("create", STRING.into_type()?);
         col.set_length(255);
         table.add_column(col);
         table
             .set_primary_key(&["create"], None)
             .expect("failed to set primary key");
 
-        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None)?;
         assert_eq!(sql, &["CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"]);
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quoted_column_in_index_propagation() {
+    pub async fn quoted_column_in_index_propagation() -> Result<()> {
         let mut table = Table::new("`quoted`");
-        let mut col = Column::new("create", STRING).unwrap();
+        let mut col = Column::new("create", STRING.into_type()?);
         col.set_length(255);
         table.add_column(col);
         table.add_index(Index::new::<&str, _, &str>(
@@ -694,10 +723,10 @@ mod tests {
             HashMap::default(),
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
-        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        let sql = schema_manager.get_create_table_sql(&table, None)?;
         assert_eq!(
             sql,
             &[
@@ -705,12 +734,14 @@ mod tests {
                 "CREATE INDEX IDX_22660D028FD6E0FB ON \"quoted\" (\"create\")",
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn test_quoted_name_in_index_sql() {
+    pub async fn test_quoted_name_in_index_sql() -> Result<()> {
         let mut table = Table::new("test");
-        let mut col = Column::new("column1", STRING).unwrap();
+        let mut col = Column::new("column1", STRING.into_type()?);
         col.set_length(255);
         table.add_column(col);
         table.add_index(Index::new::<_, _, &str>(
@@ -722,9 +753,9 @@ mod tests {
             HashMap::default(),
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        let sql = schema_manager.get_create_table_sql(&table, None).unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let sql = schema_manager.get_create_table_sql(&table, None)?;
         assert_eq!(
             sql,
             &[
@@ -732,96 +763,90 @@ mod tests {
                 "CREATE INDEX \"key\" ON test (column1)",
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quoted_column_in_foreign_key_propagation() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quoted_column_in_foreign_key_propagation() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("`quoted`");
-        table.add_column(Column::new("create", STRING).unwrap());
-        table.add_column(Column::new("foo", STRING).unwrap());
-        table.add_column(Column::new("`bar`", STRING).unwrap());
+        table.add_column(Column::new("create", STRING.into_type()?));
+        table.add_column(Column::new("foo", STRING.into_type()?));
+        table.add_column(Column::new("`bar`", STRING.into_type()?));
 
         // Foreign table with reserved keyword as name (needs quotation).
         let mut foreign_table = Table::new("foreign");
 
         // Foreign column with reserved keyword as name (needs quotation).
-        foreign_table.add_column(Column::new("create", STRING).unwrap());
+        foreign_table.add_column(Column::new("create", STRING.into_type()?));
 
         // Foreign column with non-reserved keyword as name (does not need quotation).
-        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+        foreign_table.add_column(Column::new("bar", STRING.into_type()?));
 
         // Foreign table with special character in name
-        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+        foreign_table.add_column(Column::new("`foo-bar`", STRING.into_type()?));
 
-        table
-            .add_foreign_key_constraint(
-                &["create", "foo", "`bar`"],
-                &["create", "bar", "`foo-bar`"],
-                &foreign_table,
-                HashMap::default(),
-                None,
-                None,
-                Some("FK_WITH_RESERVED_KEYWORD"),
-            )
-            .expect("cannot add foreign key constraint");
+        table.add_foreign_key_constraint(
+            &["create", "foo", "`bar`"],
+            &["create", "bar", "`foo-bar`"],
+            &foreign_table,
+            HashMap::default(),
+            None,
+            None,
+            Some("FK_WITH_RESERVED_KEYWORD"),
+        )?;
 
         // Foreign table with non-reserved keyword as name (does not need quotation).
         let mut foreign_table = Table::new("foo");
 
         // Foreign column with reserved keyword as name (needs quotation).
-        foreign_table.add_column(Column::new("create", STRING).unwrap());
+        foreign_table.add_column(Column::new("create", STRING.into_type()?));
 
         // Foreign column with non-reserved keyword as name (does not need quotation).
-        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+        foreign_table.add_column(Column::new("bar", STRING.into_type()?));
 
         // Foreign table with special character in name
-        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+        foreign_table.add_column(Column::new("`foo-bar`", STRING.into_type()?));
 
-        table
-            .add_foreign_key_constraint(
-                &["create", "foo", "`bar`"],
-                &["create", "bar", "`foo-bar`"],
-                &foreign_table,
-                HashMap::default(),
-                None,
-                None,
-                Some("FK_WITH_NON_RESERVED_KEYWORD"),
-            )
-            .expect("cannot add foreign key constraint");
+        table.add_foreign_key_constraint(
+            &["create", "foo", "`bar`"],
+            &["create", "bar", "`foo-bar`"],
+            &foreign_table,
+            HashMap::default(),
+            None,
+            None,
+            Some("FK_WITH_NON_RESERVED_KEYWORD"),
+        )?;
 
         // Foreign table with special character in name.
         let mut foreign_table = Table::new("`foo-bar`");
 
         // Foreign column with reserved keyword as name (needs quotation).
-        foreign_table.add_column(Column::new("create", STRING).unwrap());
+        foreign_table.add_column(Column::new("create", STRING.into_type()?));
 
         // Foreign column with non-reserved keyword as name (does not need quotation).
-        foreign_table.add_column(Column::new("bar", STRING).unwrap());
+        foreign_table.add_column(Column::new("bar", STRING.into_type()?));
 
         // Foreign table with special character in name
-        foreign_table.add_column(Column::new("`foo-bar`", STRING).unwrap());
+        foreign_table.add_column(Column::new("`foo-bar`", STRING.into_type()?));
 
-        table
-            .add_foreign_key_constraint(
-                &["create", "foo", "`bar`"],
-                &["create", "bar", "`foo-bar`"],
-                &foreign_table,
-                HashMap::default(),
-                None,
-                None,
-                Some("FK_WITH_INTENDED_QUOTATION"),
-            )
-            .expect("cannot add foreign key constraint");
+        table.add_foreign_key_constraint(
+            &["create", "foo", "`bar`"],
+            &["create", "bar", "`foo-bar`"],
+            &foreign_table,
+            HashMap::default(),
+            None,
+            None,
+            Some("FK_WITH_INTENDED_QUOTATION"),
+        )?;
 
-        let sql = schema_manager
-            .get_create_table_sql(
-                &table,
-                Some(CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS),
-            )
-            .unwrap();
+        let sql = schema_manager.get_create_table_sql(
+            &table,
+            Some(CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS),
+        )?;
         assert_eq!(sql, &[
             "CREATE TABLE \"quoted\" (\
             \"create\" VARCHAR(255) NOT NULL, foo VARCHAR(255) NOT NULL, \"bar\" VARCHAR(255) NOT NULL, \
@@ -831,26 +856,28 @@ mod tests {
             REFERENCES foo (\"create\", bar, \"foo-bar\") NOT DEFERRABLE INITIALLY IMMEDIATE, \
             CONSTRAINT FK_WITH_INTENDED_QUOTATION FOREIGN KEY (\"create\", foo, \"bar\") \
             REFERENCES \"foo-bar\" (\"create\", bar, \"foo-bar\") NOT DEFERRABLE INITIALLY IMMEDIATE)",
-            "CREATE INDEX IDX_22660D028FD6E0FB8C736521D79164E3 ON \"quoted\" (\"create\", foo, \"bar\")",
+            "CREATE INDEX IDX_22660D028FD6E0FB8C73652176FF8CAA ON \"quoted\" (\"create\", foo, \"bar\")",
         ]);
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_reserved_keyword_in_unique_constraint_declaration_sql() {
+    pub async fn quotes_reserved_keyword_in_unique_constraint_declaration_sql() -> Result<()> {
         let constraint = UniqueConstraint::new("select", &["foo"], &[], HashMap::default());
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        let sql = schema_manager
-            .get_unique_constraint_declaration_sql("select", &constraint)
-            .unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let sql = schema_manager.get_unique_constraint_declaration_sql("select", &constraint)?;
         assert_eq!(sql, r#"CONSTRAINT "select" UNIQUE (foo)"#);
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_reserved_keyword_in_truncate_table_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quotes_reserved_keyword_in_truncate_table_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         assert_eq!(
             schema_manager
@@ -858,12 +885,14 @@ mod tests {
                 .unwrap(),
             r#"DELETE FROM "select""#
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_reserved_keyword_in_index_declaration_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quotes_reserved_keyword_in_index_declaration_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let index = Index::new("select", &["foo"], false, false, &[], HashMap::default());
 
         assert_eq!(
@@ -872,43 +901,49 @@ mod tests {
                 .unwrap(),
             r#"INDEX "select" (foo)"#
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn get_create_schema_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn get_create_schema_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         assert!(schema_manager.get_create_schema_sql(&"schema").is_err());
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn alter_table_change_quoted_column() {
+    pub async fn alter_table_change_quoted_column() -> Result<()> {
         let mut table = Table::new("mytable");
-        table.add_column(Column::new("select", INTEGER).unwrap());
+        table.add_column(Column::new("select", INTEGER.into_type()?));
 
         let mut table_diff = TableDiff::new("mytable", &table);
         table_diff.changed_columns.push(ColumnDiff::new(
             "select",
-            &Column::new("select", STRING).unwrap(),
+            &Column::new("select", STRING.into_type()?),
             &[ChangedProperty::Type],
             None,
         ));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        let platform = schema_manager.get_platform().unwrap();
-        let sql = schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let platform = schema_manager.get_platform()?;
+        let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
         assert!(sql.join(";").contains(&platform.quote_identifier("select")));
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn alter_table_rename_index() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn alter_table_rename_index() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("mytable");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("mytable", &table);
         table_diff.renamed_indexes.push((
@@ -917,7 +952,7 @@ mod tests {
         ));
 
         assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            schema_manager.get_alter_table_sql(&mut table_diff)?,
             &[
                 "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id FROM mytable",
                 "DROP TABLE mytable",
@@ -927,16 +962,18 @@ mod tests {
                 "CREATE INDEX idx_bar ON mytable (id)",
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_alter_table_rename_index() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn quotes_alter_table_rename_index() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let mut table = Table::new("table");
-        table.add_column(Column::new("id", INTEGER).unwrap());
-        table.set_primary_key(&["id"], None).unwrap();
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.set_primary_key(&["id"], None)?;
 
         let mut table_diff = TableDiff::new("table", &table);
 
@@ -950,7 +987,7 @@ mod tests {
         ));
 
         assert_eq!(
-            schema_manager.get_alter_table_sql(&mut table_diff).unwrap(),
+            schema_manager.get_alter_table_sql(&mut table_diff)?,
             &[
                 r#"CREATE TEMPORARY TABLE __temp__table AS SELECT id FROM "table""#,
                 r#"DROP TABLE "table""#,
@@ -961,58 +998,60 @@ mod tests {
                 r#"CREATE INDEX "select" ON "table" (id)"#,
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn test_quotes_alter_table_rename_column() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn test_quotes_alter_table_rename_column() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let mut from_table = Table::new("mytable");
 
         from_table.add_column({
-            let mut column = Column::new("unquoted1", INTEGER).unwrap();
+            let mut column = Column::new("unquoted1", INTEGER.into_type()?);
             column.set_comment("Unquoted 1");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("unquoted2", INTEGER).unwrap();
+            let mut column = Column::new("unquoted2", INTEGER.into_type()?);
             column.set_comment("Unquoted 2");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("unquoted3", INTEGER).unwrap();
+            let mut column = Column::new("unquoted3", INTEGER.into_type()?);
             column.set_comment("Unquoted 3");
             column
         });
 
         from_table.add_column({
-            let mut column = Column::new("create", INTEGER).unwrap();
+            let mut column = Column::new("create", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 1");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("table", INTEGER).unwrap();
+            let mut column = Column::new("table", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 2");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("select", INTEGER).unwrap();
+            let mut column = Column::new("select", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 3");
             column
         });
 
         from_table.add_column({
-            let mut column = Column::new("`quoted1`", INTEGER).unwrap();
+            let mut column = Column::new("`quoted1`", INTEGER.into_type()?);
             column.set_comment("Quoted 1");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("`quoted2`", INTEGER).unwrap();
+            let mut column = Column::new("`quoted2`", INTEGER.into_type()?);
             column.set_comment("Quoted 2");
             column
         });
         from_table.add_column({
-            let mut column = Column::new("`quoted3`", INTEGER).unwrap();
+            let mut column = Column::new("`quoted3`", INTEGER.into_type()?);
             column.set_comment("Quoted 3");
             column
         });
@@ -1021,74 +1060,72 @@ mod tests {
 
         // unquoted -> unquoted
         to_table.add_column({
-            let mut column = Column::new("unquoted", INTEGER).unwrap();
+            let mut column = Column::new("unquoted", INTEGER.into_type()?);
             column.set_comment("Unquoted 1");
             column
         });
 
         // unquoted -> reserved keyword
         to_table.add_column({
-            let mut column = Column::new("where", INTEGER).unwrap();
+            let mut column = Column::new("where", INTEGER.into_type()?);
             column.set_comment("Unquoted 2");
             column
         });
 
         // unquoted -> quoted
         to_table.add_column({
-            let mut column = Column::new("`foo`", INTEGER).unwrap();
+            let mut column = Column::new("`foo`", INTEGER.into_type()?);
             column.set_comment("Unquoted 3");
             column
         });
 
         // reserved keyword -> unquoted
         to_table.add_column({
-            let mut column = Column::new("reserved_keyword", INTEGER).unwrap();
+            let mut column = Column::new("reserved_keyword", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 1");
             column
         });
 
         // reserved keyword -> reserved keyword
         to_table.add_column({
-            let mut column = Column::new("from", INTEGER).unwrap();
+            let mut column = Column::new("from", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 2");
             column
         });
 
         // reserved keyword -> quoted
         to_table.add_column({
-            let mut column = Column::new("`bar`", INTEGER).unwrap();
+            let mut column = Column::new("`bar`", INTEGER.into_type()?);
             column.set_comment("Reserved keyword 3");
             column
         });
 
         // quoted -> unquoted
         to_table.add_column({
-            let mut column = Column::new("quoted", INTEGER).unwrap();
+            let mut column = Column::new("quoted", INTEGER.into_type()?);
             column.set_comment("Quoted 1");
             column
         });
 
         // quoted -> reserved keyword
         to_table.add_column({
-            let mut column = Column::new("and", INTEGER).unwrap();
+            let mut column = Column::new("and", INTEGER.into_type()?);
             column.set_comment("Quoted 2");
             column
         });
 
         // quoted -> quoted
         to_table.add_column({
-            let mut column = Column::new("`baz`", INTEGER).unwrap();
+            let mut column = Column::new("`baz`", INTEGER.into_type()?);
             column.set_comment("Quoted 3");
             column
         });
 
         let comparator = schema_manager.create_comparator();
-        let diff = comparator.diff_table(&from_table, &to_table).unwrap();
+        let diff = comparator.diff_table(&from_table, &to_table)?;
         assert!(diff.is_some());
         assert_eq!(
-            schema_manager
-                .get_alter_table_sql(&mut diff.unwrap())
-                .unwrap(),
+            schema_manager.get_alter_table_sql(&mut diff.unwrap())?,
             &[
                 r#"CREATE TEMPORARY TABLE __temp__mytable AS SELECT unquoted1, unquoted2, unquoted3, "create", "table", "select", "quoted1", "quoted2", "quoted3" FROM mytable"#,
                 r#"DROP TABLE mytable"#,
@@ -1097,84 +1134,84 @@ mod tests {
                 r#"DROP TABLE __temp__mytable"#,
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn quotes_alter_table_change_column_length() {
+    pub async fn quotes_alter_table_change_column_length() -> Result<()> {
         let mut from_table = Table::new("mytable");
 
-        let mut column = Column::new("unquoted1", STRING).unwrap();
+        let mut column = Column::new("unquoted1", STRING.into_type()?);
         column.set_comment("Unquoted 1");
         column.set_length(10);
         from_table.add_column(column);
 
-        let mut column = Column::new("unquoted2", STRING).unwrap();
+        let mut column = Column::new("unquoted2", STRING.into_type()?);
         column.set_comment("Unquoted 2");
         column.set_length(10);
         from_table.add_column(column);
 
-        let mut column = Column::new("unquoted3", STRING).unwrap();
+        let mut column = Column::new("unquoted3", STRING.into_type()?);
         column.set_comment("Unquoted 3");
         column.set_length(10);
         from_table.add_column(column);
 
-        let mut column = Column::new("create", STRING).unwrap();
+        let mut column = Column::new("create", STRING.into_type()?);
         column.set_comment("Reserved keyword 1");
         column.set_length(10);
         from_table.add_column(column);
 
-        let mut column = Column::new("table", STRING).unwrap();
+        let mut column = Column::new("table", STRING.into_type()?);
         column.set_comment("Reserved keyword 2");
         column.set_length(10);
         from_table.add_column(column);
 
-        let mut column = Column::new("select", STRING).unwrap();
+        let mut column = Column::new("select", STRING.into_type()?);
         column.set_comment("Reserved keyword 3");
         column.set_length(10);
         from_table.add_column(column);
 
         let mut to_table = Table::new("mytable");
 
-        let mut column = Column::new("unquoted1", STRING).unwrap();
+        let mut column = Column::new("unquoted1", STRING.into_type()?);
         column.set_comment("Unquoted 1");
         column.set_length(255);
         to_table.add_column(column);
 
-        let mut column = Column::new("unquoted2", STRING).unwrap();
+        let mut column = Column::new("unquoted2", STRING.into_type()?);
         column.set_comment("Unquoted 2");
         column.set_length(255);
         to_table.add_column(column);
 
-        let mut column = Column::new("unquoted3", STRING).unwrap();
+        let mut column = Column::new("unquoted3", STRING.into_type()?);
         column.set_comment("Unquoted 3");
         column.set_length(255);
         to_table.add_column(column);
 
-        let mut column = Column::new("create", STRING).unwrap();
+        let mut column = Column::new("create", STRING.into_type()?);
         column.set_comment("Reserved keyword 1");
         column.set_length(255);
         to_table.add_column(column);
 
-        let mut column = Column::new("table", STRING).unwrap();
+        let mut column = Column::new("table", STRING.into_type()?);
         column.set_comment("Reserved keyword 2");
         column.set_length(255);
         to_table.add_column(column);
 
-        let mut column = Column::new("select", STRING).unwrap();
+        let mut column = Column::new("select", STRING.into_type()?);
         column.set_comment("Reserved keyword 3");
         column.set_length(255);
         to_table.add_column(column);
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let comparator = schema_manager.create_comparator();
-        let mut diff = comparator.diff_table(&from_table, &to_table).unwrap();
+        let mut diff = comparator.diff_table(&from_table, &to_table)?;
 
         assert!(diff.is_some());
         assert_eq!(
-            schema_manager
-                .get_alter_table_sql(diff.as_mut().unwrap())
-                .unwrap(),
+            schema_manager.get_alter_table_sql(diff.as_mut().unwrap())?,
             &[
                 r#"CREATE TEMPORARY TABLE __temp__mytable AS SELECT unquoted1, unquoted2, unquoted3, "create", "table", "select" FROM mytable"#,
                 "DROP TABLE mytable",
@@ -1183,24 +1220,20 @@ mod tests {
                 r#"DROP TABLE __temp__mytable"#,
             ]
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    pub async fn get_comment_on_column_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn get_comment_on_column_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         assert_eq!(
             &[
-                schema_manager
-                    .get_comment_on_column_sql(&"foo", &"bar", "comment")
-                    .unwrap(),
-                schema_manager
-                    .get_comment_on_column_sql(&"`Foo`", &"`BAR`", "comment")
-                    .unwrap(),
-                schema_manager
-                    .get_comment_on_column_sql(&"select", &"from", "comment")
-                    .unwrap(),
+                schema_manager.get_comment_on_column_sql(&"foo", &"bar", "comment")?,
+                schema_manager.get_comment_on_column_sql(&"`Foo`", &"`BAR`", "comment")?,
+                schema_manager.get_comment_on_column_sql(&"select", &"from", "comment")?,
             ],
             &[
                 r#"COMMENT ON COLUMN foo.bar IS 'comment'"#,
@@ -1208,5 +1241,7 @@ mod tests {
                 r#"COMMENT ON COLUMN "select"."from" IS 'comment'"#,
             ]
         );
+
+        Ok(())
     }
 }

@@ -3,7 +3,7 @@ use crate::schema::{Identifier, IntoIdentifier};
 use crc::{Crc, CRC_32_ISO_HDLC};
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Default, IntoIdentifier, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, IntoIdentifier, PartialEq)]
 pub(crate) struct AbstractAsset {
     quoted: bool,
     namespace: Option<String>,

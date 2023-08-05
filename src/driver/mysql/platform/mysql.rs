@@ -6,10 +6,10 @@ use crate::driver::mysql::platform::mysql_platform::{
 use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
 use crate::driver::mysql::MySQLSchemaManager;
 use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
-use crate::r#type::{IntoType, BLOB, TEXT};
+use crate::r#type::{IntoType, BLOB, STRING, TEXT};
 use crate::schema::{
     extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData,
-    ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
+    FKConstraintList, ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
 };
 use crate::schema::{string_from_value, SchemaManager};
 use crate::util::strtr;
@@ -48,8 +48,8 @@ pub fn build_table_options(
         opts.push(format!("AUTO_INCREMENT = {}", auto_increment));
     }
 
-    if let Some(comment) = options.comment {
-        opts.push(format!("COMMENT = {}", comment));
+    if let Some(comment) = options.comment.as_deref() {
+        opts.push(format!("COMMENT = {}", this.quote_string_literal(comment)));
     }
 
     if let Some(row_format) = options.row_format {
@@ -924,7 +924,7 @@ pub fn get_portable_table_column_definition(
         column_default
     };
 
-    let mut column = Column::new(table_column.get("field")?.to_string(), ty)?;
+    let mut column = Column::new(table_column.get("field")?.to_string(), ty.into_type()?);
     column.set_length(length);
     column.set_unsigned(col_type.contains("unsigned"));
     column.set_fixed(fixed);
@@ -1032,9 +1032,8 @@ SELECT
     NON_UNIQUE  AS non_unique,
     INDEX_NAME  AS key_name,
     COLUMN_NAME AS column_name,
-    SUB_PART    AS sub_part,
+    SUB_PART    AS length,
     INDEX_TYPE  AS index_type,
-    0           AS length,
     NULL        AS flags,
     NULL        AS `where`,
     IF(INDEX_NAME = 'PRIMARY', 1, 0) AS `primary`
@@ -1069,7 +1068,7 @@ pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Colum
 pub fn get_portable_table_foreign_keys_list(
     this: &dyn SchemaManager,
     table_foreign_keys: Vec<Row>,
-) -> Result<Vec<ForeignKeyConstraint>> {
+) -> Result<FKConstraintList> {
     let connection = this.get_connection();
     let mut list: HashMap<String, Row> = Default::default();
     for value in table_foreign_keys {
@@ -1087,7 +1086,10 @@ pub fn get_portable_table_foreign_keys_list(
                 let mut foreign_columns =
                     string_from_value(connection, row.get("foreign_columns"))?;
 
+                local_columns += ",";
                 local_columns += &string_from_value(connection, value.get("column_name"))?;
+
+                foreign_columns += ",";
                 foreign_columns +=
                     &string_from_value(connection, value.get("referenced_column_name"))?;
 
@@ -1142,4 +1144,54 @@ pub fn get_portable_table_foreign_keys_list(
     }
 
     default::get_portable_table_foreign_keys_list(this, list.into_values().collect())
+}
+
+pub async fn fetch_table_options_by_table(
+    this: &dyn SchemaManager,
+    database_name: String,
+    table_name: Option<String>,
+) -> Result<HashMap<String, Row>> {
+    let string_type = STRING.into_type()?;
+    let platform = this.get_platform()?;
+    let mut params = vec![database_name];
+    let mut conditions = vec![
+        "t.TABLE_SCHEMA = ?".to_string(),
+        "t.TABLE_TYPE = 'BASE TABLE'".to_string(),
+    ];
+
+    if let Some(table_name) = table_name {
+        conditions.push("t.TABLE_NAME = ?".to_string());
+        params.push(table_name);
+    }
+
+    let sql = format!(
+        r#"
+SELECT t.TABLE_NAME AS table_name,
+       t.ENGINE AS engine,
+       t.AUTO_INCREMENT AS autoincrement,
+       t.TABLE_COMMENT AS comment,
+       t.CREATE_OPTIONS AS create_options,
+       t.TABLE_COLLATION AS collation,
+       ccsa.CHARACTER_SET_NAME AS charset
+FROM information_schema.TABLES t
+INNER JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY ccsa
+    ON ccsa.COLLATION_NAME = t.TABLE_COLLATION
+WHERE {}
+"#,
+        conditions.join(" AND ")
+    );
+
+    let connection = this.get_connection();
+    let rows: Vec<(String, Row)> = connection
+        .fetch_all(sql, params.into())
+        .await?
+        .into_iter()
+        .map(|row| {
+            let value: Value =
+                string_type.convert_to_value(row.get("table_name").unwrap(), platform.as_dyn())?;
+            Ok::<_, Error>((value.to_string(), row))
+        })
+        .try_collect()?;
+
+    Ok(HashMap::from_iter(rows))
 }

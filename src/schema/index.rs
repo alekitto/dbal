@@ -1,10 +1,13 @@
 use crate::platform::DatabasePlatform;
 use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
-use crate::schema::{Identifier, IntoIdentifier};
+use crate::schema::{Identifier, IntoIdentifier, NamedListIndex};
 use crate::Value;
-use std::collections::HashMap;
+use itertools::Itertools;
+use std::collections::{HashMap, VecDeque};
+use std::slice::Iter;
+use std::vec::IntoIter;
 
-#[derive(Clone, Debug, IntoIdentifier)]
+#[derive(Clone, Debug, Eq, IntoIdentifier, PartialEq)]
 pub struct Index {
     asset: AbstractAsset,
     columns: Vec<Identifier>,
@@ -13,6 +16,204 @@ pub struct Index {
     is_unique: bool,
     is_primary: bool,
     pub r#where: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq)]
+pub struct IndexList {
+    inner: Vec<Index>,
+}
+
+impl IndexList {
+    pub fn push<T: Into<Index>>(&mut self, index: T) {
+        self.inner.push(index.into())
+    }
+
+    pub fn remove<T: NamedListIndex>(&mut self, index: T) {
+        let pos = if index.is_usize() {
+            index.as_usize()
+        } else {
+            let idx = index.as_str();
+            let Some((p, _)) = self.inner.iter().find_position(|p| p.get_name() == idx) else {
+                return;
+            };
+
+            p
+        };
+
+        self.inner.remove(pos);
+    }
+
+    pub fn has<T: NamedListIndex>(&self, index: T) -> bool {
+        self.get(index).is_some()
+    }
+
+    pub fn filter<P>(&self, predicate: P) -> impl Iterator<Item = &Index>
+    where
+        Self: Sized,
+        P: FnMut(&&Index) -> bool,
+    {
+        self.inner.iter().filter(predicate)
+    }
+
+    pub fn get<T: NamedListIndex>(&self, index: T) -> Option<&Index> {
+        if index.is_usize() {
+            self.inner.get(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_mut<T: NamedListIndex>(&mut self, index: T) -> Option<&mut Index> {
+        if index.is_usize() {
+            self.inner.get_mut(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter_mut()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_position<T: NamedListIndex>(&self, index: T) -> Option<(usize, &Index)> {
+        if index.is_usize() {
+            let idx = index.as_usize();
+            self.inner.get(idx).map(|i| (idx, i))
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find_position(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = String> + '_ {
+        self.inner.iter().map(|c| c.get_name().into_owned())
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn contains(&self, other: &Index) -> bool {
+        self.inner.iter().any(|i| i == other)
+    }
+
+    pub fn iter(&self) -> Iter<Index> {
+        self.into_iter()
+    }
+}
+
+impl PartialEq for IndexList {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            false
+        } else {
+            for index in other {
+                if !self.contains(index) {
+                    return false;
+                }
+            }
+
+            true
+        }
+    }
+}
+
+impl IntoIterator for IndexList {
+    type Item = Index;
+    type IntoIter = IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a IndexList {
+    type Item = &'a Index;
+    type IntoIter = Iter<'a, Index>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl From<Vec<Index>> for IndexList {
+    fn from(value: Vec<Index>) -> Self {
+        Self { inner: value }
+    }
+}
+
+pub struct IndexBuilder {
+    name: Option<String>,
+    columns: Vec<Identifier>,
+    is_unique: bool,
+    is_primary: bool,
+    flags: Vec<String>,
+    options: HashMap<String, Value>,
+}
+
+impl IndexBuilder {
+    pub fn add_column<I: IntoIdentifier>(mut self, column: I) -> Self {
+        self.columns.push(column.into_identifier());
+        self
+    }
+
+    pub fn set_unique(mut self, unique: bool) -> Self {
+        self.is_unique = unique;
+        self
+    }
+
+    pub fn set_primary(mut self, primary: bool) -> Self {
+        self.is_primary = primary;
+        self
+    }
+
+    pub fn add_flag<S: AsRef<str>>(mut self, flag: S) -> Self {
+        self.flags.push(flag.as_ref().to_string());
+        self
+    }
+
+    pub fn set_lengths<I: Into<Value>, T: Into<Vec<I>>>(mut self, lengths: T) -> Self {
+        let lengths = lengths
+            .into()
+            .into_iter()
+            .map(|v| match v.into() {
+                Value::Int(i) => Value::UInt(i as u64),
+                val => val,
+            })
+            .collect::<Vec<_>>();
+
+        self.options
+            .insert("lengths".to_string(), Value::Array(lengths));
+        self
+    }
+
+    pub fn add_option<S: AsRef<str>, V: Into<Value>>(mut self, opt: S, value: V) -> Self {
+        let opt = opt.as_ref().to_string();
+        let value = value.into();
+        self.options.insert(opt, value);
+        self
+    }
+}
+
+impl From<IndexBuilder> for Index {
+    fn from(value: IndexBuilder) -> Self {
+        Index::new::<String, _, _>(
+            value.name,
+            value.columns.as_slice(),
+            value.is_unique,
+            value.is_primary,
+            value.flags.as_slice(),
+            value.options,
+        )
+    }
 }
 
 impl Index {
@@ -53,6 +254,18 @@ impl Index {
         this
     }
 
+    /// Create an builder for index.
+    pub fn builder<S: AsRef<str>, N: Into<Option<S>>>(name: N) -> IndexBuilder {
+        IndexBuilder {
+            name: name.into().map(|s| s.as_ref().to_string()),
+            columns: vec![],
+            is_unique: false,
+            is_primary: false,
+            flags: vec![],
+            options: Default::default(),
+        }
+    }
+
     /// Adds flag for an index that translates to platform specific handling.
     pub fn add_flag(&mut self, flag: &str) {
         if !self.has_flag(flag) {
@@ -81,9 +294,29 @@ impl Index {
     }
 
     pub fn get_quoted_columns(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
+        let mut lengths = match self.get_option("lengths") {
+            Some(Value::Array(len)) => {
+                if platform.supports_column_length_indexes() {
+                    VecDeque::from(len.clone())
+                } else {
+                    VecDeque::default()
+                }
+            }
+            _ => VecDeque::default(),
+        };
+
         self.columns
             .iter()
-            .map(|c| c.get_quoted_name(platform))
+            .map(|c| {
+                let mut n = c.get_quoted_name(platform);
+                if let Some(len) = lengths.pop_front() {
+                    if len != Value::NULL {
+                        n += &format!("({})", len);
+                    }
+                }
+
+                n
+            })
             .collect()
     }
 
@@ -189,8 +422,12 @@ impl Index {
             .cloned()
             .unwrap_or_else(|| Value::Array(vec![]));
 
-        let Ok(s_lens) = s_lens.try_into_vec() else { return false; };
-        let Ok(o_lens) = o_lens.try_into_vec() else { return false; };
+        let Ok(s_lens) = s_lens.try_into_vec() else {
+            return false;
+        };
+        let Ok(o_lens) = o_lens.try_into_vec() else {
+            return false;
+        };
 
         let s_lens = s_lens
             .into_iter()
@@ -237,19 +474,11 @@ impl IndexOptions {
 
         let mut options = HashMap::new();
         options.insert("lengths".to_string(), lengths);
-        options.insert(
-            "where".to_string(),
-            match self.options_where {
-                Some(s) => {
-                    if s.is_empty() {
-                        Value::NULL
-                    } else {
-                        Value::String(s)
-                    }
-                }
-                None => Value::NULL,
-            },
-        );
+        if let Some(val) = self.options_where.as_deref() {
+            if !val.is_empty() {
+                options.insert("where".to_string(), Value::String(val.to_string()));
+            }
+        }
 
         Index::new(
             self.name,

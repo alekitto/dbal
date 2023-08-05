@@ -1,12 +1,15 @@
 use crate::schema::asset::{generate_identifier_name, impl_asset, Asset};
 use crate::schema::schema_config::SchemaConfig;
 use crate::schema::{
-    Column, ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier,
-    UniqueConstraint,
+    Column, ColumnList, FKConstraintList, ForeignKeyConstraint, ForeignKeyReferentialAction,
+    Identifier, Index, IndexList, IntoIdentifier, NamedListIndex, UniqueConstraint,
 };
 use crate::{Error, Result, Value};
+use itertools::Itertools;
 use regex::Regex;
 use std::collections::HashMap;
+use std::slice::Iter;
+use std::vec::IntoIter;
 
 #[derive(Clone, Default)]
 pub struct TableOptions {
@@ -26,13 +29,131 @@ pub struct TableOptions {
     pub alter: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct TableList {
+    inner: Vec<Table>,
+}
+
+impl TableList {
+    pub fn push(&mut self, table: Table) {
+        self.inner.push(table)
+    }
+
+    pub fn remove<T: NamedListIndex>(&mut self, index: T) {
+        let pos = if index.is_usize() {
+            index.as_usize()
+        } else {
+            let idx = index.as_str();
+            let Some((p, _)) = self.inner.iter().find_position(|p| p.get_name() == idx) else {
+                return;
+            };
+
+            p
+        };
+
+        self.inner.remove(pos);
+    }
+
+    pub fn has<T: NamedListIndex>(&self, index: T) -> bool {
+        self.get(index).is_some()
+    }
+
+    pub fn filter<P>(&self, predicate: P) -> impl Iterator<Item = &Table>
+    where
+        Self: Sized,
+        P: FnMut(&&Table) -> bool,
+    {
+        self.inner.iter().filter(predicate)
+    }
+
+    pub fn get<T: NamedListIndex>(&self, index: T) -> Option<&Table> {
+        if index.is_usize() {
+            self.inner.get(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_mut<T: NamedListIndex>(&mut self, index: T) -> Option<&mut Table> {
+        if index.is_usize() {
+            self.inner.get_mut(index.as_usize())
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter_mut()
+                .find(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn get_position<T: NamedListIndex>(&self, index: T) -> Option<(usize, &Table)> {
+        if index.is_usize() {
+            let idx = index.as_usize();
+            self.inner.get(idx).map(|i| (idx, i))
+        } else {
+            let name = index.as_str().to_lowercase();
+            self.inner
+                .iter()
+                .find_position(|c| c.get_name().to_lowercase() == name)
+        }
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = String> + '_ {
+        self.inner.iter().map(|c| c.get_name().into_owned())
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn iter(&self) -> Iter<Table> {
+        self.into_iter()
+    }
+}
+
+impl IntoIterator for TableList {
+    type Item = Table;
+    type IntoIter = IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a TableList {
+    type Item = &'a Table;
+    type IntoIter = Iter<'a, Table>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl From<Vec<Table>> for TableList {
+    fn from(value: Vec<Table>) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl From<TableList> for Vec<Table> {
+    fn from(value: TableList) -> Self {
+        value.inner
+    }
+}
+
 #[derive(Clone, Debug, IntoIdentifier)]
 pub struct Table {
     name: Identifier,
-    columns: Vec<Column>,
-    indices: Vec<Index>,
+    columns: ColumnList,
+    indices: IndexList,
     unique_constraints: Vec<UniqueConstraint>,
-    foreign_keys: Vec<ForeignKeyConstraint>,
+    foreign_keys: FKConstraintList,
     temporary: bool,
     charset: Option<String>,
     collation: Option<String>,
@@ -50,10 +171,10 @@ impl Table {
     pub fn new<I: IntoIdentifier>(name: I) -> Self {
         Self {
             name: name.into_identifier(),
-            columns: vec![],
-            indices: vec![],
+            columns: ColumnList::default(),
+            indices: IndexList::default(),
             unique_constraints: vec![],
-            foreign_keys: vec![],
+            foreign_keys: FKConstraintList::default(),
             temporary: false,
             charset: None,
             collation: None,
@@ -71,10 +192,10 @@ impl Table {
     pub fn template(&self) -> Self {
         Self {
             name: self.name.clone(),
-            columns: vec![],
-            indices: vec![],
+            columns: ColumnList::default(),
+            indices: IndexList::default(),
             unique_constraints: vec![],
-            foreign_keys: vec![],
+            foreign_keys: FKConstraintList::default(),
             temporary: self.temporary,
             charset: self.charset.clone(),
             collation: self.collation.clone(),
@@ -97,8 +218,12 @@ impl Table {
         &self.name
     }
 
-    pub fn get_columns(&self) -> &Vec<Column> {
+    pub fn columns(&self) -> &ColumnList {
         &self.columns
+    }
+
+    pub fn columns_mut(&mut self) -> &mut ColumnList {
+        &mut self.columns
     }
 
     pub fn add_column<IC: Into<Column>>(&mut self, column: IC) {
@@ -112,40 +237,23 @@ impl Table {
     }
 
     pub fn has_column<T: IntoIdentifier>(&self, name: T) -> bool {
-        let name = name.into_identifier();
-        let name = name.get_name();
-        self.columns.iter().any(|column| column.get_name() == name)
+        self.columns.has(name.into_identifier())
     }
 
     pub fn drop_column<T: IntoIdentifier>(&mut self, name: T) {
-        let name = name.into_identifier();
-        let name = name.get_name();
-        if let Some(pos) = self
-            .columns
-            .iter()
-            .position(|column| column.get_name() == name)
-        {
-            self.columns.remove(pos);
-        }
+        self.columns.remove(name.into_identifier());
     }
 
     pub fn get_column<T: IntoIdentifier>(&self, name: T) -> Option<&Column> {
-        let name = name.into_identifier();
-        let name = name.get_name();
-        self.columns
-            .iter()
-            .find(|&column| column.get_name() == name)
+        self.columns.get(name.into_identifier())
     }
 
-    fn get_column_mut<T: IntoIdentifier>(&mut self, name: T) -> Option<&mut Column> {
-        let name = name.into_identifier();
-        let name = name.get_name();
-        self.columns
-            .iter_mut()
-            .find(|column| column.get_name() == name)
+    pub fn get_column_mut<T: IntoIdentifier>(&mut self, name: T) -> Option<&mut Column> {
+        self.columns.get_mut(name.into_identifier())
     }
 
-    pub fn add_index(&mut self, mut index: Index) {
+    pub fn add_index<I: Into<Index>>(&mut self, index: I) {
+        let mut index = index.into();
         if index.get_name().is_empty() {
             let mut columns = vec![self.get_name().into_owned()];
             columns.extend(index.get_columns());
@@ -181,6 +289,56 @@ impl Table {
             vec![],
             options,
         )?);
+
+        Ok(())
+    }
+
+    /// Renames an index.
+    pub fn rename_index<S, N>(&mut self, old_name: S, new_name: Option<N>) -> Result<()>
+    where
+        S: AsRef<str> + IntoIdentifier + Clone,
+        N: AsRef<str> + IntoIdentifier + Clone,
+    {
+        let old_name = self.normalize_identifier(old_name.as_ref());
+        let normalized_new_name = new_name
+            .clone()
+            .map(|n| n.as_ref().to_string())
+            .unwrap_or_default();
+
+        if old_name == normalized_new_name {
+            return Ok(());
+        }
+
+        let Some(old_index) = self
+            .indices
+            .iter()
+            .find(|idx| idx.get_name() == old_name)
+            .cloned()
+        else {
+            return Err(Error::index_does_not_exist(old_name, &self.name));
+        };
+
+        let new_index_name = new_name.clone().map(|n| n.to_string());
+        if old_index.is_primary() {
+            self.drop_index(old_index.into_identifier());
+            self.set_primary_key(old_index.get_columns().as_slice(), new_index_name)?;
+
+            return Ok(());
+        }
+
+        if self.has_index(&normalized_new_name) {
+            return Err(Error::index_already_exists(normalized_new_name, &self.name));
+        }
+
+        self.drop_index(old_index.into_identifier());
+        self.add_index(Index::new(
+            new_name.map(|n| n.as_ref().to_string()).unwrap_or_default(),
+            old_index.get_columns().as_slice(),
+            old_index.is_unique(),
+            false,
+            old_index.get_flags().as_slice(),
+            old_index.get_options().clone(),
+        ));
 
         Ok(())
     }
@@ -222,7 +380,7 @@ impl Table {
         self.indices.iter().any(|idx| idx.is_primary())
     }
 
-    pub fn get_indices(&self) -> &Vec<Index> {
+    pub fn indices(&self) -> &IndexList {
         &self.indices
     }
 
@@ -239,15 +397,15 @@ impl Table {
     }
 
     /// Sets the Primary Key.
-    pub fn set_primary_key<S: IntoIdentifier + Clone>(
+    pub fn set_primary_key<C: IntoIdentifier + Clone>(
         &mut self,
-        column_names: &[S],
-        index_name: Option<&str>,
+        column_names: &[C],
+        index_name: Option<String>,
     ) -> Result<()> {
-        let index_name = index_name.unwrap_or("primary");
+        let index_name = index_name.unwrap_or("primary".to_string());
         self.add_index(self.create_index(
             column_names,
-            index_name,
+            index_name.as_ref(),
             true,
             true,
             vec![],
@@ -273,8 +431,14 @@ impl Table {
         &self.unique_constraints
     }
 
-    pub fn get_foreign_keys(&self) -> &Vec<ForeignKeyConstraint> {
+    pub fn get_foreign_keys(&self) -> &FKConstraintList {
         &self.foreign_keys
+    }
+
+    pub fn has_foreign_key<T: IntoIdentifier>(&self, fk_name: T) -> bool {
+        let name = fk_name.into_identifier();
+        let name = name.get_name();
+        self.foreign_keys.iter().any(|i| i.get_name() == name)
     }
 
     pub fn add_foreign_key_constraint<LC, FC, FT, N>(
@@ -320,22 +484,79 @@ impl Table {
         )
     }
 
-    pub fn add_foreign_key(&mut self, constraint: ForeignKeyConstraint) {
-        self.foreign_keys.push(constraint)
+    pub fn add_foreign_key<T: Into<ForeignKeyConstraint>>(&mut self, constraint: T) -> Result<()> {
+        let constraint = constraint.into();
+        let local_columns = constraint.get_local_columns().clone();
+        self.foreign_keys.push(constraint);
+
+        let mut names = vec![self.get_name().into_owned()];
+        for local_column in &local_columns {
+            names.push(local_column.to_string());
+        }
+
+        // Add an implicit index (creed-defined) on the foreign key
+        // columns. If there is already a user-defined index that fulfills these
+        // requirements drop the request. In the case of "new" calling
+        // this method during hydration from schema-details, all the explicitly
+        // added indexes lead to duplicates. This creates computation overhead in
+        // this case, however no duplicate indexes are ever added (based on
+        // columns).
+        let index_name = generate_identifier_name(&names, "idx", self.get_max_identifier_length());
+        let index_candidate = self.create_index(
+            &local_columns,
+            &index_name,
+            false,
+            false,
+            vec![],
+            HashMap::default(),
+        )?;
+
+        if !self
+            .indices
+            .iter()
+            .any(|i| index_candidate.is_fulfilled_by(i))
+        {
+            self.add_index(index_candidate);
+        }
+
+        Ok(())
     }
 
-    pub fn add_foreign_keys<T: Iterator<Item = ForeignKeyConstraint>>(&mut self, constraints: T) {
+    pub fn add_foreign_keys<I: Into<ForeignKeyConstraint>, T: Iterator<Item = I>>(
+        &mut self,
+        constraints: T,
+    ) -> Result<()> {
         for constraint in constraints {
-            self.add_foreign_key(constraint)
+            self.add_foreign_key(constraint)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn add_foreign_keys_raw<T: Iterator<Item = ForeignKeyConstraint>>(
+        &mut self,
+        constraints: T,
+    ) {
+        for constraint in constraints {
+            self.foreign_keys.push(constraint);
         }
     }
 
-    pub fn get_comment(&self) -> &Option<String> {
-        &self.comment
+    pub fn get_comment(&self) -> Option<&str> {
+        self.comment.as_deref()
     }
 
-    pub fn set_comment(&mut self, comment: Option<String>) {
-        self.comment = comment;
+    pub fn remove_comment(&mut self) {
+        self.comment = None;
+    }
+
+    pub fn set_comment<S: AsRef<str>>(&mut self, comment: S) {
+        let comment = comment.as_ref();
+        self.comment = if comment.is_empty() {
+            None
+        } else {
+            Some(comment.to_string())
+        };
     }
 
     pub fn get_primary_key(&self) -> Option<&Index> {
@@ -349,7 +570,6 @@ impl Table {
             .map(|i| i.get_columns())
             .map(|cols| {
                 self.columns
-                    .iter()
                     .filter(|c| cols.contains(&c.get_name().into_owned()))
                     .collect()
             })
@@ -489,6 +709,11 @@ impl Table {
         FC: IntoIdentifier,
         FT: IntoIdentifier,
     {
+        let mut names = vec![self.get_name().into_owned()];
+        for local_column in local_columns {
+            names.push(local_column.to_string());
+        }
+
         let mut constraint = ForeignKeyConstraint::new(
             local_columns,
             foreign_columns,
@@ -498,42 +723,14 @@ impl Table {
             on_delete,
         );
 
-        let mut names = vec![self.get_name().into_owned()];
-        for local_column in local_columns {
-            names.push(local_column.to_string());
-        }
-
         constraint.set_name(&if name.is_empty() {
             generate_identifier_name(&names, "fk", self.get_max_identifier_length())
         } else {
             name.get_name().into_owned()
         });
 
-        // Add an implicit index (creed-defined) on the foreign key
-        // columns. If there is already a user-defined index that fulfills these
-        // requirements drop the request. In the case of "new" calling
-        // this method during hydration from schema-details, all the explicitly
-        // added indexes lead to duplicates. This creates computation overhead in
-        // this case, however no duplicate indexes are ever added (based on
-        // columns).
-        let index_name = generate_identifier_name(&names, "idx", self.get_max_identifier_length());
-        let index_candidate = self.create_index(
-            constraint.get_local_columns(),
-            &index_name,
-            false,
-            false,
-            vec![],
-            HashMap::default(),
-        )?;
-        self.add_foreign_key(constraint);
+        self.add_foreign_key(constraint)?;
 
-        for index in &self.indices {
-            if index_candidate.is_fulfilled_by(index) {
-                return Ok(());
-            }
-        }
-
-        self.add_index(index_candidate);
         Ok(())
     }
 }

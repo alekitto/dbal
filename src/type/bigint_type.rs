@@ -34,4 +34,18 @@ impl Type for BigintType {
     ) -> Result<String> {
         platform.get_bigint_type_declaration_sql(column)
     }
+
+    fn convert_to_default_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<String> {
+        match value {
+            Value::NULL => Ok(0.to_string()),
+            Value::Int(n) => Ok(n.to_string()),
+            Value::UInt(n) => Ok(n.to_string()),
+            Value::String(s) => Ok(s.to_string()),
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "String", "Integer"],
+            )),
+        }
+    }
 }

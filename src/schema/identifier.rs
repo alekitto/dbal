@@ -4,7 +4,7 @@ use creed_derive::IntoIdentifier;
 use std::borrow::{Borrow, Cow};
 use std::fmt::Display;
 
-#[derive(Clone, Debug, IntoIdentifier, PartialEq)]
+#[derive(Clone, Debug, Eq, IntoIdentifier, PartialEq)]
 pub struct Identifier {
     asset: AbstractAsset,
 }

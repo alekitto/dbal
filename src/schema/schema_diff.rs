@@ -58,7 +58,10 @@ impl<'a> SchemaDiff<'a> {
     /// 1. Tables are deleted
     /// 2. Sequences are deleted
     /// 3. Foreign Keys which reference tables that would otherwise be deleted.
-    fn to_save_sql<S: SchemaManager + ?Sized>(mut self, schema_manager: &S) -> Result<Vec<String>> {
+    pub fn to_save_sql<S: SchemaManager + ?Sized>(
+        mut self,
+        schema_manager: &S,
+    ) -> Result<Vec<String>> {
         let platform = schema_manager.get_platform()?;
         let mut sql = vec![];
 

@@ -4,14 +4,12 @@ use crate::event::{
     SchemaAlterTableAddColumnEvent, SchemaAlterTableRemoveColumnEvent, SchemaCreateTableEvent,
     SchemaDropTableEvent,
 };
-use crate::r#type::{
-    IntoType, TypeManager, TypePtr, BIGINT, BOOLEAN, DATE, DATETIME, DATETIMETZ, INTEGER, TIME,
-};
+use crate::r#type::{TypeManager, TypePtr};
 use crate::schema::{
     get_database, string_from_value, Asset, CheckConstraint, Column, ColumnData, ColumnDiff,
-    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexOptions,
-    IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableOptions, UniqueConstraint,
-    View,
+    ColumnList, FKConstraintList, ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier,
+    Index, IndexOptions, IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableList,
+    TableOptions, UniqueConstraint, View,
 };
 use crate::util::{filter_asset_names, function_name};
 use crate::{
@@ -19,6 +17,7 @@ use crate::{
     SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaColumnDefinitionEvent,
     SchemaCreateTableColumnEvent, SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
 };
+use creed::schema::IndexList;
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
@@ -362,9 +361,13 @@ pub fn get_create_table_sql(
         ));
     }
 
-    let mut options = TableOptions::default();
+    let mut options = TableOptions {
+        comment: table.get_comment().map(|c| c.to_string()),
+        ..Default::default()
+    };
+
     if create_flags.contains(CreateFlags::CREATE_INDEXES) {
-        for index in table.get_indices() {
+        for index in table.indices() {
             if !index.is_primary() {
                 let _ = options
                     .indexes
@@ -392,7 +395,7 @@ pub fn get_create_table_sql(
     let mut column_sql = vec![];
     let mut columns = vec![];
 
-    for column in table.get_columns() {
+    for column in table.columns() {
         let e = platform
             .get_event_manager()
             .dispatch_sync(SchemaCreateTableColumnEvent::new(
@@ -438,7 +441,7 @@ pub fn get_create_table_sql(
         this._get_create_table_sql(table.get_table_name(), columns.as_slice(), &options)?;
 
     if platform.supports_comment_on_statement() {
-        if let Some(comment) = table.get_comment() {
+        if let Some(comment) = options.comment.as_deref() {
             sql.push(this.get_comment_on_table_sql(table.get_table_name(), comment)?);
         }
     }
@@ -446,7 +449,7 @@ pub fn get_create_table_sql(
     sql.append(&mut column_sql);
 
     if platform.supports_comment_on_statement() {
-        for column in table.get_columns() {
+        for column in table.columns() {
             let comment = this.get_column_comment(column)?;
             if comment.is_empty() {
                 continue;
@@ -1000,38 +1003,16 @@ pub fn get_default_value_declaration_sql(
     this: &dyn DatabasePlatform,
     column: &ColumnData,
 ) -> Result<String> {
-    let default = column.default.clone();
-    if matches!(default, Value::NULL) {
-        return Ok((if column.notnull { "" } else { " DEFAULT NULL" }).to_string());
+    let default = &column.default;
+    if matches!(default, &Value::NULL) {
+        Ok((if column.notnull { "" } else { " DEFAULT NULL" }).to_string())
+    } else {
+        let t = column.r#type.clone();
+        Ok(format!(
+            " DEFAULT {}",
+            t.convert_to_default_value(&column.default, this)?
+        ))
     }
-
-    let t = column.r#type.clone();
-    if t == INTEGER.into_type()? || t == BIGINT.into_type()? {
-        return Ok(format!(" DEFAULT {}", default));
-    }
-
-    if (t == DATETIME.into_type()? || t == DATETIMETZ.into_type()?)
-        && default == Value::String(this.get_current_timestamp_sql().to_string())
-    {
-        return Ok(format!(" DEFAULT {}", this.get_current_timestamp_sql()));
-    }
-
-    if t == TIME.into_type()? && default == Value::String(this.get_current_time_sql().to_string()) {
-        return Ok(format!(" DEFAULT {}", this.get_current_time_sql()));
-    }
-
-    if t == DATE.into_type()? && default == Value::String(this.get_current_date_sql().to_string()) {
-        return Ok(format!(" DEFAULT {}", this.get_current_date_sql()));
-    }
-
-    if t == BOOLEAN.into_type()? {
-        return Ok(format!(" DEFAULT {}", this.convert_boolean(default)?));
-    }
-
-    Ok(format!(
-        " DEFAULT {}",
-        this.quote_string_literal(&default.to_string())
-    ))
 }
 
 pub fn get_check_declaration_sql(
@@ -1303,8 +1284,8 @@ pub fn get_create_view_sql(platform: &dyn DatabasePlatform, view: &View) -> Resu
     ))
 }
 
-pub fn get_drop_view_sql(platform: &dyn DatabasePlatform, name: &Identifier) -> Result<String> {
-    Ok(format!("DROP VIEW {}", name.get_quoted_name(platform)))
+pub fn get_drop_view_sql(platform: &dyn DatabasePlatform, sequence: &dyn IntoIdentifier) -> Result<String> {
+    Ok(format!("DROP VIEW {}", sequence.into_identifier().get_quoted_name(platform)))
 }
 
 pub fn get_create_database_sql(
@@ -1477,7 +1458,7 @@ pub async fn list_table_columns(
     this: &dyn SchemaManager,
     table: String,
     database: Option<String>,
-) -> Result<Vec<Column>> {
+) -> Result<ColumnList> {
     let database = if let Some(database) = database {
         database
     } else {
@@ -1493,7 +1474,7 @@ pub async fn list_table_columns(
 
 /// Lists the indexes for a given table returning an array of Index instances.
 /// Keys of the portable indexes list are all lower-cased.
-pub async fn list_table_indexes(this: &dyn SchemaManager, table: String) -> Result<Vec<Index>> {
+pub async fn list_table_indexes(this: &dyn SchemaManager, table: String) -> Result<IndexList> {
     let database = get_database(this.get_connection(), function_name!()).await?;
     let sql = this.get_list_table_indexes_sql(&table, &database)?;
 
@@ -1534,17 +1515,23 @@ pub async fn list_table_names(this: &dyn SchemaManager) -> Result<Vec<String>> {
 }
 
 /// Lists the tables for this connection.
-pub async fn list_tables(this: &dyn SchemaManager) -> Result<Vec<Table>> {
+pub async fn list_tables(this: &dyn SchemaManager) -> Result<TableList> {
     let mut tables = vec![];
     for table_name in this.list_table_names().await? {
         tables.push(this.list_table_details(&table_name).await?)
     }
 
-    Ok(tables)
+    Ok(tables.into())
 }
 
 pub async fn list_table_details(this: &dyn SchemaManager, name: String) -> Result<Table> {
     let columns = this.list_table_columns(&name, None).await?;
+    let conn = this.get_connection();
+
+    let current_database = get_database(conn, function_name!()).await?;
+    let options = this
+        .fetch_table_options_by_table(&current_database, Some(&name))
+        .await?;
 
     let foreign_keys = if this
         .get_platform()?
@@ -1553,15 +1540,41 @@ pub async fn list_table_details(this: &dyn SchemaManager, name: String) -> Resul
     {
         this.list_table_foreign_keys(&name).await?
     } else {
-        vec![]
+        vec![].into()
     };
 
     let indexes = this.list_table_indexes(&name).await?;
 
-    let mut table = Table::new(Identifier::new(name, false));
+    let mut table = Table::new(Identifier::new(name.as_str(), false));
     table.add_columns(columns.into_iter());
     table.add_indices(indexes.into_iter());
-    table.add_foreign_keys(foreign_keys.into_iter());
+    table.add_foreign_keys_raw(foreign_keys.into_iter());
+
+    if let Some(opt) = options.get(&name) {
+        if let Ok(Value::String(coll)) = opt.get("collation") {
+            if !coll.is_empty() {
+                table.set_collation(coll);
+            }
+        }
+
+        if let Ok(Value::String(charset)) = opt.get("charset") {
+            if !charset.is_empty() {
+                table.set_charset(charset);
+            }
+        }
+
+        if let Ok(Value::String(engine)) = opt.get("engine") {
+            if !engine.is_empty() {
+                table.set_engine(Some(engine.clone()));
+            }
+        }
+
+        if let Ok(Value::String(str)) = opt.get("comment") {
+            if !str.is_empty() {
+                table.set_comment(str);
+            }
+        }
+    }
 
     Ok(table)
 }
@@ -1638,7 +1651,7 @@ pub async fn fetch_foreign_key_columns_by_table(
 pub async fn introspect_table(this: &dyn SchemaManager, name: String) -> Result<Table> {
     let table = this.list_table_details(name.as_str()).await?;
 
-    if table.get_columns().is_empty() {
+    if table.columns().is_empty() {
         Err(Error::table_does_not_exist(&name))
     } else {
         Ok(table)
@@ -1658,7 +1671,7 @@ pub async fn list_views(this: &dyn SchemaManager) -> Result<Vec<View>> {
 pub async fn list_table_foreign_keys(
     this: &dyn SchemaManager,
     table: String,
-) -> Result<Vec<ForeignKeyConstraint>> {
+) -> Result<FKConstraintList> {
     let database = get_database(this.get_connection(), function_name!()).await?;
     let sql = this.get_list_table_foreign_keys_sql(&table, &database)?;
     let table_foreign_keys = this.get_connection().fetch_all(sql, params!()).await?;
@@ -1670,7 +1683,7 @@ pub fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
     table_name: String,
-) -> Result<Vec<Index>> {
+) -> Result<IndexList> {
     let mut result = HashMap::new();
     let connection = this.get_connection();
     for table_index in table_indexes {
@@ -1699,13 +1712,25 @@ pub fn get_portable_table_indexes_list(
                     primary: bool::from(table_index.get("primary")?),
                     flags: string_from_value(connection, table_index.get("flags"))?
                         .split(',')
-                        .map(|s| s.to_string())
+                        .filter_map(|s| {
+                            if s.is_empty() {
+                                None
+                            } else {
+                                Some(s.to_string())
+                            }
+                        })
                         .collect(),
                     options_lengths: vec![length],
                     options_where: table_index
                         .get("where")
                         .and_then(|v| match v {
-                            Value::String(s) => Ok(s.clone()),
+                            Value::String(s) => {
+                                if s.is_empty() {
+                                    Err("empty".into())
+                                } else {
+                                    Ok(s.clone())
+                                }
+                            }
                             _ => Err("invalid".into()),
                         })
                         .ok(),
@@ -1742,19 +1767,19 @@ pub fn get_portable_table_indexes_list(
         }
     }
 
-    Ok(indexes.into_values().collect())
+    Ok(indexes.into_values().collect::<Vec<_>>().into())
 }
 
 pub fn get_portable_table_foreign_keys_list(
     this: &dyn SchemaManager,
     table_foreign_keys: Vec<Row>,
-) -> Result<Vec<ForeignKeyConstraint>> {
+) -> Result<FKConstraintList> {
     let mut list = vec![];
     for value in table_foreign_keys {
         list.push(this.get_portable_table_foreign_key_definition(&value)?);
     }
 
-    Ok(list)
+    Ok(list.into())
 }
 
 /// Creates a new foreign key.
@@ -1776,7 +1801,7 @@ pub fn get_portable_table_column_list(
     table: &str,
     database: &str,
     table_columns: Vec<Row>,
-) -> Result<Vec<Column>> {
+) -> Result<ColumnList> {
     let table = table.to_string();
     let database = database.to_string();
 
@@ -1806,5 +1831,5 @@ pub fn get_portable_table_column_list(
         list.push(column);
     }
 
-    Ok(list)
+    Ok(list.into())
 }

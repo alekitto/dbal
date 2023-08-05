@@ -3,6 +3,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(impl_trait_in_assoc_type)]
 
+extern crate core;
 extern crate creed_derive;
 extern crate self as creed;
 
@@ -40,7 +41,8 @@ pub use parameter_type::ParameterType;
 pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use transaction_isolation_level::TransactionIsolationLevel;
-pub use value::Value;
+pub use util::const_expr_count;
+pub use value::{value_map, Value};
 
 #[cfg(test)]
 pub mod tests;

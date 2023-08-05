@@ -1,4 +1,4 @@
-use crate::r#type::{INTEGER, STRING};
+use crate::r#type::{IntoType, INTEGER, STRING};
 use crate::schema::{Asset, Column, IntoIdentifier, SchemaManager, Table};
 use crate::tests::{create_connection, get_database_dsn};
 use crate::util::PlatformBox;
@@ -38,9 +38,9 @@ impl FunctionalTestsHelper {
     }
 
     /// Drops the table with the specified name, if it exists.
-    pub async fn drop_table_if_exists(&self, name: &dyn IntoIdentifier) {
+    pub async fn drop_table_if_exists<T: IntoIdentifier>(&self, name: T) {
         let schema_manager = self.get_schema_manager();
-        let _ = schema_manager.drop_table(name).await;
+        let _ = schema_manager.drop_table(&name).await;
     }
 
     /// Drops and creates a new table.
@@ -78,17 +78,28 @@ impl FunctionalTestsHelper {
     pub fn get_test_table<S: IntoIdentifier>(&self, name: S) -> Result<Table> {
         let mut table = Table::new(name);
 
-        let mut col = Column::new("id", INTEGER)?;
+        let mut col = Column::new("id", INTEGER.into_type()?);
         col.set_notnull(true);
         table.add_column(col);
 
-        let mut col = Column::new("test", STRING)?;
+        let mut col = Column::new("test", STRING.into_type()?);
         col.set_length(255);
         table.add_column(col);
 
-        table.add_column(Column::new("foreign_key_test", INTEGER)?);
+        table.add_column(Column::new("foreign_key_test", INTEGER.into_type()?));
 
         table.set_primary_key(&["id"], None)?;
+
+        Ok(table)
+    }
+
+    pub fn get_test_composite_table(&self, name: &str) -> Result<Table> {
+        let mut table = Table::new(name);
+        table.set_schema_config(self.get_schema_manager().create_schema_config());
+        table.add_column(Column::builder("id", INTEGER)?.set_notnull(true));
+        table.add_column(Column::builder("other_id", INTEGER)?.set_notnull(true));
+        table.set_primary_key(&["id", "other_id"], None)?;
+        table.add_column(Column::builder("test", STRING)?.set_length(255));
 
         Ok(table)
     }

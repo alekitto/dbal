@@ -1,4 +1,3 @@
-mod comparator;
 mod mysql_platform;
 mod schema_manager;
 
@@ -13,6 +12,5 @@ pub enum MySQLVariant {
 pub mod mariadb;
 pub mod mysql;
 
-pub use comparator::MySQLComparator;
 pub use mysql_platform::{AbstractMySQLPlatform, MySQLPlatform};
 pub use schema_manager::{AbstractMySQLSchemaManager, MySQLSchemaManager};

@@ -343,8 +343,8 @@ pub trait Comparator {
         let mut changes = 0;
         let mut table_differences = TableDiff::new(from_table.get_name(), Some(from_table));
 
-        let from_table_columns = from_table.get_columns();
-        let to_table_columns = to_table.get_columns();
+        let from_table_columns = from_table.columns();
+        let to_table_columns = to_table.columns();
 
         /* See if all the columns in "from" table exist in "to" table */
         for column in to_table_columns {
@@ -382,8 +382,8 @@ pub trait Comparator {
 
         detect_column_renames(schema_manager, &mut table_differences);
 
-        let from_table_indexes = from_table.get_indices();
-        let to_table_indexes = to_table.get_indices();
+        let from_table_indexes = from_table.indices();
+        let to_table_indexes = to_table.indices();
 
         /* See if all the indexes in "from" table exist in "to" table */
         for index in to_table_indexes {

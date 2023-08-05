@@ -4,14 +4,15 @@ use crate::driver::statement_result::StatementResult;
 use crate::error::ErrorKind;
 use crate::platform::{default, CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode};
 use crate::r#type::{IntoType, BIGINT, DATE, DATETIME, INTEGER, STRING, TIME};
-use crate::schema::IntoIdentifier;
 use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
+use crate::schema::{ColumnList, IntoIdentifier};
 use crate::{params, Error, Parameters, Result, Row, TransactionIsolationLevel, Value};
+use creed::schema::IndexList;
 use itertools::Itertools;
-use regex::Regex;
+use regex::{escape, Regex};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -363,7 +364,7 @@ fn get_column_names_in_altered_table(
 ) -> HashMap<String, String> {
     let mut columns = HashMap::new();
 
-    for column in from_table.get_columns() {
+    for column in from_table.columns() {
         let name = column.get_name();
         columns.insert(name.to_lowercase(), name.into_owned());
     }
@@ -398,7 +399,7 @@ fn get_column_names_in_altered_table(
 
 fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Index> {
     let mut empty_index_idx = 0;
-    let indexes = from_table.get_indices().clone();
+    let indexes = from_table.indices().clone();
     let column_names = get_column_names_in_altered_table(diff, from_table);
 
     #[allow(clippy::needless_collect)]
@@ -507,7 +508,7 @@ fn get_foreign_keys_in_altered_table(
             let normalized_column_name = local_column.get_name().to_lowercase();
             if let Some(column_name) = column_names.get(&normalized_column_name) {
                 local_columns.push(column_name.clone());
-                if column_name == &local_column.get_name() {
+                if column_name != &local_column.get_name() {
                     continue;
                 }
 
@@ -518,7 +519,7 @@ fn get_foreign_keys_in_altered_table(
         }
 
         if changed {
-            new_foreign_keys.push(ForeignKeyConstraint::new(
+            let mut fk = ForeignKeyConstraint::new(
                 &local_columns,
                 &constraint
                     .get_foreign_columns()
@@ -529,7 +530,10 @@ fn get_foreign_keys_in_altered_table(
                 constraint.get_options(),
                 constraint.on_update,
                 constraint.on_delete,
-            ));
+            );
+            fk.set_name(constraint.get_name().as_ref());
+
+            new_foreign_keys.push(fk);
         } else {
             new_foreign_keys.push(constraint.clone());
         }
@@ -753,17 +757,13 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
 /// Replace the column with the given name with the new column.
 fn replace_column(
     table_name: &str,
-    mut columns: Vec<Column>,
+    mut columns: ColumnList,
     column_name: &str,
     column: &Column,
-) -> Result<Vec<Column>> {
+) -> Result<ColumnList> {
     let column_name = column_name.to_lowercase();
-    if let Some((pos, _)) = columns
-        .iter()
-        .find_position(|c| c.get_name().to_lowercase() == column_name)
-    {
-        columns.remove(pos);
-        columns.insert(pos, column.clone());
+    if let Some((pos, _)) = columns.get_position(column_name.as_str()) {
+        columns.replace(pos, column.clone());
         Ok(columns)
     } else {
         Err(Error::column_does_not_exist(&column_name, table_name))
@@ -779,10 +779,10 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         Ok(sql)
     } else if let Some(from_table) = diff.from_table {
         let mut column_sql = vec![];
-        let mut columns = vec![];
+        let mut columns = ColumnList::default();
         let mut old_column_names = vec![];
 
-        for column in from_table.get_columns() {
+        for column in from_table.columns() {
             columns.push(column.clone());
             old_column_names.push(column.get_quoted_name(&platform));
         }
@@ -796,12 +796,7 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             }
 
             let column_name = column.get_name().to_lowercase();
-            if let Some((pos, _)) = columns
-                .iter()
-                .find_position(|c| c.get_name() == column_name)
-            {
-                columns.remove(pos);
-
+            if columns.remove(column_name.as_str()).is_some() {
                 if let Some((p, _)) = old_column_names
                     .iter()
                     .find_position(|c| *c == &column_name)
@@ -860,7 +855,6 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 .map(|c| c.get_name())
                 .collect::<Vec<_>>();
             let new_columns = columns
-                .iter()
                 .filter(|c| !added_columns.contains(&c.get_name()))
                 .map(|c| c.get_quoted_name(&platform))
                 .join(", ");
@@ -876,8 +870,9 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
                 new_table.add_index(primary);
             }
 
-            new_table
-                .add_foreign_keys(get_foreign_keys_in_altered_table(diff, from_table).into_iter());
+            new_table.add_foreign_keys_raw(
+                get_foreign_keys_in_altered_table(diff, from_table).into_iter(),
+            );
 
             sql = this.get_pre_alter_table_index_foreign_key_sql(diff)?;
             sql.push(format!(
@@ -995,7 +990,7 @@ pub fn get_portable_table_column_definition(
         Value::NULL
     };
 
-    let mut column = Column::new(name, r#type)?;
+    let mut column = Column::new(name, r#type.into_type()?);
     column.set_length(length.and_then(|x| usize::from_str(&x).ok()));
     column.set_jsonb(unsigned);
     column.set_fixed(fixed);
@@ -1012,7 +1007,7 @@ pub async fn get_portable_table_indexes_list(
     this: &dyn SchemaManager,
     table_indexes: Vec<Row>,
     table_name: String,
-) -> Result<Vec<Index>> {
+) -> Result<IndexList> {
     let mut buffer = vec![];
     let mut primary = this
         .get_connection()
@@ -1137,4 +1132,81 @@ ON p."seq" != "-1"
     this.get_connection()
         .query(sql, Parameters::from(params))
         .await
+}
+
+fn parse_table_comment_from_sql(
+    platform: &dyn DatabasePlatform,
+    table: &str,
+    sql: &str,
+) -> Result<String> {
+    let pattern = Regex::new(&format!(
+        "\\s*CREATE\\s+TABLE(?:\\W{}\\W|\\W{}\\W)((?:\\s*--[^\\n]*\\n?)+)",
+        platform.quote_single_identifier(table),
+        escape(table)
+    ))?;
+
+    let Some(captures) = pattern.captures(sql) else {
+        return Ok("".to_string());
+    };
+    let comment = captures
+        .get(1)
+        .unwrap()
+        .as_str()
+        .trim_end_matches('\n')
+        .trim_start_matches(&Regex::new("^\\s*--")?)
+        .to_string();
+
+    Ok(comment)
+}
+
+pub async fn fetch_table_options_by_table(
+    this: &dyn SchemaManager,
+    table_name: Option<String>,
+) -> Result<HashMap<String, Row>> {
+    let tables = if let Some(table_name) = table_name {
+        vec![table_name]
+    } else {
+        this.list_table_names().await?
+    };
+
+    let mut table_options = HashMap::new();
+    for table in tables {
+        let Some(create_sql_row) = this
+            .get_connection()
+            .query(
+                r#"
+    SELECT sql
+    FROM (
+        SELECT *
+            FROM sqlite_master
+        UNION ALL
+        SELECT *
+            FROM sqlite_temp_master
+    )
+    WHERE type = 'table'
+AND name = ?
+"#,
+                params![0 => Value::from(&table)],
+            )
+            .await?
+            .fetch_one()
+            .await?
+        else {
+            continue;
+        };
+
+        let create_sql = create_sql_row.get("sql").unwrap().to_string();
+        let Ok(comment) =
+            parse_table_comment_from_sql(this.get_platform()?.as_dyn(), &table, &create_sql)
+        else {
+            continue;
+        };
+
+        table_options.insert(
+            table,
+            Row::new(vec!["comment".to_string()], vec![Value::String(comment)]),
+        );
+    }
+
+    Ok(table_options)
 }

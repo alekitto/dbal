@@ -2,6 +2,7 @@ use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
 use crate::driver::Driver;
 use crate::event::ConnectionEvent;
+use crate::parameter::NO_PARAMS;
 use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
 use crate::schema::SchemaManager;
@@ -10,6 +11,8 @@ use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
     Value,
 };
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::io::Read;
 use std::sync::Arc;
 
@@ -247,6 +250,51 @@ impl Connection {
         driver.query(sql, params).await
     }
 
+    /// Executes an SQL statement with the given parameters and returns the number of affected rows.
+    /// Could be used for:
+    /// - DML statements: INSERT, UPDATE, DELETE, etc.
+    /// - DDL statements: CREATE, DROP, ALTER, etc.
+    /// - DCL statements: GRANT, REVOKE, etc.
+    /// - Session control statements: ALTER SESSION, SET, DECLARE, etc.
+    /// - Other statements that don't yield a row set.
+    pub async fn execute_statement<St: Into<String>>(
+        &self,
+        sql: St,
+        params: Parameters<'_>,
+    ) -> Result<usize> {
+        let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
+        let stmt = driver.prepare(sql)?;
+        stmt.execute(params).await
+    }
+
+    /// Inserts a record into the given table.
+    pub async fn insert(&self, table: &str, values: HashMap<&str, Value>) -> Result<usize> {
+        if values.is_empty() {
+            self.execute_statement(format!("INSERT INTO {} () VALUES ()", table), NO_PARAMS)
+                .await
+        } else {
+            let platform = self.platform.as_ref().ok_or_else(Error::not_connected)?;
+
+            let set = vec!["?"; values.len()].join(", ");
+            let columns = values
+                .keys()
+                .map(|k| platform.quote_identifier(k))
+                .join(", ");
+            let values = Parameters::from(values.values().cloned().collect::<Vec<_>>());
+
+            self.execute_statement(
+                format!(
+                    "INSERT INTO {} ({}) VALUES ({})",
+                    platform.quote_identifier(table),
+                    columns,
+                    set
+                ),
+                values,
+            )
+            .await
+        }
+    }
+
     /// Executes an SQL statement, returning a result set as a vector of Row objects.
     pub async fn fetch_all<St: Into<String>>(
         &self,
@@ -311,7 +359,9 @@ impl Connection {
     }
 
     pub async fn server_version(&self) -> Result<String> {
-        let Some(ref driver) = self.driver else { return Err(Error::not_connected()); };
+        let Some(ref driver) = self.driver else {
+            return Err(Error::not_connected());
+        };
         Ok(driver.server_version().await)
     }
 
@@ -353,10 +403,7 @@ mod tests {
     async fn is_debuggable() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
 
-        assert_eq!(
-            true,
-            format!("{:?}", connection).starts_with("Connection {")
-        );
+        assert!(format!("{:?}", connection).starts_with("Connection {"));
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
@@ -364,19 +411,19 @@ mod tests {
     #[serial]
     async fn can_create_connection() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
-        assert_eq!(connection.is_connected(), false);
+        assert!(!connection.is_connected());
 
         let connection = connection.connect().await.expect("Connection failed");
-        assert_eq!(connection.is_connected(), true);
+        assert!(connection.is_connected());
 
         {
             let statement = connection.prepare("SELECT 1").expect("Prepare failed");
             let result = statement.execute(params![]).await;
-            assert_eq!(result.is_ok(), true);
+            assert!(result.is_ok());
         }
 
         let connection = connection.connect().await;
-        assert_eq!(connection.is_ok(), true);
+        assert!(connection.is_ok());
     }
 
     static CALLED: AtomicBool = AtomicBool::new(false);
@@ -410,11 +457,11 @@ mod tests {
 
         let connection =
             Connection::create_from_dsn(&get_database_dsn(), None, Some(events)).unwrap();
-        assert_eq!(connection.is_connected(), false);
+        assert!(!connection.is_connected());
 
         let connection = connection.connect().await.expect("Connection failed");
-        assert_eq!(connection.is_connected(), true);
-        assert_eq!(CALLED.load(Ordering::SeqCst), true);
+        assert!(connection.is_connected());
+        assert!(CALLED.load(Ordering::SeqCst));
 
         let rows = M_RESULT.lock().unwrap().clone().unwrap();
         assert_eq!(rows.len(), 1);
@@ -425,7 +472,7 @@ mod tests {
 
         let statement = connection.prepare("SELECT 1").expect("Prepare failed");
         let result = statement.execute(params![]).await;
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
     }
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
@@ -434,7 +481,7 @@ mod tests {
     async fn can_convert_type_to_runtime() -> Result<()> {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         let connection = connection.connect().await.expect("Connection failed");
-        assert_eq!(connection.is_connected(), true);
+        assert!(connection.is_connected());
 
         let mut result = connection
             .query("SELECT 1", params![])
@@ -461,7 +508,7 @@ mod tests {
     #[serial]
     async fn can_retrieve_database_name() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
-        assert_eq!(connection.is_connected(), false);
+        assert!(!connection.is_connected());
 
         let connection = connection.connect().await.expect("Connection failed");
         let current_database = connection.get_database().await;
@@ -477,7 +524,7 @@ mod tests {
     #[serial]
     async fn can_fetch_results() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
-        assert_eq!(connection.is_connected(), false);
+        assert!(!connection.is_connected());
 
         let connection = connection.connect().await.expect("Connection failed");
         let platform = connection
@@ -487,7 +534,7 @@ mod tests {
         let result = connection
             .fetch_all(platform.get_dummy_select_sql(None), params!())
             .await;
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
 
         let rows = result.unwrap();
         assert_eq!(1, rows.len());
@@ -498,11 +545,11 @@ mod tests {
     #[serial]
     async fn can_convert_values() {
         let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
-        assert_eq!(connection.is_connected(), false);
+        assert!(!connection.is_connected());
 
         let connection = connection.connect().await.expect("Connection failed");
         let result = connection.convert_value(&Value::from("{ \"test\": true }"), r#type::JSON);
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
 
         let value = result.unwrap();
         match value {
@@ -518,7 +565,7 @@ mod tests {
             Value::Json(serde_json::json!({ "test": true })),
             r#type::JSON,
         );
-        assert_eq!(true, result.is_ok());
+        assert!(result.is_ok());
 
         let value = result.unwrap();
         match value {

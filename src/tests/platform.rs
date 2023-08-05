@@ -42,31 +42,31 @@ impl DatabasePlatform for MockPlatform {
         todo!()
     }
 
-    fn _add_type_mapping(&self, db_type: &str, type_id: TypeId) {
+    fn _add_type_mapping(&self, _: &str, _: TypeId) {
         todo!()
     }
 
-    fn get_boolean_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_boolean_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
-    fn get_integer_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_integer_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
-    fn get_bigint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_bigint_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
-    fn get_smallint_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_smallint_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
-    fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_clob_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
-    fn get_blob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
+    fn get_blob_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
         todo!()
     }
 
@@ -74,7 +74,7 @@ impl DatabasePlatform for MockPlatform {
         todo!()
     }
 
-    fn get_type_mapping(&self, db_type: &str) -> Result<TypeId> {
+    fn get_type_mapping(&self, _: &str) -> Result<TypeId> {
         todo!()
     }
 
@@ -135,8 +135,10 @@ pub macro common_platform_tests($ex:expr) {
 
     #[test]
     pub fn get_default_value_declaration_sql() {
+        use $crate::r#type::IntoType;
         let platform = $ex;
-        let mut column = $crate::schema::Column::new("foo", $crate::r#type::STRING).unwrap();
+        let mut column =
+            $crate::schema::Column::new("foo", $crate::r#type::STRING.into_type().unwrap());
         column.set_default("non_timestamp".into());
 
         // non-timestamp value will get single quotes
@@ -150,11 +152,12 @@ pub macro common_platform_tests($ex:expr) {
 
     #[test]
     pub fn get_default_value_declaration_sql_date_time() {
+        use $crate::r#type::IntoType;
         let platform = $ex;
 
         // timestamps on datetime types should not be quoted
         for t in [$crate::r#type::DATETIME, $crate::r#type::DATETIMETZ] {
-            let mut column = $crate::schema::Column::new("foo", t).unwrap();
+            let mut column = $crate::schema::Column::new("foo", t.into_type().unwrap());
             column.set_default(platform.get_current_timestamp_sql().into());
 
             assert_eq!(
@@ -168,10 +171,11 @@ pub macro common_platform_tests($ex:expr) {
 
     #[test]
     pub fn get_default_value_declaration_sqlfor_integer_types() {
+        use $crate::r#type::IntoType;
         let platform = $ex;
 
         for t in [$crate::r#type::BIGINT, $crate::r#type::INTEGER] {
-            let mut column = $crate::schema::Column::new("foo", t).unwrap();
+            let mut column = $crate::schema::Column::new("foo", t.into_type().unwrap());
             column.set_default(1.into());
 
             assert_eq!(
@@ -185,10 +189,12 @@ pub macro common_platform_tests($ex:expr) {
 
     #[test]
     pub fn get_default_value_declaration_sql_for_date_type() {
+        use $crate::r#type::IntoType;
         let platform = $ex;
 
         let current_date_sql = platform.get_current_date_sql();
-        let mut column = $crate::schema::Column::new("foo", $crate::r#type::DATE).unwrap();
+        let mut column =
+            $crate::schema::Column::new("foo", $crate::r#type::DATE.into_type().unwrap());
         column.set_default(current_date_sql.into());
 
         assert_eq!(

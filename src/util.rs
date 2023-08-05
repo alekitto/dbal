@@ -89,14 +89,13 @@ pub fn filter_asset_names<A: Asset + Clone>(connection: &Connection, assets: Vec
         .collect()
 }
 
-// #[cfg(test)]
-// pub(crate) macro collection {
-//     // map-like
-//     ($($k:expr => $v:expr),* $(,)?) => {{
-//         core::convert::From::from([$(($k, $v),)*])
-//     }},
-//     // set-like
-//     ($($v:expr),* $(,)?) => {{
-//         core::convert::From::from([$($v,)*])
-//     }}
-// }
+pub macro const_expr_count {
+    () => (0),
+    ($e:expr) => (1),
+    ($e:expr; $($other_e:expr);*) => ({
+        1 $(+ $crate::const_expr_count!($other_e) )*
+    }),
+    ($e:expr; $($other_e:expr);* ; ) => (
+        $crate::const_expr_count! { $e; $($other_e);* }
+    ),
+}

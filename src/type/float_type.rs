@@ -47,4 +47,20 @@ impl Type for FloatType {
     fn get_binding_type(&self) -> ParameterType {
         ParameterType::Float
     }
+
+    fn convert_to_default_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<String> {
+        match value {
+            Value::NULL => Ok(0.to_string()),
+            Value::Float(n) => Ok(n.to_string()),
+            Value::String(s) => {
+                let n: f64 = s.parse()?;
+                Ok(n.to_string())
+            }
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "Float"],
+            )),
+        }
+    }
 }

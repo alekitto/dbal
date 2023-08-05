@@ -1,7 +1,7 @@
 use crate::schema::asset::{impl_asset, AbstractAsset};
 use crate::schema::{Asset, Identifier, IntoIdentifier, Table};
 
-#[derive(Clone, IntoIdentifier)]
+#[derive(Clone, Debug, IntoIdentifier, Eq, PartialEq)]
 pub struct Sequence {
     asset: AbstractAsset,
     allocation_size: usize,

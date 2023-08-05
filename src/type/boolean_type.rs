@@ -41,4 +41,14 @@ impl Type for BooleanType {
     ) -> Result<String> {
         platform.get_boolean_type_declaration_sql(column)
     }
+
+    fn convert_to_default_value(
+        &self,
+        value: &Value,
+        platform: &dyn DatabasePlatform,
+    ) -> Result<String> {
+        platform
+            .convert_boolean(value.clone())
+            .map(|v| v.to_string())
+    }
 }

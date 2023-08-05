@@ -56,4 +56,28 @@ impl Type for TimeType {
     ) -> Result<String> {
         platform.get_time_type_declaration_sql(column)
     }
+
+    fn convert_to_default_value(
+        &self,
+        value: &Value,
+        platform: &dyn DatabasePlatform,
+    ) -> Result<String> {
+        match value {
+            Value::NULL => Ok("''".to_string()),
+            Value::String(s) => {
+                if s == platform.get_current_time_sql() {
+                    Ok(platform.get_current_time_sql().to_string())
+                } else {
+                    Ok(platform.quote_string_literal(s))
+                }
+            }
+            Value::DateTime(dt) => Ok(platform
+                .quote_string_literal(&dt.format(platform.get_time_format_string()).to_string())),
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "String", "DateTime"],
+            )),
+        }
+    }
 }

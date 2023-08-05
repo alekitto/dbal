@@ -133,6 +133,7 @@ impl Display for Value {
     }
 }
 
+impl Eq for Value {}
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -295,7 +296,6 @@ from_traits_int_impl!(Int, i64, i8, i16, i32, i64, isize);
 from_traits_int_impl!(UInt, u64, u8, u16, u32, u64, usize);
 
 from_traits_clone_impl!(String, String);
-from_traits_clone_impl!(Bytes, Vec<u8>);
 from_traits_clone_impl!(Json, serde_json::Value);
 
 from_traits_deref_impl!(Uuid, uuid::Uuid);
@@ -327,12 +327,24 @@ impl From<&Value> for bool {
     }
 }
 
+impl<V: Into<Value> + 'static> From<Vec<V>> for Value {
+    fn from(value: Vec<V>) -> Self {
+        use std::any::TypeId;
+        if TypeId::of::<V>() == TypeId::of::<u8>() {
+            Value::Bytes(unsafe { std::mem::transmute(value) })
+        } else {
+            Value::Array(value.into_iter().map(|v| v.into()).collect::<Vec<_>>())
+        }
+    }
+}
+
 impl From<&[u8]> for Value {
     #[inline]
     fn from(value: &[u8]) -> Self {
         Value::Bytes(Vec::from(value))
     }
 }
+
 impl<const N: usize> From<&[u8; N]> for Value {
     #[inline]
     fn from(value: &[u8; N]) -> Self {
@@ -416,113 +428,113 @@ mod tests {
     #[test]
     fn is_null_should_work() {
         let value = Value::NULL;
-        assert_eq!(true, value.is_null());
+        assert!(value.is_null());
 
         let value = Value::String("".to_string());
-        assert_eq!(false, value.is_null());
+        assert!(!value.is_null());
         let value = Value::Int(0);
-        assert_eq!(false, value.is_null());
+        assert!(!value.is_null());
         let value = Value::Float(0.0);
-        assert_eq!(false, value.is_null());
+        assert!(!value.is_null());
     }
 
     #[test]
     fn is_string_eq_should_work() {
         let value = Value::from("");
-        assert_eq!(true, value.is_string_eq(""));
+        assert!(value.is_string_eq(""));
         let value = Value::String("creed test".to_string());
-        assert_eq!(true, value.is_string_eq("creed test"));
-        assert_eq!(false, value.is_string_eq("creed te"));
-        assert_eq!(false, value.is_string_eq("test"));
+        assert!(value.is_string_eq("creed test"));
+        assert!(!value.is_string_eq("creed te"));
+        assert!(!value.is_string_eq("test"));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_string_eq(""));
+        assert!(!value.is_string_eq(""));
         let value = Value::Int(0);
-        assert_eq!(false, value.is_string_eq("0"));
+        assert!(!value.is_string_eq("0"));
         let value = Value::Float(0.0);
-        assert_eq!(false, value.is_string_eq("0.0"));
+        assert!(!value.is_string_eq("0.0"));
     }
 
     #[test]
     fn is_int_eq_should_work() {
         let value = Value::Int(0);
-        assert_eq!(true, value.is_int_eq(0));
+        assert!(value.is_int_eq(0));
         let value = Value::Int(42);
-        assert_eq!(true, value.is_int_eq(42));
-        assert_eq!(false, value.is_uint_eq(42));
-        assert_eq!(false, value.is_int_eq(0));
+        assert!(value.is_int_eq(42));
+        assert!(!value.is_uint_eq(42));
+        assert!(!value.is_int_eq(0));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_int_eq(0));
+        assert!(!value.is_int_eq(0));
         let value = Value::String("0".to_string());
-        assert_eq!(false, value.is_int_eq(0));
+        assert!(!value.is_int_eq(0));
         let value = Value::Float(0.0);
-        assert_eq!(false, value.is_int_eq(0));
+        assert!(!value.is_int_eq(0));
     }
 
     #[test]
     fn is_uint_eq_should_work() {
         let value = Value::UInt(0);
-        assert_eq!(true, value.is_uint_eq(0));
+        assert!(value.is_uint_eq(0));
         let value = Value::UInt(42);
-        assert_eq!(true, value.is_uint_eq(42));
-        assert_eq!(false, value.is_int_eq(42));
-        assert_eq!(false, value.is_uint_eq(0));
+        assert!(value.is_uint_eq(42));
+        assert!(!value.is_int_eq(42));
+        assert!(!value.is_uint_eq(0));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_uint_eq(0));
+        assert!(!value.is_uint_eq(0));
         let value = Value::String("0".to_string());
-        assert_eq!(false, value.is_uint_eq(0));
+        assert!(!value.is_uint_eq(0));
         let value = Value::Float(0.0);
-        assert_eq!(false, value.is_uint_eq(0));
+        assert!(!value.is_uint_eq(0));
     }
 
     #[test]
     fn is_float_eq_should_work() {
         let value = Value::Float(0.0);
-        assert_eq!(true, value.is_float_eq(0.0));
+        assert!(value.is_float_eq(0.0));
         let value = Value::Float(42.0);
-        assert_eq!(true, value.is_float_eq(42.0));
-        assert_eq!(false, value.is_float_eq(0.0));
+        assert!(value.is_float_eq(42.0));
+        assert!(!value.is_float_eq(0.0));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_float_eq(0.0));
+        assert!(!value.is_float_eq(0.0));
         let value = Value::String("0.0".to_string());
-        assert_eq!(false, value.is_float_eq(0.0));
+        assert!(!value.is_float_eq(0.0));
         let value = Value::UInt(0);
-        assert_eq!(false, value.is_float_eq(0.0));
+        assert!(!value.is_float_eq(0.0));
     }
 
     #[test]
     fn is_bytes_eq_should_work() {
         let value = Value::from(&[]);
-        assert_eq!(true, value.is_bytes_eq(&[]));
+        assert!(value.is_bytes_eq(&[]));
         let value = Value::from(&[0_u8, 42_u8]);
-        assert_eq!(true, value.is_bytes_eq(&[0, 42]));
-        assert_eq!(false, value.is_bytes_eq(&[]));
+        assert!(value.is_bytes_eq(&[0, 42]));
+        assert!(!value.is_bytes_eq(&[]));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_bytes_eq(&[]));
+        assert!(!value.is_bytes_eq(&[]));
         let value = Value::String("0.0".to_string());
-        assert_eq!(false, value.is_bytes_eq(&[]));
+        assert!(!value.is_bytes_eq(&[]));
         let value = Value::UInt(0);
-        assert_eq!(false, value.is_bytes_eq(&[]));
+        assert!(!value.is_bytes_eq(&[]));
     }
 
     #[test]
     fn is_boolean_eq_should_work() {
         let value = Value::Boolean(false);
-        assert_eq!(true, value.is_boolean_eq(false));
+        assert!(value.is_boolean_eq(false));
         let value = Value::Boolean(true);
-        assert_eq!(true, value.is_boolean_eq(true));
-        assert_eq!(false, value.is_boolean_eq(false));
+        assert!(value.is_boolean_eq(true));
+        assert!(!value.is_boolean_eq(false));
 
         let value = Value::NULL;
-        assert_eq!(false, value.is_boolean_eq(false));
+        assert!(!value.is_boolean_eq(false));
         let value = Value::String("".to_string());
-        assert_eq!(false, value.is_boolean_eq(false));
+        assert!(!value.is_boolean_eq(false));
         let value = Value::UInt(0);
-        assert_eq!(false, value.is_boolean_eq(false));
+        assert!(!value.is_boolean_eq(false));
     }
 
     #[test]
@@ -531,15 +543,27 @@ mod tests {
         let date_tz = date_ref.with_timezone(&chrono_tz::Europe::Rome);
 
         let value = Value::from(&date_ref);
-        assert_eq!(true, value.is_datetime_eq(&date_ref));
-        assert_eq!(true, value.is_datetime_eq(&date_tz));
+        assert!(value.is_datetime_eq(&date_ref));
+        assert!(value.is_datetime_eq(&date_tz));
 
         let value = Value::from(date_tz);
-        assert_eq!(true, value.is_datetime_eq(&date_ref));
-        assert_eq!(true, value.is_datetime_eq(&date_tz));
-        assert_eq!(
-            false,
-            value.is_datetime_eq(&DateTime::parse_from_rfc3339("2020-01-01T05:00:00Z").unwrap())
+        assert!(value.is_datetime_eq(&date_ref));
+        assert!(value.is_datetime_eq(&date_tz));
+        assert!(
+            !value.is_datetime_eq(&DateTime::parse_from_rfc3339("2020-01-01T05:00:00Z").unwrap())
         );
     }
+}
+
+pub macro value_map {
+    ($($key:expr => $val:expr),* ,) => (
+        $crate::value_map!($($key => $val),*)
+    ),
+    ($($key:expr => $val:expr),*) => ({
+        let start_capacity = $crate::const_expr_count!($($key);*);
+        #[allow(unused_mut)]
+        let mut map = ::std::collections::HashMap::<_, $crate::Value>::with_capacity(start_capacity);
+        $( map.insert($key, $val.into()); )*
+        map
+    })
 }

@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CheckConstraint {
     Literal(String),
     EqString(String),
@@ -8,3 +8,5 @@ pub enum CheckConstraint {
     MinFloat(f64),
     MaxFloat(f64),
 }
+
+impl Eq for CheckConstraint {}

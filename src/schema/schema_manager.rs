@@ -4,15 +4,15 @@ use crate::platform::{default, CreateFlags, DatabasePlatform};
 use crate::r#type;
 use crate::r#type::{IntoType, TypeManager, TypePtr};
 use crate::schema::schema_config::SchemaConfig;
+use crate::schema::table::TableList;
 use crate::schema::{
-    Asset, Column, ColumnData, ColumnDiff, Comparator, ForeignKeyConstraint,
-    ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema, SchemaDiff, Sequence,
-    Table, TableDiff, TableOptions, UniqueConstraint, View,
+    Asset, Column, ColumnData, ColumnDiff, ColumnList, Comparator, FKConstraintList,
+    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema,
+    SchemaDiff, Sequence, Table, TableDiff, TableOptions, UniqueConstraint, View,
 };
 use crate::util::{function_name, ToSqlStatementList};
-use crate::{
-    params, AsyncResult, Connection, Error, Result, Row, SchemaColumnDefinitionEvent, Value,
-};
+use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
+use creed::schema::index::IndexList;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Index as _;
@@ -45,7 +45,7 @@ fn _exec_sql<S: ToSqlStatementList>(connection: &Connection, sql: S) -> AsyncRes
     })
 }
 
-/// Given a table comment this method tries to extract a typehint for Doctrine Type, or returns
+/// Given a table comment this method tries to extract a typehint for Type, or returns
 /// the type given as default.
 ///
 /// # Internal
@@ -391,8 +391,8 @@ pub trait SchemaManager: Sync {
         default::get_drop_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
-    fn get_drop_view_sql(&self, name: &Identifier) -> Result<String> {
-        default::get_drop_view_sql(self.get_platform()?.as_dyn(), name)
+    fn get_drop_view_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String> {
+        default::get_drop_view_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
     /// Lists the available databases for this connection.
@@ -411,7 +411,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Lists the columns for a given table.
-    fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<Vec<Column>> {
+    fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList> {
         let table = table.to_string();
         let database = database.map(ToString::to_string);
 
@@ -420,7 +420,7 @@ pub trait SchemaManager: Sync {
 
     /// Lists the indexes for a given table returning an array of Index instances.
     /// Keys of the portable indexes list are all lower-cased.
-    fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>> {
+    fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList> {
         let table = table.to_string();
 
         Box::pin(async move { default::list_table_indexes(self.as_dyn(), table).await })
@@ -439,7 +439,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Lists the tables for this connection.
-    fn list_tables(&self) -> AsyncResult<Vec<Table>> {
+    fn list_tables(&self) -> AsyncResult<TableList> {
         Box::pin(async move { default::list_tables(self.as_dyn()).await })
     }
 
@@ -551,7 +551,7 @@ pub trait SchemaManager: Sync {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<HashMap<String, Vec<Row>>> {
+    ) -> AsyncResult<HashMap<String, Row>> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -573,7 +573,7 @@ pub trait SchemaManager: Sync {
     }
 
     /// Lists the foreign keys for the given table.
-    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>> {
+    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList> {
         let table = table.to_string();
         Box::pin(async move { default::list_table_foreign_keys(self.as_dyn(), table).await })
     }
@@ -589,7 +589,7 @@ pub trait SchemaManager: Sync {
         default::get_partial_index_sql(self.get_platform()?.as_dyn(), index)
     }
 
-    /// Gets the comment of a passed column modified by potential doctrine type comment hints.
+    /// Gets the comment of a passed column modified by potential type comment hints.
     fn get_column_comment(&self, column: &Column) -> Result<String> {
         default::get_column_comment(self.get_platform()?.as_dyn(), column)
     }
@@ -673,13 +673,6 @@ pub trait SchemaManager: Sync {
         _exec_sql(self.get_connection(), self.get_drop_view_sql(&name))
     }
 
-    // fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()>
-    // {
-    //     Box::pin(async move {
-    //         self._exec_sql(schema.to_sql(self)?).await
-    //     })
-    // }
-
     /// Creates a new database.
     fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<()> {
         let database = database.into_identifier();
@@ -750,12 +743,14 @@ pub trait SchemaManager: Sync {
         _exec_sql(self.get_connection(), self.get_create_view_sql(view))
     }
 
-    fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()> {
-        let sql = self
-            .get_platform()
-            .and_then(|platform| schema.to_drop_sql(&platform));
+    fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()> {
+        let sql = schema.to_sql(self.as_dyn());
+        Box::pin(async move { _exec_sql(self.get_connection(), sql?).await })
+    }
 
-        _exec_sql(self.get_connection(), sql)
+    fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()> {
+        let sql = schema.to_drop_sql(self.as_dyn());
+        Box::pin(async move { _exec_sql(self.get_connection(), sql?).await })
     }
 
     /// Alters an existing schema.
@@ -1011,7 +1006,7 @@ pub trait SchemaManager: Sync {
         table: &str,
         database: &str,
         table_columns: Vec<Row>,
-    ) -> AsyncResult<Vec<Column>> {
+    ) -> AsyncResult<ColumnList> {
         let table = table.to_string();
         let database = database.to_string();
 
@@ -1028,7 +1023,7 @@ pub trait SchemaManager: Sync {
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> AsyncResult<Vec<Index>> {
+    ) -> AsyncResult<IndexList> {
         let table_name = table_name.to_string();
         Box::pin(async move {
             default::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
@@ -1074,8 +1069,13 @@ pub trait SchemaManager: Sync {
     fn get_portable_table_foreign_keys_list(
         &self,
         table_foreign_keys: Vec<Row>,
-    ) -> Result<Vec<ForeignKeyConstraint>> {
+    ) -> Result<FKConstraintList> {
         default::get_portable_table_foreign_keys_list(self.as_dyn(), table_foreign_keys)
+    }
+
+    /// Gets the default schema name if supported (ex: "public")
+    fn get_default_schema_name(&self) -> Option<&'static str> {
+        None
     }
 
     fn get_portable_table_foreign_key_definition(
@@ -1086,7 +1086,18 @@ pub trait SchemaManager: Sync {
         let local_columns = string_from_value(connection, foreign_key.get("local_columns"))?;
         let foreign_columns = string_from_value(connection, foreign_key.get("foreign_columns"))?;
 
-        let options = HashMap::new();
+        let mut options = HashMap::new();
+        if let Ok(deferrable) = foreign_key.get("deferrable") {
+            if bool::from(deferrable) {
+                options.insert("deferrable".to_string(), true.into());
+            }
+        }
+
+        if let Ok(deferred) = foreign_key.get("deferred") {
+            if bool::from(deferred) {
+                options.insert("deferred".to_string(), true.into());
+            }
+        }
 
         let mut constraint = ForeignKeyConstraint::new(
             &local_columns.split(',').collect::<Vec<_>>(),
@@ -1130,7 +1141,13 @@ pub trait SchemaManager: Sync {
             let views = self.list_views().await?;
             let tables = self.list_tables().await?;
 
-            Ok(Schema::new(tables, views, sequences, schema_names))
+            Ok(Schema::new(
+                tables.into(),
+                views,
+                sequences,
+                schema_names,
+                self.create_schema_config(),
+            ))
         })
     }
 
@@ -1179,15 +1196,15 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_drop_constraint_sql(&self, constraint: &Identifier, table_name: &Identifier) -> Result<String>;
             fn get_drop_foreign_key_sql(&self, foreign_key: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
-            fn get_drop_view_sql(&self, name: &Identifier) -> Result<String>;
+            fn get_drop_view_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
             fn list_databases(&self) -> AsyncResult<Vec<Identifier>>;
             fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>>;
             fn list_sequences(&self) -> AsyncResult<Vec<Sequence>>;
-            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<Vec<Column>>;
-            fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>>;
+            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList>;
+            fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList>;
             fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool>;
             fn list_table_names(&self) -> AsyncResult<Vec<String>>;
-            fn list_tables(&self) -> AsyncResult<Vec<Table>>;
+            fn list_tables(&self) -> AsyncResult<TableList>;
             fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
             fn normalize_name(&self, name: &str) -> String;
             fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
@@ -1198,10 +1215,10 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Vec<Row>>>;
+            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Row>>;
             fn get_list_views_sql(&self, database: &str) -> Result<String>;
             fn list_views(&self) -> AsyncResult<Vec<View>>;
-            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>>;
+            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList>;
             fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String>;
             fn get_partial_index_sql(&self, index: &Index) -> Result<String>;
             fn get_column_comment(&self, column: &Column) -> Result<String>;
@@ -1220,6 +1237,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
             fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
             fn create_view(&self, view: &View) -> AsyncResult<()>;
+            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
             fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
             fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<()>;
             fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()>;
@@ -1251,17 +1269,18 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<Vec<Column>>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<ColumnList>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<IndexList>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
             fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
-            fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<Vec<ForeignKeyConstraint>>;
+            fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<FKConstraintList>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
             fn introspect_schema(&self) -> AsyncResult<Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
+            fn get_default_schema_name(&self) -> Option<&'static str>;
         }
     }
 
@@ -1312,15 +1331,15 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_drop_constraint_sql(&self, constraint: &Identifier, table_name: &Identifier) -> Result<String>;
             fn get_drop_foreign_key_sql(&self, foreign_key: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
-            fn get_drop_view_sql(&self, name: &Identifier) -> Result<String>;
+            fn get_drop_view_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
             fn list_databases(&self) -> AsyncResult<Vec<Identifier>>;
             fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>>;
             fn list_sequences(&self) -> AsyncResult<Vec<Sequence>>;
-            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<Vec<Column>>;
-            fn list_table_indexes(&self, table: &str) -> AsyncResult<Vec<Index>>;
+            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList>;
+            fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList>;
             fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool>;
             fn list_table_names(&self) -> AsyncResult<Vec<String>>;
-            fn list_tables(&self) -> AsyncResult<Vec<Table>>;
+            fn list_tables(&self) -> AsyncResult<TableList>;
             fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
             fn normalize_name(&self, name: &str) -> String;
             fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
@@ -1331,10 +1350,10 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
             fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Vec<Row>>>;
+            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Row>>;
             fn get_list_views_sql(&self, database: &str) -> Result<String>;
             fn list_views(&self) -> AsyncResult<Vec<View>>;
-            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<Vec<ForeignKeyConstraint>>;
+            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList>;
             fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String>;
             fn get_partial_index_sql(&self, index: &Index) -> Result<String>;
             fn get_column_comment(&self, column: &Column) -> Result<String>;
@@ -1353,6 +1372,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
             fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
             fn create_view(&self, view: &View) -> AsyncResult<()>;
+            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
             fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
             fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<()>;
             fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()>;
@@ -1384,17 +1404,18 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<Vec<Column>>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<ColumnList>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<Vec<Index>>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<IndexList>;
             fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
             fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
-            fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<Vec<ForeignKeyConstraint>>;
+            fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<FKConstraintList>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
             fn introspect_schema(&self) -> AsyncResult<Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
+            fn get_default_schema_name(&self) -> Option<&'static str>;
         }
     }
 
@@ -1405,19 +1426,20 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::platform::DatabasePlatform;
     use crate::r#type::{
-        TypeManager, BOOLEAN, DATE, DATETIME, DECIMAL, INTEGER, STRING, TEXT, TIME,
+        IntoType, TypeManager, BINARY, BLOB, BOOLEAN, DATE, DATETIME, DECIMAL, GUID, INTEGER, JSON,
+        SIMPLE_ARRAY, STRING, TEXT, TIME,
     };
     use crate::schema::schema_manager::_exec_sql;
     use crate::schema::{
-        Asset, Column, ColumnDiff, Comparator, ForeignKeyConstraint, ForeignKeyReferentialAction,
-        Index, IntoIdentifier, SchemaDiff, SchemaManager, Sequence, Table, TableDiff,
-        UniqueConstraint, View,
+        extract_type_from_comment, Asset, Column, ColumnData, ColumnDiff, Comparator,
+        ForeignKeyConstraint, ForeignKeyReferentialAction, Index, IntoIdentifier, Schema,
+        SchemaDiff, SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
     };
     use crate::tests::{
         create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
     };
-    use crate::SchemaAlterTableRenameColumnEvent;
     use crate::{
         params, Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
         SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
@@ -1425,13 +1447,14 @@ mod tests {
         SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent,
         SchemaIndexDefinitionEvent, Value,
     };
+    use crate::{value_map, SchemaAlterTableRenameColumnEvent};
     use itertools::Itertools;
     use serial_test::serial;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+    use version_compare::{compare_to, Cmp};
 
     #[tokio::test]
-    #[serial]
     async fn can_overwrite_drop_table_sql_via_event_listener() {
         let ev = EventDispatcher::new();
         ev.add_listener(|e: &mut SchemaDropTableEvent| {
@@ -1454,12 +1477,11 @@ mod tests {
         assert_eq!("-- DROP SCHEMA \"table\"", d);
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn returns_foreign_key_referential_action_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn returns_foreign_key_referential_action_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let tests = [
             (ForeignKeyReferentialAction::Cascade, "CASCADE"),
             (ForeignKeyReferentialAction::SetNull, "SET NULL"),
@@ -1470,31 +1492,32 @@ mod tests {
 
         for (action, expected) in tests {
             assert_eq!(
-                schema_manager
-                    .get_foreign_key_referential_action_sql(&action)
-                    .unwrap(),
+                schema_manager.get_foreign_key_referential_action_sql(&action)?,
                 expected
             )
         }
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn create_with_no_columns() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+    pub async fn create_with_no_columns() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
         let table = Table::new("test".into_identifier());
         let result = schema_manager.get_create_table_sql(&table, None);
 
         assert!(result.is_err());
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn generates_partial_indexes_sql_only_when_supporting_partial_indexes() {
+    pub async fn generates_partial_indexes_sql_only_when_supporting_partial_indexes() -> Result<()>
+    {
         let r#where = "test IS NULL AND test2 IS NOT NULL";
         let mut index_def = Index::new(
             "name",
@@ -1511,28 +1534,19 @@ mod tests {
         let expected = format!(" WHERE {}", r#where);
         let mut indexes = vec![];
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
 
-        indexes.push(
-            schema_manager
-                .get_index_declaration_sql("name", &index_def)
-                .unwrap(),
-        );
-        let unique_constraint_sql = schema_manager
-            .get_unique_constraint_declaration_sql("name", &unique_constraint)
-            .unwrap();
+        indexes.push(schema_manager.get_index_declaration_sql("name", &index_def)?);
+        let unique_constraint_sql =
+            schema_manager.get_unique_constraint_declaration_sql("name", &unique_constraint)?;
 
         assert!(
             !unique_constraint_sql.ends_with(&expected),
             "WHERE clause should NOT be present"
         );
 
-        indexes.push(
-            schema_manager
-                .get_create_index_sql(&index_def, &"table")
-                .unwrap(),
-        );
+        indexes.push(schema_manager.get_create_index_sql(&index_def, &"table")?);
         for index in indexes {
             if schema_manager.get_platform().unwrap().get_name() == "postgresql" {
                 assert!(index.ends_with(&expected), "WHERE clause should be present");
@@ -1543,23 +1557,24 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn get_custom_column_declaration_sql() {
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
-        let mut column = Column::new("foo", INTEGER).unwrap();
+    pub async fn get_custom_column_declaration_sql() -> Result<()> {
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
+        let mut column = Column::new("foo", INTEGER.into_type()?);
         column.set_column_definition("MEDIUMINT(6) UNSIGNED".to_string().into());
 
-        let column_data = column.generate_column_data(&schema_manager.get_platform().unwrap());
-        let sql = schema_manager
-            .get_column_declaration_sql("foo", &column_data)
-            .unwrap();
+        let column_data = column.generate_column_data(&schema_manager.get_platform()?);
+        let sql = schema_manager.get_column_declaration_sql("foo", &column_data)?;
 
         assert_eq!(sql, "foo MEDIUMINT(6) UNSIGNED");
+
+        Ok(())
     }
 
     #[derive(Default)]
@@ -1577,14 +1592,13 @@ mod tests {
         on_schema_index_definition: usize,
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn get_create_table_sql_dispatch_event() {
+    pub async fn get_create_table_sql_dispatch_event() -> Result<()> {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let event_manager = connection.get_event_manager();
 
         {
@@ -1605,32 +1619,33 @@ mod tests {
 
         let mut table = Table::new("test");
 
-        let mut foo_column = Column::new("foo", STRING).unwrap();
+        let mut foo_column = Column::new("foo", STRING.into_type()?);
         foo_column.set_notnull(false);
         foo_column.set_length(255);
         table.add_column(foo_column);
-        let mut bar_column = Column::new("bar", STRING).unwrap();
+        let mut bar_column = Column::new("bar", STRING.into_type()?);
         bar_column.set_notnull(false);
         bar_column.set_length(255);
         table.add_column(bar_column);
 
-        schema_manager.get_create_table_sql(&table, None).unwrap();
+        schema_manager.get_create_table_sql(&table, None)?;
 
         assert_eq!(listener.lock().unwrap().on_schema_create_table_calls, 1);
         assert_eq!(
             listener.lock().unwrap().on_schema_create_table_column_calls,
             2
         );
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn get_drop_table_sql_dispatch_event() {
+    pub async fn get_drop_table_sql_dispatch_event() -> Result<()> {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let event_manager = connection.get_event_manager();
 
         {
@@ -1641,19 +1656,19 @@ mod tests {
             });
         }
 
-        schema_manager.get_drop_table_sql(&"TABLE").unwrap();
-
+        schema_manager.get_drop_table_sql(&"TABLE")?;
         assert_eq!(listener.lock().unwrap().on_schema_drop_table, 1);
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
-    pub async fn get_alter_table_sql_dispatch_event() {
+    pub async fn get_alter_table_sql_dispatch_event() -> Result<()> {
         let listener = Arc::new(Mutex::new(SqlDispatchEventListener::default()));
 
-        let connection = create_connection().await.unwrap();
-        let schema_manager = connection.create_schema_manager().unwrap();
+        let connection = create_connection().await?;
+        let schema_manager = connection.create_schema_manager()?;
         let event_manager = connection.get_event_manager();
 
         {
@@ -1693,29 +1708,29 @@ mod tests {
         }
 
         let mut table = Table::new("mytable");
-        table.add_column(Column::new("removed", INTEGER).unwrap());
-        table.add_column(Column::new("changed", INTEGER).unwrap());
-        table.add_column(Column::new("renamed", INTEGER).unwrap());
+        table.add_column(Column::new("removed", INTEGER.into_type()?));
+        table.add_column(Column::new("changed", INTEGER.into_type()?));
+        table.add_column(Column::new("renamed", INTEGER.into_type()?));
 
         let mut table_diff = TableDiff::new("mytable", Some(&table));
         table_diff
             .added_columns
-            .push(Column::new("added", INTEGER).unwrap());
+            .push(Column::new("added", INTEGER.into_type()?));
         table_diff
             .removed_columns
-            .push(Column::new("removed", INTEGER).unwrap());
+            .push(Column::new("removed", INTEGER.into_type()?));
         table_diff.changed_columns.push(ColumnDiff::new(
             "changed",
-            &Column::new("changed2", STRING).unwrap(),
+            &Column::new("changed2", STRING.into_type()?),
             &[],
             None,
         ));
         table_diff.renamed_columns.push((
             "renamed".to_string(),
-            Column::new("renamed2", INTEGER).unwrap(),
+            Column::new("renamed2", INTEGER.into_type()?),
         ));
 
-        schema_manager.get_alter_table_sql(&mut table_diff).unwrap();
+        schema_manager.get_alter_table_sql(&mut table_diff)?;
 
         {
             let listener = listener.lock().unwrap();
@@ -1740,9 +1755,10 @@ mod tests {
                 "alter table rename column calls count differs"
             );
         }
+
+        Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn default_value_comparison() -> Result<()> {
@@ -1757,7 +1773,7 @@ mod tests {
         ];
 
         for (ty, value) in tests {
-            let mut col = Column::new("test", ty).unwrap();
+            let mut col = Column::new("test", ty.into_type()?);
             if ty == STRING && platform.get_name() == "mysql" {
                 let rows = helper.connection
                     .fetch_all("SELECT @@character_set_database AS charset, @@collation_database AS collation", params!())
@@ -1784,7 +1800,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn create_sequence() -> Result<()> {
@@ -1806,7 +1821,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_sequences() -> Result<()> {
@@ -1837,7 +1851,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_databases() -> Result<()> {
@@ -1859,7 +1872,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_schema_names() -> Result<()> {
@@ -1891,7 +1903,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_tables() -> Result<()> {
@@ -1915,7 +1926,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_tables_does_not_include_views() -> Result<()> {
@@ -1942,7 +1952,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_tables_with_filter() -> Result<()> {
@@ -1973,7 +1982,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn rename_table() -> Result<()> {
@@ -2015,9 +2023,9 @@ mod tests {
                 .set_notnull(false)
                 .get_column(),
         );
-        table.add_column(Column::new("baz1", DATETIME)?);
-        table.add_column(Column::new("baz2", TIME)?);
-        table.add_column(Column::new("baz3", DATE)?);
+        table.add_column(Column::new("baz1", DATETIME.into_type()?));
+        table.add_column(Column::new("baz2", TIME.into_type()?));
+        table.add_column(Column::new("baz3", DATE.into_type()?));
         table.set_primary_key(&["id"], None)?;
 
         Ok(table)
@@ -2038,7 +2046,6 @@ mod tests {
         table
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_table_columns() -> Result<()> {
@@ -2051,14 +2058,10 @@ mod tests {
         let columns = schema_manager
             .list_table_columns("list_table_columns", None)
             .await?;
-        let column_keys = columns
-            .iter()
-            .map(|c| c.get_name().into_owned())
-            .collect::<Vec<_>>();
+        let column_keys = columns.keys().collect::<Vec<_>>();
 
         let id_column = columns
-            .iter()
-            .find(|c| c.get_name().to_string().to_lowercase() == "id")
+            .get("id")
             .ok_or::<Error>("cannot find column 'id'".into())?;
         assert_eq!(
             column_keys.iter().find_position(|c| c == &"id").unwrap().0,
@@ -2072,8 +2075,7 @@ mod tests {
         assert!(id_column.is_notnull());
 
         let test_column = columns
-            .iter()
-            .find(|c| c.get_name().to_string().to_lowercase() == "test")
+            .get("test")
             .ok_or::<Error>("cannot find column 'test'".into())?;
         assert_eq!(
             column_keys
@@ -2093,8 +2095,7 @@ mod tests {
         assert_eq!(test_column.get_default(), &Value::from("expected default"));
 
         let foo_column = columns
-            .iter()
-            .find(|c| c.get_name() == "foo")
+            .get("foo")
             .ok_or::<Error>("cannot find column 'foo'".into())?;
         assert_eq!(
             column_keys.iter().find_position(|c| c == &"foo").unwrap().0,
@@ -2110,8 +2111,7 @@ mod tests {
         assert_eq!(foo_column.get_default(), &Value::NULL);
 
         let bar_column = columns
-            .iter()
-            .find(|c| c.get_name() == "bar")
+            .get("bar")
             .ok_or::<Error>("cannot find column 'bar'".into())?;
         assert_eq!(
             column_keys.iter().find_position(|c| c == &"bar").unwrap().0,
@@ -2129,8 +2129,7 @@ mod tests {
         assert_eq!(bar_column.get_default(), &Value::NULL);
 
         let baz1_column = columns
-            .iter()
-            .find(|c| c.get_name() == "baz1")
+            .get("baz1")
             .ok_or::<Error>("cannot find column 'baz1'".into())?;
         assert_eq!(
             column_keys
@@ -2148,8 +2147,7 @@ mod tests {
         assert_eq!(baz1_column.get_default(), &Value::NULL);
 
         let baz2_column = columns
-            .iter()
-            .find(|c| c.get_name() == "baz2")
+            .get("baz2")
             .ok_or::<Error>("cannot find column 'baz2'".into())?;
         assert_eq!(
             column_keys
@@ -2164,8 +2162,7 @@ mod tests {
         assert_eq!(baz2_column.get_default(), &Value::NULL);
 
         let baz3_column = columns
-            .iter()
-            .find(|c| c.get_name() == "baz3")
+            .get("baz3")
             .ok_or::<Error>("cannot find column 'baz3'".into())?;
         assert_eq!(
             column_keys
@@ -2182,7 +2179,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_table_columns_with_fixed_string_column() -> Result<()> {
@@ -2211,7 +2207,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_table_columns_dispatch_event() -> Result<()> {
@@ -2240,7 +2235,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_table_indexes_dispatch_event() -> Result<()> {
@@ -2279,7 +2273,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn dispatch_event_when_database_platform_is_explicitly_passed() -> Result<()> {
@@ -2316,7 +2309,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn diff_list_table_columns() -> Result<()> {
@@ -2340,7 +2332,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_table_indexes() -> Result<()> {
@@ -2417,7 +2408,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn drop_and_create_index() -> Result<()> {
@@ -2447,15 +2437,19 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn drop_and_create_unique_constraint() -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if platform.get_name() == "sqlite" {
+            return Ok(());
+        }
+
         let schema_manager = helper.get_schema_manager();
 
         let mut table = Table::new("test_unique_constraint");
-        table.add_column(Column::new("id", INTEGER)?);
+        table.add_column(Column::new("id", INTEGER.into_type()?));
 
         helper.drop_and_create_table(&table).await?;
 
@@ -2471,7 +2465,7 @@ mod tests {
             .await?;
         assert_eq!(indexes.len(), 1);
 
-        let index = indexes.first().unwrap();
+        let index = indexes.get(0).unwrap();
         assert_eq!(index.get_name(), "uniq_id");
         assert!(index.is_unique());
 
@@ -2487,7 +2481,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn create_table_with_foreign_keys() -> Result<()> {
@@ -2519,7 +2512,7 @@ mod tests {
             "Table 'test_create_fk' has to have one foreign key."
         );
 
-        let fk_constraint = fk_constraints.first().unwrap();
+        let fk_constraint = fk_constraints.get(0).unwrap();
         assert_eq!(
             fk_constraint.get_local_columns(),
             &vec!["foreign_key_test".into_identifier()]
@@ -2534,7 +2527,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn list_foreign_keys() -> Result<()> {
@@ -2590,7 +2582,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn create_foreign_key_with_table_object() -> Result<()> {
@@ -2649,7 +2640,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn schema_introspection() -> Result<()> {
@@ -2664,19 +2654,20 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn migrate_schema() -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let _ = schema_manager.drop_table(&"table_to_create").await;
         helper.create_test_table("table_to_alter").await?;
         helper.create_test_table("table_to_drop").await?;
 
-        let schema_manager = helper.get_schema_manager();
         let mut schema = schema_manager.introspect_schema().await?;
 
         let table_to_alter = schema.get_table_mut("table_to_alter").unwrap();
-        table_to_alter.add_column(Column::new("number", INTEGER)?);
+        table_to_alter.add_column(Column::new("number", INTEGER.into_type()?));
         table_to_alter.drop_column("foreign_key_test");
 
         schema.drop_table("table_to_drop");
@@ -2703,7 +2694,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn alter_table_scenario() -> Result<()> {
@@ -2718,10 +2708,10 @@ mod tests {
         assert!(table.has_column("test"));
         assert!(table.has_column("foreign_key_test"));
         assert!(table.get_foreign_keys().is_empty());
-        assert_eq!(table.get_indices().len(), 1);
+        assert_eq!(table.indices().len(), 1);
 
         let mut new_table = table.clone();
-        new_table.add_column(Column::new("foo", INTEGER)?);
+        new_table.add_column(Column::new("foo", INTEGER.into_type()?));
         new_table.drop_column("test");
 
         let comparator = schema_manager.create_comparator();
@@ -2753,7 +2743,7 @@ mod tests {
         schema_manager.alter_table(diff).await?;
 
         let table = schema_manager.introspect_table("alter_table").await?;
-        assert_eq!(table.get_indices().len(), 2);
+        assert_eq!(table.indices().len(), 2);
         assert!(table.has_index("foo_idx"));
         let index = table.get_index("foo_idx").unwrap();
         assert_eq!(
@@ -2785,7 +2775,7 @@ mod tests {
         schema_manager.alter_table(diff).await?;
 
         let table = schema_manager.introspect_table("alter_table").await?;
-        assert_eq!(table.get_indices().len(), 2);
+        assert_eq!(table.indices().len(), 2);
         assert!(table.has_index("foo_idx"));
         assert_eq!(
             table
@@ -2817,7 +2807,7 @@ mod tests {
         schema_manager.alter_table(diff).await?;
 
         let table = schema_manager.introspect_table("alter_table").await?;
-        assert_eq!(table.get_indices().len(), 2);
+        assert_eq!(table.indices().len(), 2);
         assert!(table.has_index("bar_idx"));
         assert!(!table.has_index("foo_idx"));
         assert_eq!(
@@ -2860,7 +2850,7 @@ mod tests {
         let fks = table.get_foreign_keys();
         assert_eq!(fks.len(), 1);
 
-        let foreign_key = fks.first().unwrap();
+        let foreign_key = fks.get(0).unwrap();
         assert_eq!(
             foreign_key.get_foreign_table().get_name().to_lowercase(),
             "alter_table_foreign"
@@ -2885,12 +2875,20 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "postgres")]
     #[tokio::test]
     #[serial]
     pub async fn table_in_namespace() -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if platform.get_name() == "sqlite" || platform.get_name() == "mysql" {
+            return Ok(());
+        }
+
         let schema_manager = helper.get_schema_manager();
+        helper
+            .drop_table_if_exists("testschema.my_table_in_namespace")
+            .await;
+        let _ = schema_manager.drop_schema("testschema").await;
 
         let mut diff = SchemaDiff::default();
         diff.new_namespaces.push("testschema".to_string());
@@ -2925,16 +2923,16 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn create_and_list_views() -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let _ = schema_manager.drop_view(&"creed_test_view").await;
         helper.create_test_table("view_test_table").await?;
 
-        let schema_manager = helper.get_schema_manager();
         let view = View::new("creed_test_view", "SELECT * FROM view_test_table");
-
         schema_manager.create_view(&view).await?;
         let views = schema_manager
             .list_views()
@@ -2951,7 +2949,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     #[serial]
     pub async fn autoincrement_detection() -> Result<()> {
@@ -2963,13 +2960,1371 @@ mod tests {
         table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
         table.set_primary_key(&["id"], None)?;
 
-        schema_manager.create_table(&table).await?;
+        helper.drop_and_create_table(&table).await?;
 
         let inferred_table = schema_manager
             .introspect_table("test_autoincrement")
             .await?;
         assert!(inferred_table.has_column("id"));
         assert!(inferred_table.get_column("id").unwrap().is_autoincrement());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn autoincrement_detection_multicolumns() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("test_not_autoincrement");
+        table.set_schema_config(schema_manager.create_schema_config());
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.add_column(Column::new("other_id", INTEGER.into_type()?));
+        table.set_primary_key(&["id", "other_id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+
+        let inferred_table = schema_manager
+            .introspect_table("test_not_autoincrement")
+            .await?;
+        assert!(inferred_table.has_column("id"));
+        assert!(!inferred_table.get_column("id").unwrap().is_autoincrement());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn update_schema_with_foreign_key_renaming() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("test_fk_base");
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.set_primary_key(&["id"], None)?;
+
+        let mut table_fk = Table::new("test_fk_rename");
+        table_fk.set_schema_config(schema_manager.create_schema_config());
+        table_fk.add_column(Column::new("id", INTEGER.into_type()?));
+        table_fk.add_column(Column::new("fk_id", INTEGER.into_type()?));
+        table_fk.set_primary_key(&["id"], None)?;
+        table_fk.add_index(Index::new(
+            "fk_idx",
+            &["fk_id"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+        table_fk.add_foreign_key_constraint(
+            &["fk_id"],
+            &["id"],
+            "test_fk_base",
+            Default::default(),
+            None,
+            None,
+            None::<String>,
+        )?;
+
+        helper.drop_table_if_exists(&table_fk.get_name()).await;
+        helper.drop_table_if_exists(&table.get_name()).await;
+
+        schema_manager.create_table(&table).await?;
+        schema_manager.create_table(&table_fk).await?;
+
+        let mut table_fk_new = Table::new("test_fk_rename");
+        table_fk_new.set_schema_config(schema_manager.create_schema_config());
+        table_fk_new.add_column(Column::new("id", INTEGER.into_type()?));
+        table_fk_new.add_column(Column::new("rename_fk_id", INTEGER.into_type()?));
+        table_fk_new.set_primary_key(&["id"], None)?;
+        table_fk_new.add_index(Index::new(
+            "fk_idx",
+            &["rename_fk_id"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+        table_fk_new.add_foreign_key_constraint(
+            &["rename_fk_id"],
+            &["id"],
+            "test_fk_base",
+            Default::default(),
+            None,
+            None,
+            None::<String>,
+        )?;
+
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&table_fk, &table_fk_new)?;
+
+        assert!(diff.is_some());
+        schema_manager.alter_table(diff.unwrap()).await?;
+
+        let table = schema_manager.introspect_table("test_fk_rename").await?;
+        let foreign_keys = table.get_foreign_keys();
+
+        assert!(table.has_column("rename_fk_id"));
+        assert_eq!(foreign_keys.len(), 1);
+        let cols = foreign_keys.get(0).unwrap().get_local_columns();
+        assert_eq!(
+            cols.iter()
+                .map(|c| c.get_name().to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["rename_fk_id"]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn rename_index_used_in_foreign_key_constraint() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let connection = &helper.connection;
+        let platform = helper.platform.clone();
+        if platform.get_name() == "mysql" {
+            let server_version = connection.server_version().await?;
+            if compare_to(&server_version, "10", Cmp::Ge).unwrap()
+                && compare_to(&server_version, "10.5.2", Cmp::Lt).unwrap()
+            {
+                return Ok(());
+            }
+
+            if compare_to(&server_version, "5.6", Cmp::Le).unwrap() {
+                return Ok(());
+            }
+        }
+
+        let schema_manager = helper.get_schema_manager();
+        let mut primary_table = Table::new("test_rename_index_primary");
+        primary_table.add_column(Column::new("id", INTEGER.into_type()?));
+        primary_table.set_primary_key(&["id"], None)?;
+
+        let mut foreign_table = Table::new("test_rename_index_foreign");
+        foreign_table.add_column(Column::new("fk", INTEGER.into_type()?));
+        foreign_table.add_index(Index::new(
+            "rename_index_fk_idx",
+            &["fk"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+        foreign_table.add_foreign_key_constraint(
+            &["fk"],
+            &["id"],
+            "test_rename_index_primary",
+            Default::default(),
+            None,
+            None,
+            Some("fk_constraint"),
+        )?;
+
+        helper.drop_table_if_exists(&foreign_table).await;
+        helper.drop_table_if_exists(&primary_table).await;
+
+        schema_manager.create_table(&primary_table).await?;
+        schema_manager.create_table(&foreign_table).await?;
+
+        let mut foreign_table2 = foreign_table.clone();
+        foreign_table2.rename_index("rename_index_fk_idx", Some("renamed_index_fk_idx"))?;
+
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&foreign_table, &foreign_table2)?;
+        assert!(diff.is_some());
+
+        schema_manager.alter_table(diff.unwrap()).await?;
+
+        let foreign_table = schema_manager
+            .introspect_table("test_rename_index_foreign")
+            .await?;
+
+        assert!(!foreign_table.has_index("rename_index_fk_idx"));
+        assert!(foreign_table.has_index("renamed_index_fk_idx"));
+        assert!(foreign_table.has_foreign_key("fk_constraint"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn get_column_comment() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if platform.get_name() == "sqlite" {
+            return Ok(());
+        }
+
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("column_comment_test");
+        table.add_column(Column::builder("id", INTEGER)?.set_comment("This is a comment"));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+
+        let columns = schema_manager
+            .list_table_columns("column_comment_test", None)
+            .await?;
+        assert_eq!(columns.len(), 1);
+        assert_eq!(
+            columns.get(0).unwrap().get_comment(),
+            &Some("This is a comment".to_string())
+        );
+
+        let mut new_table = table.clone();
+        new_table
+            .get_column_mut("id")
+            .unwrap()
+            .set_comment::<&str, _>(None);
+
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&table, &new_table)?;
+        assert!(diff.is_some());
+
+        schema_manager.alter_table(diff.unwrap()).await?;
+
+        let columns = schema_manager
+            .list_table_columns("column_comment_test", None)
+            .await?;
+        assert_eq!(columns.len(), 1);
+        assert!(columns.get(0).unwrap().get_comment().is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn automatically_append_comment_on_marked_columns() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if platform.get_name() == "sqlite" {
+            return Ok(());
+        }
+
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("column_comment_test2");
+        table.add_column(Column::builder("id", INTEGER)?.set_comment("This is a comment"));
+        table.add_column(Column::builder("obj", JSON)?.set_comment("This is a comment"));
+        table.add_column(Column::builder("arr", SIMPLE_ARRAY)?.set_comment("This is a comment"));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+        let columns = schema_manager
+            .list_table_columns("column_comment_test2", None)
+            .await?;
+
+        assert_eq!(columns.len(), 3);
+        assert_eq!(
+            columns.get("id").unwrap().get_comment(),
+            &Some("This is a comment".to_string())
+        );
+        assert_eq!(
+            columns.get("obj").unwrap().get_comment(),
+            &Some("This is a comment".to_string())
+        );
+        assert_eq!(
+            columns.get("obj").unwrap().get_type(),
+            JSON.into_type().unwrap()
+        );
+        assert_eq!(
+            columns.get("arr").unwrap().get_comment(),
+            &Some("This is a comment".to_string())
+        );
+        assert_eq!(
+            columns.get("arr").unwrap().get_type(),
+            SIMPLE_ARRAY.into_type().unwrap()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_with_blob() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("test_blob_table");
+        table.add_column(Column::new("binarydata", BLOB.into_type()?));
+
+        helper.drop_and_create_table(&table).await?;
+        let created = schema_manager.introspect_table("test_blob_table").await?;
+
+        assert!(created.has_column("binarydata"));
+        assert_eq!(
+            created.get_column("binarydata").unwrap().get_type(),
+            BLOB.into_type().unwrap()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn list_foreign_keys_composite() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        helper
+            .drop_and_create_table(&helper.get_test_table("test_create_fk3")?)
+            .await?;
+        helper
+            .drop_and_create_table(&helper.get_test_composite_table("test_create_fk4")?)
+            .await?;
+
+        let mut foreign_key = ForeignKeyConstraint::new(
+            &["id", "foreign_key_test"],
+            &["id", "other_id"],
+            "test_create_fk4",
+            Default::default(),
+            None,
+            None,
+        );
+        foreign_key.set_name("foreign_key_test_fk2");
+
+        schema_manager
+            .create_foreign_key(&foreign_key, &"test_create_fk3")
+            .await?;
+        let f_keys = schema_manager
+            .list_table_foreign_keys("test_create_fk3")
+            .await?;
+
+        assert_eq!(
+            f_keys.len(),
+            1,
+            "Table 'test_create_fk3' has to have one foreign key."
+        );
+        let f_key = f_keys.get(0).unwrap();
+        assert_eq!(
+            f_key.get_local_columns(),
+            &vec!["id".into_identifier(), "foreign_key_test".into_identifier()]
+        );
+        assert_eq!(
+            f_key.get_foreign_columns(),
+            &vec!["id".into_identifier(), "other_id".into_identifier()]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn column_default_lifecycle() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut table = Table::new("col_def_lifecycle");
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.add_column(Column::builder("column1", STRING)?.set_default(Value::NULL));
+        table.add_column(Column::builder("column2", STRING)?.set_default(false));
+        table.add_column(Column::builder("column3", STRING)?.set_default(true));
+        table.add_column(Column::builder("column4", STRING)?.set_default(0));
+        table.add_column(Column::builder("column5", STRING)?.set_default(""));
+        table.add_column(Column::builder("column6", STRING)?.set_default("def"));
+        table.add_column(Column::builder("column7", STRING)?.set_default(0));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+
+        let columns = schema_manager
+            .list_table_columns("col_def_lifecycle", None)
+            .await?;
+
+        assert_eq!(columns.get("id").unwrap().get_default(), &Value::NULL);
+        assert_eq!(columns.get("column1").unwrap().get_default(), &Value::NULL);
+        assert_eq!(
+            columns.get("column2").unwrap().get_default(),
+            &Value::from("false")
+        );
+        assert_eq!(
+            columns.get("column3").unwrap().get_default(),
+            &Value::from("true")
+        );
+        assert_eq!(
+            columns.get("column4").unwrap().get_default(),
+            &Value::from("0")
+        );
+        assert_eq!(
+            columns.get("column5").unwrap().get_default(),
+            &Value::from("")
+        );
+        assert_eq!(
+            columns.get("column6").unwrap().get_default(),
+            &Value::from("def")
+        );
+        assert_eq!(
+            columns.get("column7").unwrap().get_default(),
+            &Value::from("0")
+        );
+
+        let mut diff_table = table.clone();
+
+        diff_table
+            .columns_mut()
+            .get_mut("column1")
+            .unwrap()
+            .set_default(false.into());
+        diff_table
+            .columns_mut()
+            .get_mut("column2")
+            .unwrap()
+            .set_default(Value::NULL);
+        diff_table
+            .columns_mut()
+            .get_mut("column3")
+            .unwrap()
+            .set_default(false.into());
+        diff_table
+            .columns_mut()
+            .get_mut("column4")
+            .unwrap()
+            .set_default(Value::NULL);
+        diff_table
+            .columns_mut()
+            .get_mut("column5")
+            .unwrap()
+            .set_default(false.into());
+        diff_table
+            .columns_mut()
+            .get_mut("column6")
+            .unwrap()
+            .set_default("666".into());
+        diff_table
+            .columns_mut()
+            .get_mut("column7")
+            .unwrap()
+            .set_default(Value::NULL);
+
+        let comparator = schema_manager.create_comparator();
+        let diff = comparator.diff_table(&table, &diff_table)?;
+        assert!(diff.is_some());
+
+        schema_manager.alter_table(diff.unwrap()).await?;
+
+        let columns = schema_manager
+            .list_table_columns("col_def_lifecycle", None)
+            .await?;
+
+        assert_eq!(
+            columns.get("column1").unwrap().get_default(),
+            &Value::from("false")
+        );
+        assert_eq!(columns.get("column2").unwrap().get_default(), &Value::NULL);
+        assert_eq!(
+            columns.get("column3").unwrap().get_default(),
+            &Value::from("false")
+        );
+        assert_eq!(columns.get("column4").unwrap().get_default(), &Value::NULL);
+        assert_eq!(
+            columns.get("column5").unwrap().get_default(),
+            &Value::from("false")
+        );
+        assert_eq!(
+            columns.get("column6").unwrap().get_default(),
+            &Value::from("666")
+        );
+        assert_eq!(columns.get("column7").unwrap().get_default(), &Value::NULL);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_with_binary() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        let schema_manager = helper.get_schema_manager();
+
+        let table_name = "test_binary_table";
+
+        let mut table = Table::new(table_name);
+        table.add_column(
+            Column::builder("column_binary", BINARY)
+                .unwrap()
+                .set_length(16)
+                .set_fixed(true),
+        );
+        table.add_column(
+            Column::builder("column_varbinary", BINARY)
+                .unwrap()
+                .set_length(32),
+        );
+
+        helper.drop_and_create_table(&table).await?;
+
+        let table = schema_manager.introspect_table(table_name).await?;
+
+        let bin_column = table.get_column("column_binary").unwrap();
+        let var_bin_column = table.get_column("column_varbinary").unwrap();
+
+        if platform.get_name() == "sqlite" || platform.get_name() == "postgresql" {
+            assert_eq!(bin_column.get_type(), BLOB.into_type().unwrap());
+            assert_eq!(var_bin_column.get_type(), BLOB.into_type().unwrap());
+        } else {
+            assert_eq!(bin_column.get_type(), BINARY.into_type().unwrap());
+            assert_eq!(bin_column.get_length(), Some(16));
+            assert!(bin_column.is_fixed());
+
+            assert_eq!(var_bin_column.get_type(), BINARY.into_type().unwrap());
+            assert_eq!(var_bin_column.get_length(), Some(32));
+            assert!(!var_bin_column.is_fixed());
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn get_non_existing_table() {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        assert!(schema_manager
+            .introspect_table("non_existing")
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn list_table_details_with_full_qualified_table_name() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if !platform.supports_schemas() {
+            return Ok(());
+        }
+
+        let schema_manager = helper.get_schema_manager();
+        let default_schema_name = schema_manager.get_default_schema_name().unwrap();
+        let primary_table_name = "primary_table";
+        let foreign_table_name = "foreign_table";
+
+        let mut table = Table::new(foreign_table_name);
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_table_if_exists(primary_table_name).await;
+        helper.drop_and_create_table(&table).await?;
+
+        let mut table = Table::new(primary_table_name);
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.add_column(Column::builder("foo", INTEGER)?);
+        table.add_column(Column::builder("bar", STRING)?);
+        table.add_foreign_key_constraint(
+            &["foo"],
+            &["id"],
+            foreign_table_name,
+            Default::default(),
+            None,
+            None,
+            None::<&str>,
+        )?;
+        table.add_index(Index::new::<&str, _, &str>(
+            None,
+            &["bar"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+
+        let table_name_with_schema = format!("{}.{}", default_schema_name, primary_table_name);
+        assert_eq!(
+            schema_manager
+                .list_table_columns(primary_table_name, None)
+                .await?,
+            schema_manager
+                .list_table_columns(&table_name_with_schema, None)
+                .await?,
+        );
+        assert_eq!(
+            schema_manager
+                .list_table_indexes(primary_table_name)
+                .await?,
+            schema_manager
+                .list_table_indexes(&table_name_with_schema)
+                .await?,
+        );
+        assert_eq!(
+            schema_manager
+                .list_table_foreign_keys(primary_table_name)
+                .await?,
+            schema_manager
+                .list_table_foreign_keys(&table_name_with_schema)
+                .await?,
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn comment_strings_are_quoted() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+
+        if !platform.supports_inline_column_comments() && !platform.supports_comment_on_statement()
+        {
+            return Ok(());
+        }
+
+        helper.drop_table_if_exists("my_table").await;
+
+        let mut table = Table::new("my_table");
+        table
+            .add_column(Column::builder("id", INTEGER)?.set_comment("It's a comment with a quote"));
+        table.set_primary_key(&["id"], None)?;
+
+        let schema_manager = helper.get_schema_manager();
+        schema_manager.create_table(&table).await?;
+
+        let columns = schema_manager.list_table_columns("my_table", None).await?;
+        assert_eq!(
+            "It's a comment with a quote",
+            columns.get("id").unwrap().get_comment().as_ref().unwrap()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn comment_not_duplicated() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+
+        if !platform.supports_inline_column_comments() {
+            return Ok(());
+        }
+
+        helper.drop_table_if_exists("my_table").await;
+
+        let schema_manager = helper.get_schema_manager();
+        let options = ColumnData {
+            name: "id".to_string(),
+            r#type: INTEGER.into_type()?,
+            default: 0.into(),
+            notnull: true,
+            comment: Some("expected+column+comment".to_string()),
+            ..Default::default()
+        };
+
+        let column_definition = schema_manager
+            .get_column_declaration_sql("id", &options)?
+            .get(3..)
+            .map(|s| s.to_string())
+            .unwrap();
+
+        let mut table = Table::new("my_table");
+        table.add_column(
+            Column::builder("id", INTEGER)?
+                .set_column_definition(Some(column_definition))
+                .set_comment("unexpected_column_comment"),
+        );
+
+        let sql = schema_manager.get_create_table_sql(&table, None)?;
+        assert!(sql.get(0).unwrap().contains("expected+column+comment"));
+        assert!(!sql.get(0).unwrap().contains("unexpected_column_comment"));
+
+        Ok(())
+    }
+
+    pub async fn test_alter_column_comment(
+        comment1: Option<&str>,
+        expected_comment1: Option<&str>,
+        comment2: Option<&str>,
+        expected_comment2: Option<&str>,
+    ) -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+
+        if !platform.supports_inline_column_comments() && !platform.supports_comment_on_statement()
+        {
+            return Ok(());
+        }
+
+        let mut offline_table = Table::new("alter_column_comment_test");
+        offline_table
+            .add_column(Column::builder("comment1", INTEGER)?.set_comment::<&str, _>(comment1));
+        offline_table
+            .add_column(Column::builder("comment2", INTEGER)?.set_comment::<&str, _>(comment2));
+        offline_table.add_column(Column::builder("no_comment1", INTEGER)?);
+        offline_table.add_column(Column::builder("no_comment2", INTEGER)?);
+
+        helper.drop_and_create_table(&offline_table).await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let mut online_table = schema_manager
+            .introspect_table("alter_column_comment_test")
+            .await?;
+        let online_columns = online_table.columns();
+
+        assert_eq!(
+            online_columns.get("comment1").unwrap().get_comment(),
+            &expected_comment1.map(|s| s.to_string())
+        );
+        assert_eq!(
+            online_columns.get("comment2").unwrap().get_comment(),
+            &expected_comment2.map(|s| s.to_string())
+        );
+        assert!(online_columns
+            .get("no_comment1")
+            .unwrap()
+            .get_comment()
+            .is_none());
+        assert!(online_columns
+            .get("no_comment2")
+            .unwrap()
+            .get_comment()
+            .is_none());
+
+        let online_columns = online_table.columns_mut();
+        online_columns
+            .get_mut("comment1")
+            .unwrap()
+            .set_comment::<&str, _>(comment2);
+        online_columns
+            .get_mut("comment2")
+            .unwrap()
+            .set_comment::<&str, _>(comment1);
+        online_columns
+            .get_mut("no_comment1")
+            .unwrap()
+            .set_comment::<&str, _>(comment1);
+        online_columns
+            .get_mut("no_comment2")
+            .unwrap()
+            .set_comment::<&str, _>(comment2);
+
+        let comparator = schema_manager.create_comparator();
+        let table_diff = comparator.diff_table(&offline_table, &online_table)?;
+        assert!(table_diff.is_some());
+
+        schema_manager.alter_table(table_diff.unwrap()).await?;
+
+        let online_table = schema_manager
+            .introspect_table("alter_column_comment_test")
+            .await?;
+        let online_columns = online_table.columns();
+
+        assert_eq!(
+            online_columns.get("comment2").unwrap().get_comment(),
+            &expected_comment1.map(|s| s.to_string())
+        );
+        assert_eq!(
+            online_columns.get("comment1").unwrap().get_comment(),
+            &expected_comment2.map(|s| s.to_string())
+        );
+        assert_eq!(
+            online_columns.get("no_comment1").unwrap().get_comment(),
+            &expected_comment1.map(|s| s.to_string())
+        );
+        assert_eq!(
+            online_columns.get("no_comment2").unwrap().get_comment(),
+            &expected_comment2.map(|s| s.to_string())
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn alter_column_comment() -> Result<()> {
+        let tests = [
+            [None, None, Some(" "), Some(" ")],
+            [None, None, Some("0"), Some("0")],
+            [None, None, Some("foo"), Some("foo")],
+            [Some(""), None, Some(" "), Some(" ")],
+            [Some(""), None, Some("0"), Some("0")],
+            [Some(""), None, Some("foo"), Some("foo")],
+            [Some(" "), Some(" "), Some("0"), Some("0")],
+            [Some(" "), Some(" "), Some("foo"), Some("foo")],
+            [Some("0"), Some("0"), Some("foo"), Some("foo")],
+        ];
+
+        for test in tests.into_iter() {
+            test_alter_column_comment(
+                *test.get(0).unwrap(),
+                *test.get(1).unwrap(),
+                *test.get(2).unwrap(),
+                *test.get(3).unwrap(),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn does_not_list_indexes_implicitly_created_by_foreign_keys() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let mut primary_table = Table::new("test_list_index_impl_primary");
+        primary_table.add_column(Column::new("id", INTEGER.into_type()?));
+        primary_table.set_primary_key(&["id"], None)?;
+
+        let mut foreign_table = Table::new("test_list_index_impl_foreign");
+        foreign_table.add_column(Column::new("fk1", INTEGER.into_type()?));
+        foreign_table.add_column(Column::new("fk2", INTEGER.into_type()?));
+        foreign_table.add_index(Index::new(
+            "explicit_fk1_idx",
+            &["fk1"],
+            false,
+            false,
+            &[],
+            Default::default(),
+        ));
+        foreign_table.add_foreign_key_constraint(
+            &["fk1"],
+            &["id"],
+            "test_list_index_impl_primary",
+            Default::default(),
+            None,
+            None,
+            Option::<&str>::None,
+        )?;
+        foreign_table.add_foreign_key_constraint(
+            &["fk2"],
+            &["id"],
+            "test_list_index_impl_primary",
+            Default::default(),
+            None,
+            None,
+            Option::<&str>::None,
+        )?;
+
+        helper
+            .drop_table_if_exists("test_list_index_impl_foreign")
+            .await;
+        helper.drop_and_create_table(&primary_table).await?;
+        schema_manager.create_table(&foreign_table).await?;
+
+        let indexes = schema_manager
+            .list_table_indexes("test_list_index_impl_foreign")
+            .await?;
+
+        assert_eq!(indexes.len(), 2);
+        assert!(indexes.has("explicit_fk1_idx"));
+        assert!(indexes.has("idx_3d6c147fdc58d6c"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn comparator_should_not_add_comment_to_json_type_since_it_is_the_default(
+    ) -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = helper.platform.clone();
+
+        if !platform.has_native_json_type() {
+            return Ok(());
+        }
+
+        helper.drop_table_if_exists("json_test").await;
+        helper
+            .connection
+            .query(
+                "CREATE TABLE json_test (parameters JSON NOT NULL)",
+                params!(),
+            )
+            .await?;
+
+        let mut table = Table::new("json_test");
+        table.add_column(Column::new("parameters", JSON.into_type()?));
+
+        let online_table = schema_manager.introspect_table("json_test").await?;
+        let comparator = schema_manager.create_comparator();
+        let table_diff = comparator.diff_table(&online_table, &table)?;
+        assert!(table_diff.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn extract_doctrine_type_from_comment() -> Result<()> {
+        let tests = [
+            ("should.return.current.type", STRING, STRING),
+            ("(CRType:guid)", GUID, STRING),
+        ];
+
+        for (comment, expected_type, current_type) in tests {
+            let extract_ty = extract_type_from_comment(Some(comment.to_string()), current_type)?;
+
+            assert_eq!(extract_ty, expected_type.into_type()?);
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn create_and_list_sequences() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = helper.platform.clone();
+
+        if !platform.supports_sequences() {
+            return Ok(());
+        }
+
+        let sequence1_def = ("sequence_1", 1, 2);
+        let sequence2_def = ("sequence_2", 3, 4);
+
+        let sequence1 = Sequence::new(sequence1_def.0, sequence1_def.1, sequence1_def.2, None);
+        let sequence2 = Sequence::new(sequence2_def.0, sequence2_def.1, sequence2_def.2, None);
+
+        let _ = schema_manager.drop_sequence(&sequence1_def.0).await;
+        let _ = schema_manager.drop_sequence(&sequence2_def.0).await;
+
+        schema_manager.create_sequence(&sequence1).await?;
+        schema_manager.create_sequence(&sequence2).await?;
+
+        let sequences = schema_manager
+            .list_sequences()
+            .await?
+            .into_iter()
+            .filter(|s| {
+                let name = s.get_name().to_string();
+                name == sequence1_def.0 || name == sequence2_def.0
+            })
+            .sorted_by_key(|s| s.get_name().to_string())
+            .collect::<Vec<_>>();
+
+        let online_sequence_1 = sequences.first().unwrap();
+        let online_sequence_2 = sequences.get(1).unwrap();
+
+        assert_eq!(online_sequence_1.get_name(), sequence1_def.0);
+        assert_eq!(online_sequence_1.get_allocation_size(), sequence1_def.1);
+        assert_eq!(online_sequence_1.get_initial_value(), sequence1_def.2);
+
+        assert_eq!(online_sequence_2.get_name(), sequence2_def.0);
+        assert_eq!(online_sequence_2.get_allocation_size(), sequence2_def.1);
+        assert_eq!(online_sequence_2.get_initial_value(), sequence2_def.2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn comparison_with_auto_detected_sequence_definition() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+        let platform = helper.platform.clone();
+
+        if !platform.supports_sequences() {
+            return Ok(());
+        }
+
+        let sequence_name = "sequence_auto_detect_test";
+        let sequence_allocation_size = 5;
+        let sequence_initial_value = 10;
+        let sequence = Sequence::new(
+            sequence_name,
+            sequence_allocation_size,
+            sequence_initial_value,
+            None,
+        );
+        let _ = schema_manager.drop_sequence(&sequence.get_name()).await;
+
+        schema_manager.create_sequence(&sequence).await?;
+
+        let created_sequences = schema_manager
+            .list_sequences()
+            .await?
+            .into_iter()
+            .filter(|s| s.get_name().to_lowercase() == sequence_name)
+            .collect::<Vec<_>>();
+
+        let created_sequence = created_sequences.first();
+        assert!(created_sequence.is_some());
+        assert_eq!(created_sequence.unwrap(), &sequence);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn primary_key_auto_increment() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let mut table = Table::new("test_pk_auto_increment");
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.add_column(Column::new("text", STRING.into_type()?));
+        table.set_primary_key(&["id"], None)?;
+
+        helper.drop_and_create_table(&table).await?;
+        helper
+            .connection
+            .insert(
+                "test_pk_auto_increment",
+                value_map! {
+                    "text" => "1"
+                },
+            )
+            .await?;
+
+        let last_used_id_before_delete_row = helper
+            .connection
+            .query(
+                "SELECT id FROM test_pk_auto_increment WHERE text = '1'",
+                params!(),
+            )
+            .await?
+            .fetch_one()
+            .await?
+            .unwrap();
+        let last_used_id_before_delete =
+            i64::try_from(last_used_id_before_delete_row.get(0).unwrap())?;
+
+        helper
+            .connection
+            .execute_statement("DELETE FROM test_pk_auto_increment", params!())
+            .await?;
+        helper
+            .connection
+            .insert(
+                "test_pk_auto_increment",
+                value_map! {
+                    "text" => "2"
+                },
+            )
+            .await?;
+
+        let last_used_id_after_delete_row = helper
+            .connection
+            .query(
+                "SELECT id FROM test_pk_auto_increment WHERE text = '2'",
+                params!(),
+            )
+            .await?
+            .fetch_one()
+            .await?
+            .unwrap();
+        let last_used_id_after_delete =
+            i64::try_from(last_used_id_after_delete_row.get(0).unwrap())?;
+        assert!(last_used_id_after_delete > last_used_id_before_delete);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn generate_an_index_with_partial_column_length() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.clone();
+        if !platform.supports_column_length_indexes() {
+            return Ok(());
+        }
+
+        let mut table = Table::new("test_partial_column_index");
+        table.add_column(Column::builder("long_column", STRING)?.set_length(40));
+        table.add_column(Column::builder("standard_column", INTEGER)?);
+        table.add_index(
+            Index::builder("partial_long_column_idx")
+                .add_column("long_column")
+                .set_lengths([4]),
+        );
+        table.add_index(
+            Index::builder("standard_and_partial_idx")
+                .add_column("standard_column")
+                .add_column("long_column")
+                .set_lengths([Value::NULL, Value::UInt(2)]),
+        );
+
+        let expected = table.indices();
+        helper.drop_and_create_table(&table).await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let online_table = schema_manager
+            .introspect_table("test_partial_column_index")
+            .await?;
+        assert_eq!(online_table.indices(), expected);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn comment_in_table() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let mut table = Table::new("table_with_comment");
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.set_comment("Foo with control characters '\\");
+
+        helper.drop_and_create_table(&table).await?;
+
+        let schema_manager = helper.get_schema_manager();
+        let table = schema_manager
+            .introspect_table("table_with_comment")
+            .await?;
+
+        assert_eq!(table.get_comment(), Some("Foo with control characters '\\"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn created_composite_foreign_key_order_is_correct_after_creation() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        let foreign_key = "fk_test_order";
+        let local_table = "test_table_foreign";
+        let foreign_table = "test_table_local";
+        let local_columns = ["child_col2", "child_col1"];
+        let foreign_columns = ["col2", "col1"];
+
+        helper.drop_table_if_exists(foreign_table).await;
+        helper.drop_table_if_exists(local_table).await;
+
+        let mut table = Table::new(local_table);
+        table.add_column(Column::new("col1", INTEGER.into_type()?));
+        table.add_column(Column::new("col2", INTEGER.into_type()?));
+        table.set_primary_key(&foreign_columns, None)?;
+
+        schema_manager.create_table(&table).await?;
+
+        let mut table = Table::new(foreign_table);
+        table.add_column(Column::builder("id", INTEGER)?.set_autoincrement(true));
+        table.add_column(Column::new("child_col1", INTEGER.into_type()?));
+        table.add_column(Column::new("child_col2", INTEGER.into_type()?));
+        table.set_primary_key(&["id"], None)?;
+        table.add_foreign_key(
+            ForeignKeyConstraint::builder(local_table)
+                .set_local_columns(local_columns.to_vec())
+                .set_foreign_columns(foreign_columns.to_vec())
+                .set_name(foreign_key),
+        )?;
+
+        schema_manager.create_table(&table).await?;
+
+        let table = schema_manager.introspect_table(&foreign_table).await?;
+        let foreign_key = table.get_foreign_keys().get(foreign_key).unwrap();
+
+        assert_eq!(
+            local_columns.map(|c| c.to_string()).to_vec(),
+            foreign_key
+                .get_local_columns()
+                .iter()
+                .map(|s| s.get_name().to_lowercase())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            foreign_columns.map(|c| c.to_string()).to_vec(),
+            foreign_key
+                .get_foreign_columns()
+                .iter()
+                .map(|s| s.get_name().to_lowercase())
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn introspect_reserved_keyword_table_via_list_table_details() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        create_reserved_keyword_tables(&helper).await?;
+
+        let user = schema_manager.introspect_table("user").await?;
+        assert_eq!(user.columns().len(), 2);
+        assert_eq!(user.indices().len(), 2);
+        assert_eq!(user.get_foreign_keys().len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn introspect_reserved_keyword_table_via_list_tables() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let schema_manager = helper.get_schema_manager();
+
+        create_reserved_keyword_tables(&helper).await?;
+        let tables = schema_manager.list_tables().await?;
+
+        let user = tables.get("user").unwrap();
+        assert_eq!(user.columns().len(), 2);
+        assert_eq!(user.indices().len(), 2);
+        assert_eq!(user.get_foreign_keys().len(), 1);
+
+        Ok(())
+    }
+
+    async fn create_reserved_keyword_tables(helper: &FunctionalTestsHelper) -> Result<()> {
+        helper.drop_table_if_exists("user").await;
+        helper.drop_table_if_exists("group").await;
+
+        let mut schema = Schema::default();
+
+        let user = schema.create_table("user")?;
+        user.add_column(Column::new("id", INTEGER.into_type()?));
+        user.add_column(Column::new("group_id", INTEGER.into_type()?));
+        user.set_primary_key(&["id"], None)?;
+        user.add_foreign_key(
+            ForeignKeyConstraint::builder("group")
+                .set_local_columns(vec!["group_id"])
+                .set_foreign_columns(vec!["id"]),
+        )?;
+
+        let group = schema.create_table("group")?;
+        group.add_column(Column::new("id", INTEGER.into_type()?));
+        group.set_primary_key(&["id"], None)?;
+
+        let schema_manager = helper.get_schema_manager();
+        schema_manager.create_schema_objects(&schema).await
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn change_index_with_foreign_keys() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+        let platform = helper.platform.as_dyn();
+        if platform.get_name() == "mysql" {
+            let server_version = helper.connection.server_version().await?;
+            if compare_to(&server_version, "5.7", Cmp::Lt).unwrap() {
+                return Ok(());
+            }
+
+            if compare_to(&server_version, "10", Cmp::Ge).unwrap()
+                && compare_to(&server_version, "10.5", Cmp::Lt).unwrap()
+            {
+                return Ok(());
+            }
+        }
+
+        let schema_manager = helper.get_schema_manager();
+
+        helper.drop_table_if_exists("child").await;
+        helper.drop_table_if_exists("parent").await;
+
+        let mut schema = Schema::default();
+
+        {
+            let parent = schema.create_table("parent")?;
+            parent.add_column(Column::new("id", INTEGER.into_type()?));
+            parent.set_primary_key(&["id"], None)?;
+
+            let child = schema.create_table("child")?;
+            child.add_column(Column::new("id", INTEGER.into_type()?));
+            child.add_column(Column::new("parent_id", INTEGER.into_type()?));
+            child.add_index(Index::builder("idx_1").add_column("parent_id"));
+            child.add_foreign_key(
+                ForeignKeyConstraint::builder("parent")
+                    .set_local_columns(vec!["parent_id"])
+                    .set_foreign_columns(vec!["id"]),
+            )?;
+        }
+
+        schema_manager.create_schema_objects(&schema).await?;
+
+        let child = schema.get_table_mut("child").unwrap();
+        child.drop_index("idx_1");
+        child.add_index(Index::builder("idx_2").add_column("parent_id"));
+
+        let comparator = schema_manager.create_comparator();
+        let online_child = schema_manager.introspect_table("child").await?;
+        let diff = comparator.diff_table(&online_child, child)?;
+
+        assert!(diff.is_some());
+        let diff = diff.unwrap();
+
+        schema_manager.alter_table(diff).await?;
+        let child = schema_manager.introspect_table("child").await?;
+
+        assert!(!child.has_index("idx_1"));
+        assert!(child.has_index("idx_2"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn test_switch_primary_key_order() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+
+        let mut prototype = Table::new("test_switch_pk_order");
+        prototype.add_column(Column::new("foo_id", INTEGER.into_type()?));
+        prototype.add_column(Column::new("bar_id", INTEGER.into_type()?));
+
+        let mut table = prototype.clone();
+        table.set_primary_key(&["foo_id", "bar_id"], None)?;
+        helper.drop_and_create_table(&table).await?;
+
+        let mut table = prototype.clone();
+        table.set_primary_key(&["bar_id", "foo_id"], None)?;
+
+        let schema_manager = helper.get_schema_manager();
+        let comparator = schema_manager.create_comparator();
+
+        let online = schema_manager
+            .introspect_table("test_switch_pk_order")
+            .await?;
+        let diff = comparator.diff_table(&online, &table)?;
+
+        assert!(diff.is_some());
+
+        let table = schema_manager
+            .introspect_table("test_switch_pk_order")
+            .await?;
+        let primary_key = table
+            .get_primary_key()
+            .expect("Table must have a primary key");
+
+        assert_eq!(
+            primary_key
+                .get_columns()
+                .iter()
+                .map(|c| c.to_lowercase())
+                .collect::<Vec<_>>(),
+            vec!["foo_id", "bar_id"]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    pub async fn test_drop_column_with_default() -> Result<()> {
+        let helper = FunctionalTestsHelper::default().await;
+
+        let mut table = Table::new("drop_column_with_default");
+        table.add_column(Column::new("id", INTEGER.into_type()?));
+        table.add_column(Column::builder("todrop", DECIMAL)?.set_default(10.2));
+
+        {
+            helper.drop_and_create_table(&table).await?;
+        }
+
+        table.drop_column("todrop");
+
+        let schema_manager = helper.get_schema_manager();
+        let comparator = schema_manager.create_comparator();
+
+        let online = schema_manager
+            .introspect_table("drop_column_with_default")
+            .await?;
+        let diff = comparator.diff_table(&online, &table)?;
+
+        assert!(diff.is_some());
+        schema_manager.alter_table(diff.unwrap()).await?;
+
+        let columns = schema_manager
+            .list_table_columns("drop_column_with_default", None)
+            .await?;
+        assert_eq!(columns.len(), 1);
 
         Ok(())
     }

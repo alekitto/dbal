@@ -19,6 +19,9 @@ pub enum ErrorKind {
     UnknownType = 7,
     ConversionFailed = 8,
     UnknownDatabaseType = 9,
+    IndexDoesNotExist = 10,
+    IndexAlreadyExists = 11,
+    NamedParameterDoesNotExist = 12,
 
     PostgresTypeMismatch = 1001,
     PlatformFeatureUnsupported = 2000,
@@ -118,12 +121,21 @@ impl Error {
             "This driver does not support named parameters",
         )
     }
+
     pub fn mixed_parameters_types() -> Self {
         Self::new(
             ErrorKind::MixedParametersTypes,
             "Cannot mix named and positional parameters",
         )
     }
+
+    pub fn cannot_find_named_parameter<T: AsRef<str>>(param: T) -> Self {
+        Self::new(
+            ErrorKind::NamedParameterDoesNotExist,
+            format!(r#"Cannot find named parameter "{}""#, param.as_ref()),
+        )
+    }
+
     pub fn out_of_bounds<T>(index: T) -> Self
     where
         T: ToString,
@@ -226,6 +238,28 @@ impl Error {
                 value,
                 to_type,
                 possible_types.join(", ")
+            ),
+        )
+    }
+
+    pub fn index_does_not_exist(name: String, table: &Identifier) -> Error {
+        Self::new(
+            ErrorKind::IndexDoesNotExist,
+            format!(
+                "Index {} does not exist on table {}",
+                name,
+                table.get_name(),
+            ),
+        )
+    }
+
+    pub fn index_already_exists(name: String, table: &Identifier) -> Error {
+        Self::new(
+            ErrorKind::IndexAlreadyExists,
+            format!(
+                "Index {} already exists on table {}",
+                name,
+                table.get_name(),
             ),
         )
     }

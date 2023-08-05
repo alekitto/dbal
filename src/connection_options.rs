@@ -1,7 +1,9 @@
 use crate::platform::DatabasePlatform;
 use crate::util::PlatformBox;
 use crate::Error;
+#[cfg(any(feature = "mysql", feature = "postgres"))]
 use std::borrow::Cow;
+#[cfg(any(feature = "mysql", feature = "postgres"))]
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -110,8 +112,11 @@ impl TryFrom<&str> for ConnectionOptions {
         }
 
         let url = Url::parse(dsn.as_str())?;
+        #[cfg(any(feature = "mysql", feature = "postgres"))]
         let query_params: HashMap<Cow<str>, Cow<str>> = url.query_pairs().collect();
+        #[cfg(any(feature = "mysql", feature = "postgres"))]
         let username = url.username();
+        #[cfg(any(feature = "mysql", feature = "postgres"))]
         let db_name = url.path().trim_start_matches('/');
 
         match url.scheme() {

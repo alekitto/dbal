@@ -61,9 +61,10 @@ impl DatabasePlatform for MySQLPlatform {
         mysql::get_boolean_type_declaration_sql()
     }
 
-    fn get_json_type_declaration_sql(&self, _: &ColumnData) -> Result<String> {
+    fn get_json_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         match self.variant {
             MySQLVariant::MariaDB => mariadb::get_json_type_declaration_sql(),
+            MySQLVariant::MySQL5_6 => mysql::get_clob_type_declaration_sql(column),
             _ => mysql::get_json_type_declaration_sql(),
         }
     }
@@ -284,6 +285,7 @@ mod tests {
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
+    use crate::Result;
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {
@@ -336,99 +338,88 @@ mod tests {
     common_platform_tests!(create_mysql_platform());
 
     #[test]
-    pub fn returns_binary_type_declaration_sql() {
+    pub fn returns_binary_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
         let platform = create_mysql_platform();
-        let mut column = Column::new("foo", BINARY).unwrap();
+        let mut column = Column::new("foo", BINARY.into_type()?);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "VARBINARY(255)"
         );
 
         column.set_length(0);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "VARBINARY(255)"
         );
 
         column.set_length(65535);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "VARBINARY(65535)"
         );
 
         column.set_length(None);
         column.set_fixed(true);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BINARY(255)"
         );
 
         column.set_length(0);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BINARY(255)"
         );
 
         column.set_length(65535);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BINARY(65535)"
         );
+
+        Ok(())
     }
 
     #[test]
-    pub fn returns_json_type_declaration_sql() {
-        let mut column = Column::new("foo", JSON).unwrap();
+    pub fn returns_json_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
+        let mut column = Column::new("foo", JSON.into_type()?);
         column.set_notnull(true);
         column.set_length(666);
 
         let platform = create_mysql_platform();
         assert_eq!(
-            platform
-                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_json_type_declaration_sql(&column.generate_column_data(&platform))?,
             "JSON"
         );
 
         let platform = create_mysql80_platform();
         assert_eq!(
-            platform
-                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_json_type_declaration_sql(&column.generate_column_data(&platform))?,
             "JSON"
         );
 
         let platform = create_mariadb_platform();
         assert_eq!(
-            platform
-                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_json_type_declaration_sql(&column.generate_column_data(&platform))?,
             "LONGTEXT"
         );
+
+        Ok(())
     }
 
     #[test]
-    pub fn returns_guid_type_declaration_sql() {
+    pub fn returns_guid_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
         let platform = create_mysql_platform();
-        let column = Column::new("foo", GUID).unwrap();
+        let column = Column::new("foo", GUID.into_type()?);
 
         assert_eq!(
-            platform
-                .get_guid_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_guid_type_declaration_sql(&column.generate_column_data(&platform))?,
             "CHAR(36)"
         );
+
+        Ok(())
     }
 }

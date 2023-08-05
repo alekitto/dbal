@@ -42,7 +42,7 @@ pub use string_type::StringType;
 pub use text_type::TextType;
 pub use time_type::TimeType;
 
-pub const BIGINT: &str = "binary";
+pub const BIGINT: &str = "bigint";
 pub const BINARY: &str = "binary";
 pub const BLOB: &str = "blob";
 pub const BOOLEAN: &str = "boolean";
@@ -79,6 +79,13 @@ impl Debug for TypePtr {
     }
 }
 
+impl Default for TypePtr {
+    fn default() -> Self {
+        Self::new::<StringType>()
+    }
+}
+
+impl Eq for TypePtr {}
 impl PartialEq for TypePtr {
     fn eq(&self, other: &Self) -> bool {
         self.type_id == other.type_id
@@ -110,6 +117,7 @@ impl TypePtr {
                 platform: &dyn DatabasePlatform,
             ) -> Result<String>;
             pub fn get_binding_type(&self) -> ParameterType;
+            pub fn convert_to_default_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<String>;
             pub fn get_mapped_database_types(&self, platform: &dyn DatabasePlatform) -> Vec<String>;
         }
     }
@@ -142,7 +150,7 @@ pub trait Type {
         Ok(value)
     }
 
-    /// Converts a value from its database representation to its PHP representation
+    /// Converts a value from its database representation to its native representation
     /// of this type.
     #[allow(unused_variables)]
     fn convert_to_value(&self, value: &Value, platform: &dyn DatabasePlatform) -> Result<Value> {
@@ -166,7 +174,17 @@ pub trait Type {
         ParameterType::String
     }
 
-    /// Gets an array of database types that map to this Doctrine type.
+    /// Converts the given value to the correct (and quoted!) DEFAULT value
+    /// which can be used in a CREATE TABLE query.
+    fn convert_to_default_value(
+        &self,
+        value: &Value,
+        platform: &dyn DatabasePlatform,
+    ) -> Result<String> {
+        Ok(platform.quote_string_literal(&value.to_string()))
+    }
+
+    /// Gets an array of database types that map to this type.
     #[allow(unused_variables)]
     fn get_mapped_database_types(&self, platform: &dyn DatabasePlatform) -> Vec<String> {
         vec![]

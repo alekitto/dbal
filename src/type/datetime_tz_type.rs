@@ -71,4 +71,36 @@ impl Type for DateTimeTzType {
     ) -> Result<String> {
         platform.get_date_time_tz_type_declaration_sql(column)
     }
+
+    fn convert_to_default_value(
+        &self,
+        value: &Value,
+        platform: &dyn DatabasePlatform,
+    ) -> Result<String> {
+        match value {
+            Value::NULL => Ok("''".to_string()),
+            Value::String(s) => {
+                if s == platform.get_current_timestamp_sql() {
+                    Ok(platform.get_current_timestamp_sql().to_string())
+                } else {
+                    let dt =
+                        DateTime::parse_from_str(s, platform.get_date_time_tz_format_string())?;
+
+                    Ok(platform.quote_string_literal(
+                        &dt.format(platform.get_date_time_tz_format_string())
+                            .to_string(),
+                    ))
+                }
+            }
+            Value::DateTime(dt) => Ok(platform.quote_string_literal(
+                &dt.format(platform.get_date_time_tz_format_string())
+                    .to_string(),
+            )),
+            _ => Err(Error::conversion_failed_invalid_type(
+                value,
+                self.get_name(),
+                &["NULL", "String", "DateTime"],
+            )),
+        }
+    }
 }

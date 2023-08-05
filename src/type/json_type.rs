@@ -38,6 +38,10 @@ impl Type for JsonType {
         super::JSON
     }
 
+    fn requires_sql_comment_hint(&self, platform: &dyn DatabasePlatform) -> bool {
+        !platform.has_native_json_type()
+    }
+
     fn get_sql_declaration(
         &self,
         column: &ColumnData,

@@ -46,7 +46,7 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
 }
 
 impl ConnectionOptions {
-    pub(crate) fn build_from_url(url: &Url) -> Self {
+    pub fn build_from_url(url: &Url) -> Self {
         let mut username = url.username().to_string();
         if username.is_empty() {
             username = String::from("root");

@@ -5,8 +5,13 @@ use crate::error::{Error, StdError};
 use crate::parameter_type::ParameterType;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Rows, Value};
 use dashmap::DashMap;
+use sqlparser::ast::{visit_expressions_mut, Expr};
+use sqlparser::dialect::PostgreSqlDialect;
+use sqlparser::parser::Parser;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_postgres::types::private::BytesMut;
 use tokio_postgres::types::{to_sql_checked, IsNull, ToSql, Type};
@@ -107,19 +112,77 @@ impl<'conn> Statement<'conn> {
     ) -> Result<(tokio_postgres::Statement, Vec<Parameter>)> {
         let mut types = Vec::with_capacity(params.len());
         let mut raw_params = Vec::with_capacity(params.len());
-        for (i, p) in params {
-            match i {
-                ParameterIndex::Named(_) => return Err(Error::unsupported_named_parameters()),
-                ParameterIndex::Positional(pos) => types.insert(pos, type_to_sql(p.value_type)),
+        let mut sql = self.sql.clone();
+
+        if !params.is_empty() {
+            let positional = params
+                .iter()
+                .any(|(i, _)| matches!(i, ParameterIndex::Positional(_)));
+            let named = params
+                .iter()
+                .any(|(i, _)| matches!(i, ParameterIndex::Named(_)));
+            if named && positional {
+                return Err(Error::mixed_parameters_types());
             }
 
-            raw_params.push(p);
+            let mut named_map: HashMap<String, usize> = HashMap::new();
+            for (i, p) in params {
+                match i {
+                    ParameterIndex::Named(name) => {
+                        named_map.insert(name, raw_params.len());
+                    }
+                    ParameterIndex::Positional(pos) => {
+                        types.insert(pos, type_to_sql(p.value_type));
+                    }
+                }
+
+                raw_params.push(p);
+            }
+
+            // We should parse the SQL query in order to replace the "?" or named parameters
+            // with the postgresql indexed parameters ($1, $2, ...)
+            let mut statement = Parser::new(&PostgreSqlDialect {})
+                .try_with_sql(&self.sql)?
+                .parse_statement()?;
+            let mut last_pos: usize = 0;
+
+            let flow = visit_expressions_mut(&mut statement, |expr| {
+                if let Expr::Value(sqlparser::ast::Value::Placeholder(placeholder)) = expr {
+                    let s: String = placeholder.to_string();
+                    let new_value = if s.starts_with(':') {
+                        // query has named parameters
+                        let name = s.get(1..).unwrap(); // remove the starting colon
+
+                        // Search for parameter in the named parameters map
+                        let Some(pos) = named_map.get(name).copied() else {
+                            return ControlFlow::Break(Error::cannot_find_named_parameter(name));
+                        };
+
+                        format!("${}", pos)
+                    } else if s.starts_with('$') {
+                        s.clone()
+                    } else {
+                        last_pos += 1;
+                        format!("${}", last_pos)
+                    };
+
+                    *expr = Expr::Value(sqlparser::ast::Value::Placeholder(new_value));
+                }
+
+                ControlFlow::Continue(())
+            });
+
+            if let ControlFlow::Break(e) = flow {
+                return Err(e);
+            }
+
+            sql = statement.to_string();
         }
 
         let statement = self
             .connection
             .client
-            .prepare_typed(&self.sql, types.as_slice())
+            .prepare_typed(&sql, types.as_slice())
             .await?;
 
         Ok((statement, raw_params))

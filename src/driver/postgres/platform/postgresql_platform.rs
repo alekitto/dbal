@@ -287,6 +287,7 @@ mod tests {
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
+    use crate::Result;
     use std::sync::Arc;
 
     pub fn create_postgresql_platform() -> PostgreSQLPlatform {
@@ -331,83 +332,76 @@ mod tests {
     common_platform_tests!(create_postgresql_platform());
 
     #[test]
-    pub fn returns_binary_type_declaration_sql() {
+    pub fn returns_binary_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
         let platform = create_postgresql_platform();
-        let mut column = Column::new("foo", BINARY).unwrap();
+        let mut column = Column::new("foo", BINARY.into_type()?);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
 
         column.set_length(0);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
 
         column.set_length(999999);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
 
         column.set_length(None);
         column.set_fixed(true);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
 
         column.set_length(0);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
 
         column.set_length(999999);
         assert_eq!(
-            platform
-                .get_binary_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_binary_type_declaration_sql(&column.generate_column_data(&platform))?,
             "BYTEA"
         );
+
+        Ok(())
     }
 
     #[test]
-    pub fn returns_json_type_declaration_sql() {
-        let mut column = Column::new("foo", JSON).unwrap();
+    pub fn returns_json_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
+        let mut column = Column::new("foo", JSON.into_type()?);
         column.set_notnull(true);
         column.set_length(666);
 
         let platform = create_postgresql_platform();
         assert_eq!(
-            platform
-                .get_json_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_json_type_declaration_sql(&column.generate_column_data(&platform))?,
             "JSON"
         );
+
+        Ok(())
     }
 
     #[test]
-    pub fn returns_guid_type_declaration_sql() {
+    pub fn returns_guid_type_declaration_sql() -> Result<()> {
+        use crate::r#type::IntoType;
         let platform = create_postgresql_platform();
-        let column = Column::new("foo", GUID).unwrap();
+        let column = Column::new("foo", GUID.into_type()?);
 
         assert_eq!(
-            platform
-                .get_guid_type_declaration_sql(&column.generate_column_data(&platform))
-                .unwrap(),
+            platform.get_guid_type_declaration_sql(&column.generate_column_data(&platform))?,
             "UUID"
         );
+
+        Ok(())
     }
 }

@@ -83,7 +83,7 @@ jobs:
           channel: nightly
 
       - name: Run tests
-        run: cargo test --no-default-features --features sqlite,runtime-${{ matrix.runtime }}-rustls -- --test-threads=1
+        run: cargo test --no-default-features --features sqlite,runtime-${{ matrix.runtime }}-rustls,functional-tests -- --test-threads=1
         env:
           DATABASE_DSN: 'sqlite://:memory:'
           CARGO_INCREMENTAL: '0'
@@ -118,7 +118,7 @@ jobs:
           docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
 
       - name: Run tests
-        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
         env:
           DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal
           CARGO_INCREMENTAL: '0'
@@ -161,7 +161,7 @@ jobs:
       - run: sleep 60
 
       - name: Run tests
-        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'
@@ -195,7 +195,7 @@ jobs:
       - run: sleep 30
 
       - name: Run tests
-        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'

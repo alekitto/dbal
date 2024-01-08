@@ -413,9 +413,7 @@ impl ColumnList {
     }
 
     pub fn remove<T: NamedListIndex>(&mut self, index: T) -> Option<Column> {
-        let Some((pos, _)) = self.get_position(index) else {
-            return None;
-        };
+        let (pos, _) = self.get_position(index)?;
         Some(self.inner.remove(pos))
     }
 

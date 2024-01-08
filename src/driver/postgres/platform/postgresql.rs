@@ -1188,11 +1188,7 @@ pub fn get_portable_table_column_definition(
 
 pub fn get_portable_sequence_definition(row: &Row) -> Result<Sequence> {
     let sequence_name = if row.get("schemaname")? != &Value::from("public") {
-        format!(
-            "{}.{}",
-            row.get("schemaname")?,
-            row.get("relname")?
-        )
+        format!("{}.{}", row.get("schemaname")?, row.get("relname")?)
     } else {
         row.get("relname")?.to_string()
     };

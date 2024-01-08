@@ -441,6 +441,7 @@ impl Table {
         self.foreign_keys.iter().any(|i| i.get_name() == name)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_foreign_key_constraint<LC, FC, FT, N>(
         &mut self,
         local_columns: &[LC],
@@ -694,6 +695,7 @@ impl Table {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_foreign_key_constraint<LC, FC, FT>(
         &mut self,
         local_columns: &[LC],

@@ -1284,8 +1284,14 @@ pub fn get_create_view_sql(platform: &dyn DatabasePlatform, view: &View) -> Resu
     ))
 }
 
-pub fn get_drop_view_sql(platform: &dyn DatabasePlatform, sequence: &dyn IntoIdentifier) -> Result<String> {
-    Ok(format!("DROP VIEW {}", sequence.into_identifier().get_quoted_name(platform)))
+pub fn get_drop_view_sql(
+    platform: &dyn DatabasePlatform,
+    sequence: &dyn IntoIdentifier,
+) -> Result<String> {
+    Ok(format!(
+        "DROP VIEW {}",
+        sequence.into_identifier().get_quoted_name(platform)
+    ))
 }
 
 pub fn get_create_database_sql(

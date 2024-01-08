@@ -56,7 +56,7 @@ fn detect_column_renames<S: SchemaManager + ?Sized>(
             continue;
         }
 
-        let (removed_column, added_column) = *candidate_columns.get(0).unwrap();
+        let (removed_column, added_column) = *candidate_columns.first().unwrap();
         let removed_column_name = removed_column.get_name();
         let added_column_name = added_column.get_name().to_lowercase();
 

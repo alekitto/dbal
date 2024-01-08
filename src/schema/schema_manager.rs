@@ -1425,6 +1425,7 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
 }
 
 #[cfg(test)]
+#[cfg(feature = "functional-tests")]
 mod tests {
     use crate::platform::DatabasePlatform;
     use crate::r#type::{

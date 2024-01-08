@@ -544,11 +544,7 @@ fn get_foreign_keys_in_altered_table(
         .iter()
         .map(|fk| fk.get_name().to_lowercase())
         .collect();
-    new_foreign_keys = new_foreign_keys
-        .iter()
-        .cloned()
-        .filter(|fk| !removed_key_names.contains(&fk.get_name().to_lowercase()))
-        .collect();
+    new_foreign_keys.retain(|fk| !removed_key_names.contains(&fk.get_name().to_lowercase()));
 
     for constraint in &diff.changed_foreign_keys {
         new_foreign_keys.push(constraint.clone());
@@ -971,7 +967,7 @@ pub fn get_portable_table_column_definition(
                     .split(',')
                     .map(|x| x.trim().to_string())
                     .collect::<Vec<_>>();
-                precision = usize::from_str(l.get(0).unwrap()).ok();
+                precision = usize::from_str(l.first().unwrap()).ok();
                 scale = usize::from_str(l.get(1).unwrap()).ok();
             }
 

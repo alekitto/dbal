@@ -76,7 +76,7 @@ impl Sequence {
                 return false;
             }
 
-            let pk_column = Identifier::new(cols.get(0).unwrap(), false);
+            let pk_column = Identifier::new(cols.first().unwrap(), false);
             if let Some(pk_column) = table.get_column(&pk_column) {
                 if !pk_column.is_autoincrement() {
                     return false;

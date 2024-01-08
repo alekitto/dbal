@@ -537,19 +537,18 @@ pub fn get_pre_alter_table_index_foreign_key_sql(
                 this.get_index_field_declaration_list_sql(added_index)?
             ));
 
-            indexes_to_be_removed.push(removed_index.get_name());
+            indexes_to_be_removed.push(removed_index.get_name().into_owned());
             diff.added_indexes.remove(add_idx);
 
             break;
         }
     }
 
-    diff.removed_indexes = diff
-        .removed_indexes
-        .iter()
-        .cloned()
-        .filter(|idx| !indexes_to_be_removed.contains(&idx.get_name()))
-        .collect();
+    diff.removed_indexes.retain(|idx| {
+        !indexes_to_be_removed
+            .iter()
+            .any(|e| e == idx.get_name().as_ref())
+    });
 
     let engine = diff
         .from_table

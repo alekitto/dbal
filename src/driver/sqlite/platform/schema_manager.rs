@@ -164,9 +164,7 @@ fn parse_column_comment_from_sql(column: &str, quoted_column: &str, sql: &str) -
     );
     let pattern = Regex::new(&pattern).unwrap();
 
-    let Some(m) = pattern.captures(sql) else {
-        return None;
-    };
+    let m = pattern.captures(sql)?;
     let comment = Regex::new("^\\s*--")
         .unwrap()
         .replace(m.get(1).unwrap().as_str().trim_end(), "")

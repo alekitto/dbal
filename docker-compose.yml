@@ -2,16 +2,27 @@ version: "3"
 
 services:
   #
-  # MySQL 8.x, 5.7.x, 5.6.x
+  # MySQL
   # https://www.mysql.com/support/supportedplatforms/database.html
   #
+
+  mysql_8_1:
+    image: mysql:8.1
+    volumes:
+      - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    ports:
+      - '3306'
+    environment:
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbal
 
   mysql_8:
     image: mysql:8.0
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_HOST: '%'
       MYSQL_ROOT_PASSWORD: password
@@ -22,7 +33,7 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_HOST: '%'
       MYSQL_ROOT_PASSWORD: password
@@ -33,14 +44,74 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
+    environment:
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbal
+
+  mysql_8_1_ssl:
+    build:
+      context: tests/mysql
+      dockerfile: Dockerfile
+      args:
+        IMAGE: mysql:8.1
+    volumes:
+      - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    ports:
+      - '3306'
+    environment:
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbal
+
+  mysql_8_ssl:
+    build:
+      context: tests/mysql
+      dockerfile: Dockerfile
+      args:
+        IMAGE: mysql:8.0
+    volumes:
+      - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    ports:
+      - '3306'
+    environment:
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbal
+
+  mysql_5_7_ssl:
+    build:
+      context: tests/mysql
+      dockerfile: Dockerfile
+      args:
+        IMAGE: mysql:5.7
+    volumes:
+      - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    ports:
+      - '3306'
+    environment:
+      MYSQL_ROOT_HOST: '%'
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbal
+
+  mysql_5_6_ssl:
+    build:
+      context: tests/mysql
+      dockerfile: Dockerfile
+      args:
+        IMAGE: mysql:5.6
+    volumes:
+      - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    ports:
+      - '3306'
     environment:
       MYSQL_ROOT_HOST: '%'
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
 
   #
-  # MariaDB 10.6, 10.5, 10.4, 10.3, 10.2
+  # MariaDB
   # https://mariadb.org/about/#maintenance-policy
   #
 
@@ -49,7 +120,7 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
@@ -59,7 +130,7 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
@@ -69,7 +140,7 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
@@ -79,7 +150,7 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
@@ -89,24 +160,58 @@ services:
     volumes:
       - "./tests/mysql/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
     ports:
-      - 3306
+      - '3306'
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: dbal
 
   #
-  # PostgreSQL 13.x, 12.x, 11.x 10.x, 9.6.x
+  # PostgreSQL
   # https://www.postgresql.org/support/versioning/
   #
 
+  postgres_16:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 16
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+
+  postgres_15:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 15
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+
   postgres_14:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
         VERSION: 14
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
@@ -115,17 +220,15 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
   postgres_13:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
         VERSION: 13
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
@@ -134,17 +237,15 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
   postgres_12:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
         VERSION: 12
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
@@ -153,17 +254,15 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
   postgres_11:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
         VERSION: 11
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
@@ -172,17 +271,15 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
   postgres_10:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
         VERSION: 10
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
@@ -191,26 +288,139 @@ services:
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
-  postgres_9_6:
+  postgres_16_ssl:
     build:
-      context: .
-      dockerfile: tests/postgres/Dockerfile
+      context: tests/postgres
+      dockerfile: Dockerfile
       args:
-        VERSION: 9.6
+        VERSION: 16
     ports:
-      - 5432
+      - '5432'
     environment:
       POSTGRES_DB: dbal
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
-#    command: >
-#      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_15_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 15
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_14_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 14
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_13_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 13
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_12_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 12
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_11_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 11
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
+
+  postgres_10_ssl:
+    build:
+      context: tests/postgres
+      dockerfile: Dockerfile
+      args:
+        VERSION: 10
+    ports:
+      - '5432'
+    environment:
+      POSTGRES_DB: dbal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - "./tests/postgres/setup.sql:/docker-entrypoint-initdb.d/setup.sql"
+    command: >
+      -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key
 
   #
   # Microsoft SQL Server (MSSQL)

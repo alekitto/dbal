@@ -4,6 +4,7 @@ use crate::Value;
 use std::any::TypeId;
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
+use std::io;
 use std::num::TryFromIntError;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -22,6 +23,9 @@ pub enum ErrorKind {
     IndexDoesNotExist = 10,
     IndexAlreadyExists = 11,
     NamedParameterDoesNotExist = 12,
+
+    ConnectionError = 100,
+    ConfigurationError = 101,
 
     PostgresTypeMismatch = 1001,
     PlatformFeatureUnsupported = 2000,
@@ -96,6 +100,14 @@ impl Error {
 
     pub fn unknown_driver(scheme: &str) -> Self {
         Self::new(ErrorKind::UnknownDriver, format!("Unknown driver protocol \"{}\". Use Driver::create_with_connection to use a custom driver connection", scheme))
+    }
+
+    pub fn config(message: &str) -> Self {
+        Self::new(ErrorKind::ConfigurationError, message.to_string())
+    }
+
+    pub fn connect(error: io::Error) -> Self {
+        Self::new(ErrorKind::ConnectionError, error.to_string())
     }
 
     pub fn platform_not_compiled(platform: &str) -> Self {

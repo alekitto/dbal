@@ -19,51 +19,43 @@ futures = "0.3"
 hex = "0.4.3"
 itertools = "0.12"
 lazy_static = "1"
+mysql_async = { git = "https://github.com/alekitto/mysql_async", branch = "fix/issue_283", optional = true, default-features = false }
+native-tls = { version = "0.2", optional = true }
+postgres-protocol = { version = "0.6", optional = true }
 regex = { version = "1", features = ["default", "pattern"] }
+rusqlite = { version = "0.30", optional = true, features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"] }
+rustls = { version = "0.22", optional = true }
+rustls-native-certs = { version = "0.7", optional = true }
+rustls-pemfile = { version = "2.0", optional = true }
+rustls-webpki = { version = "0.102", optional = true }
 serde_json = "1"
-sqlparser = { version = "0.41.0", features = ["default", "visitor"] }
-tokio = { version = "1", features = ["default", "macros", "rt", "rt-multi-thread"] }
+socket2 = "0.5"
+sqlparser = { version = "0.41", features = ["default", "visitor"] }
+tokio = { version = "1", features = ["default", "fs", "macros", "rt", "rt-multi-thread"] }
+tokio-native-tls = { version = "0.3", optional = true }
+tokio-postgres = { version = "0.7", optional = true }
+tokio-rustls = { version = "0.25", optional = true }
 url = "2"
 uuid = "1"
 version-compare = "0.1"
+rand = "0.8.5"
 
 [dev-dependencies]
 chrono-tz = "0.8"
 env_logger = "0.10"
 serial_test = "3.0"
+tokio-test = "0.4"
 
 [features]
-default = ["mysql", "postgres", "sqlite"]
+default = ["mysql", "postgres", "sqlite", "runtime-tokio-rustls"]
 mysql = ["mysql_async"]
-postgres = ["postgres-native-tls", "tokio-postgres", "postgres-protocol"]
-runtime-tokio-native-tls = []
-runtime-tokio-rustls = []
+native-tls = ["dep:native-tls", "dep:tokio-native-tls", "mysql_async?/default"]
+postgres = ["tokio-postgres", "postgres-protocol"]
+runtime-tokio-native-tls = ["native-tls"]
+runtime-tokio-rustls = ["rustls"]
+rustls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:tokio-rustls", "dep:rustls-webpki", "mysql_async?/default-rustls"]
 sqlite = ["rusqlite"]
 functional-tests = []
-
-[dependencies.mysql_async]
-version = "0.33"
-optional = true
-
-[dependencies.tokio-postgres]
-version = "0.7.2"
-optional = true
-
-[dependencies.postgres-native-tls]
-version = "0.5.0"
-optional = true
-
-[dependencies.postgres-protocol]
-version = "0.6.4"
-optional = true
-
-[dependencies.rusqlite]
-version = "0.30"
-optional = true
-features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"]
-
-[dev-dependencies.tokio-test]
-version = "0.4"
 
 [workspace]
 members = ["derive"]

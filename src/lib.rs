@@ -26,6 +26,7 @@ pub mod error;
 pub mod platform;
 pub mod schema;
 pub mod sync;
+pub mod tls;
 pub mod r#type;
 
 pub use configuration::Configuration;

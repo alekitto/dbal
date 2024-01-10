@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        postgres: [14, 10]
+        postgres: [15, 11]
         runtime: [tokio]
         tls: [native-tls, rustls]
     needs: check
@@ -115,6 +115,7 @@ jobs:
 
       - run: |
           docker-compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
+          docker-compose run -d -p 5433:5432 --name postgres_${{ matrix.postgres }}_ssl postgres_${{ matrix.postgres }}_ssl
           docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
 
       - name: Run tests
@@ -125,14 +126,13 @@ jobs:
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-#      - uses: actions-rs/cargo@v1
-#        with:
-#          command: test
-#          args: >
-#            --no-default-features
-#            --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
-#        env:
-#          DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal?sslmode=verify-ca&sslrootcert=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
+      - name: Run SSL tests
+        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+        env:
+          DATABASE_DSN: postgres://postgres:password@localhost:5433/dbal?ssl_mode=verify-ca&ca=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
       - name: Aggregate code coverage with grcov
         uses: alekitto/grcov@v0.2
@@ -157,13 +157,23 @@ jobs:
         with:
           channel: nightly
 
-      - run: docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
+      - run: |
+          docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
+          docker-compose run -d -p 3307:3306 mysql_${{ matrix.mysql }}_ssl
       - run: sleep 60
 
       - name: Run tests
         run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+
+      - name: Run SSL tests
+        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+        env:
+          DATABASE_DSN: mysql://root:password@localhost:3307/dbal?ssl_mode=verify-ca&ca=.%2Ftests%2Fmysql%2Fcerts%2Fca.crt
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'

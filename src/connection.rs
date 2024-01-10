@@ -401,8 +401,10 @@ mod tests {
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]
     async fn is_debuggable() {
-        let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
+        #[cfg(test)]
+        env_logger::init();
 
+        let connection = Connection::create_from_dsn(&get_database_dsn(), None, None).unwrap();
         assert!(format!("{:?}", connection).starts_with("Connection {"));
     }
 

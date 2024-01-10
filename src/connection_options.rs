@@ -9,14 +9,33 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use url::Url;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SslMode {
     None,
+    Allow,
+    Prefer,
+    Require,
+    VerifyCa,
+    VerifyFull,
 }
 
 impl Default for SslMode {
     fn default() -> Self {
         Self::None
+    }
+}
+
+impl<T: AsRef<str>> From<T> for SslMode {
+    fn from(value: T) -> Self {
+        match value.as_ref().to_lowercase().as_str() {
+            "none" => SslMode::None,
+            "allow" => SslMode::Allow,
+            "prefer" => SslMode::Prefer,
+            "require" => SslMode::Require,
+            "verify_ca" | "verify-ca" => SslMode::VerifyCa,
+            "verify_full" | "verify-full" => SslMode::VerifyFull,
+            _ => SslMode::Prefer,
+        }
     }
 }
 
@@ -32,6 +51,10 @@ pub struct ConnectionOptions {
     pub database_name_suffix: Option<String>,
     pub platform: Option<PlatformBox>,
     pub ssl_mode: SslMode,
+    pub ssl_cert: Option<String>,
+    pub ssl_key: Option<String>,
+    pub ssl_rootcert: Option<String>,
+    pub ssl_crl: Option<String>,
     pub application_name: Option<String>, // PostgreSQL
 
                                           // TODO: replica/primary
@@ -91,6 +114,21 @@ impl ConnectionOptions {
         self
     }
 
+    pub fn with_ssl_cert(mut self, ssl_cert: Option<String>) -> Self {
+        self.ssl_cert = ssl_cert;
+        self
+    }
+
+    pub fn with_ssl_key(mut self, ssl_key: Option<String>) -> Self {
+        self.ssl_key = ssl_key;
+        self
+    }
+
+    pub fn with_ssl_ca(mut self, ssl_ca: Option<String>) -> Self {
+        self.ssl_rootcert = ssl_ca;
+        self
+    }
+
     pub fn with_application_name(mut self, application_name: Option<String>) -> Self {
         self.application_name = application_name;
         self
@@ -119,6 +157,13 @@ impl TryFrom<&str> for ConnectionOptions {
         #[cfg(any(feature = "mysql", feature = "postgres"))]
         let db_name = url.path().trim_start_matches('/');
 
+        #[cfg(any(feature = "mysql", feature = "postgres"))]
+        let ssl_mode = if let Some(ssl) = query_params.get("ssl_mode").map(|s| s.to_string()) {
+            SslMode::from(ssl)
+        } else {
+            SslMode::Prefer
+        };
+
         match url.scheme() {
             #[cfg(not(feature = "mysql"))]
             platform @ "mysql" | platform @ "mariadb" => {
@@ -135,6 +180,10 @@ impl TryFrom<&str> for ConnectionOptions {
                 .with_password(url.password().map(String::from))
                 .with_host(url.host_str().map(String::from))
                 .with_port(url.port().or(Some(3306)))
+                .with_ssl_mode(ssl_mode)
+                .with_ssl_cert(query_params.get("cert").map(|s| s.to_string()))
+                .with_ssl_key(query_params.get("key").map(|s| s.to_string()))
+                .with_ssl_ca(query_params.get("ca").map(|s| s.to_string()))
                 .with_database_name(Some(db_name.to_string()))
                 .with_database_name_suffix(
                     query_params.get("dbname_suffix").map(|s| s.to_string()),
@@ -164,6 +213,10 @@ impl TryFrom<&str> for ConnectionOptions {
                     .with_password(url.password().map(String::from))
                     .with_host(url.host_str().map(String::from))
                     .with_port(url.port().or(Some(5432)))
+                    .with_ssl_mode(ssl_mode)
+                    .with_ssl_cert(query_params.get("cert").map(|s| s.to_string()))
+                    .with_ssl_key(query_params.get("key").map(|s| s.to_string()))
+                    .with_ssl_ca(query_params.get("ca").map(|s| s.to_string()))
                     .with_database_name(Some(db_name.to_string()))
                     .with_database_name_suffix(
                         query_params.get("dbname_suffix").map(|s| s.to_string()),

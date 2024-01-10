@@ -145,7 +145,7 @@ impl TlsConnect<PgMaybeTlsStream> for PgDbalTlsConnect {
                 .tls_config
                 .create_client_config()
                 .await
-                .map_err(|e| StdError::from(e))?;
+                .map_err(StdError::from)?;
             let config = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
             let client_conn = config
                 .connect(

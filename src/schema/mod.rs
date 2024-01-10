@@ -209,7 +209,10 @@ impl Schema {
         if self.has_table(&name) {
             Err(format!(r#"Table "{}" already exists."#, name).into())
         } else {
-            self.tables.push(Table::new(&name));
+            let mut table = Table::new(&name);
+            table.set_schema_config(self.schema_config.clone());
+
+            self.tables.push(table);
             Ok(self.get_table_mut(name).unwrap())
         }
     }

@@ -1,12 +1,15 @@
+use crate::connection_options::SslMode;
 use crate::driver::connection::{Connection, DriverConnection};
 use crate::driver::mysql::platform;
 use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::sync::Mutex;
+use crate::tls::DbalTls;
 use crate::{Async, EventDispatcher, Result};
 use mysql_async::{Conn, Opts, OptsBuilder};
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::ops::Deref;
 use std::sync::Arc;
 use url::Url;
 use version_compare::{compare_to, Cmp};
@@ -27,6 +30,11 @@ pub struct ConnectionOptions {
     pub user: String,
     pub password: Option<String>,
     pub db_name: Option<String>,
+    pub ssl_mode: SslMode,
+    pub ssl_cert: Option<String>,
+    pub ssl_key: Option<String>,
+    pub ssl_rootcert: Option<String>,
+    pub ssl_crl: Option<String>,
 }
 
 impl From<&crate::ConnectionOptions> for ConnectionOptions {
@@ -41,6 +49,11 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
                 .unwrap_or_else(|| "root".to_string()),
             password: opts.password.as_ref().cloned(),
             db_name: opts.database_name.as_ref().cloned(),
+            ssl_mode: opts.ssl_mode,
+            ssl_cert: opts.ssl_cert.clone(),
+            ssl_key: opts.ssl_key.clone(),
+            ssl_rootcert: opts.ssl_rootcert.clone(),
+            ssl_crl: opts.ssl_crl.clone(),
         }
     }
 }
@@ -53,6 +66,28 @@ impl ConnectionOptions {
         }
 
         let password = url.password().map(String::from);
+        let mut ssl_mode = SslMode::Prefer;
+        let mut ssl_cert = None;
+        let mut ssl_key = None;
+        let mut ssl_ca = None;
+
+        for (name, value) in url.query_pairs() {
+            match name.deref() {
+                "ssl_mode" => {
+                    ssl_mode = SslMode::from(name.deref());
+                }
+                "cert" => {
+                    ssl_cert = Some(value.to_string());
+                }
+                "key" => {
+                    ssl_key = Some(value.to_string());
+                }
+                "ca" => {
+                    ssl_ca = Some(value.to_string());
+                }
+                _ => (),
+            }
+        }
 
         Self {
             host: url.host().map(|h| h.to_string()),
@@ -67,6 +102,11 @@ impl ConnectionOptions {
                     Some(path)
                 }
             },
+            ssl_mode,
+            ssl_cert,
+            ssl_key,
+            ssl_rootcert: ssl_ca,
+            ssl_crl: None,
         }
     }
 }
@@ -75,11 +115,21 @@ impl DriverConnection<ConnectionOptions> for Driver {
     type Output = impl Future<Output = Result<Self>>;
 
     fn create(opts: ConnectionOptions) -> Self::Output {
+        let tls = DbalTls::new(
+            opts.ssl_mode,
+            opts.ssl_cert,
+            opts.ssl_key,
+            opts.ssl_rootcert,
+            opts.ssl_crl,
+        );
+        let ssl_opts = tls.get_mysql_config();
+
         let opts_builder = OptsBuilder::default()
             .user(Some(&opts.user))
             .pass(opts.password)
             .ip_or_hostname(opts.host.unwrap_or_else(|| "localhost".to_string()))
             .tcp_port(opts.port.unwrap_or(3306))
+            .ssl_opts(ssl_opts)
             .db_name(opts.db_name);
 
         let opts = Opts::from(opts_builder);

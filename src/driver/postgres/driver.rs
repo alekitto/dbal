@@ -1,16 +1,18 @@
 use crate::connection_options::SslMode;
 use crate::driver::connection::{Connection, DriverConnection};
+use crate::driver::postgres::connect;
 use crate::driver::postgres::platform::PostgreSQLPlatform;
 use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::sync::JoinHandle;
+use crate::tls::DbalTls;
 use crate::{Async, EventDispatcher, Result};
 use regex::Regex;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::ops::Deref;
 use std::sync::Arc;
-use tokio_postgres::tls::{MakeTlsConnect, TlsStream};
-use tokio_postgres::{Client, GenericClient, NoTls, Socket};
+use tokio_postgres::{Client, Config, GenericClient};
 use url::Url;
 
 pub struct ConnectionOptions {
@@ -20,6 +22,10 @@ pub struct ConnectionOptions {
     pub password: Option<String>,
     pub db_name: Option<String>,
     pub ssl_mode: SslMode,
+    pub ssl_cert: Option<String>,
+    pub ssl_key: Option<String>,
+    pub ssl_rootcert: Option<String>,
+    pub ssl_crl: Option<String>,
     pub application_name: Option<String>,
 }
 
@@ -37,6 +43,10 @@ impl From<&crate::ConnectionOptions> for ConnectionOptions {
             db_name: opts.database_name.as_ref().cloned(),
             ssl_mode: opts.ssl_mode,
             application_name: opts.application_name.as_ref().cloned(),
+            ssl_cert: opts.ssl_cert.clone(),
+            ssl_key: opts.ssl_key.clone(),
+            ssl_rootcert: opts.ssl_rootcert.clone(),
+            ssl_crl: opts.ssl_crl.clone(),
         }
     }
 }
@@ -49,6 +59,32 @@ impl ConnectionOptions {
         }
 
         let password = url.password().map(String::from);
+        let mut ssl_mode = SslMode::Prefer;
+        let mut ssl_cert = None;
+        let mut ssl_key = None;
+        let mut ssl_ca = None;
+        let mut application_name = None;
+
+        for (name, value) in url.query_pairs() {
+            match name.deref() {
+                "application_name" => {
+                    application_name = Some(value.to_string());
+                }
+                "ssl_mode" => {
+                    ssl_mode = SslMode::from(name.deref());
+                }
+                "cert" => {
+                    ssl_cert = Some(value.to_string());
+                }
+                "key" => {
+                    ssl_key = Some(value.to_string());
+                }
+                "ca" => {
+                    ssl_ca = Some(value.to_string());
+                }
+                _ => (),
+            }
+        }
 
         Self {
             host: url.host().map(|h| h.to_string()),
@@ -63,18 +99,12 @@ impl ConnectionOptions {
                     Some(path)
                 }
             },
-            ssl_mode: SslMode::None,
-            application_name: {
-                let mut ret = None;
-                for (name, value) in url.query_pairs() {
-                    if name == "application_name" {
-                        ret = Some(value.to_string());
-                        break;
-                    }
-                }
-
-                ret
-            },
+            ssl_mode,
+            ssl_cert,
+            ssl_key,
+            ssl_rootcert: ssl_ca,
+            ssl_crl: None,
+            application_name,
         }
     }
 }
@@ -92,12 +122,7 @@ impl Debug for Driver {
 }
 
 impl Driver {
-    fn build_dsn(
-        options: ConnectionOptions,
-    ) -> (
-        String,
-        impl MakeTlsConnect<Socket, Stream = impl TlsStream + Unpin + Send>,
-    ) {
+    fn build_dsn(options: ConnectionOptions) -> (String, DbalTls) {
         let mut dsn = String::new();
         if let Some(host) = options.host {
             if !host.is_empty() {
@@ -117,7 +142,17 @@ impl Driver {
         let db_name = options.db_name.unwrap_or_else(|| "postgres".to_string());
         dsn += &format!("dbname={} ", db_name);
 
-        // TODO ssl
+        dsn += &format!(
+            "sslmode={} ",
+            match options.ssl_mode {
+                SslMode::None => "disable",
+                SslMode::Allow => "prefer",
+                SslMode::Prefer => "prefer",
+                SslMode::Require => "require",
+                SslMode::VerifyCa => "require",
+                SslMode::VerifyFull => "require",
+            }
+        );
 
         if let Some(application_name) = options.application_name {
             if !application_name.is_empty() {
@@ -125,7 +160,16 @@ impl Driver {
             }
         }
 
-        (dsn.trim().to_string(), NoTls)
+        (
+            dsn.trim().to_string(),
+            DbalTls::new(
+                options.ssl_mode,
+                options.ssl_cert,
+                options.ssl_key,
+                options.ssl_rootcert,
+                options.ssl_crl,
+            ),
+        )
     }
 }
 
@@ -136,8 +180,10 @@ impl DriverConnection<ConnectionOptions> for Driver {
         let (config, tls) = Self::build_dsn(params);
 
         async move {
+            let config = config.parse::<Config>()?;
+
             // Connect to the database.
-            let (client, connection) = tokio_postgres::connect(&config, tls).await?;
+            let (client, connection) = connect::connect(tls, &config).await?;
             let handle = crate::sync::spawn(async move {
                 if let Err(e) = connection.await {
                     eprintln!("connection error: {}", e);

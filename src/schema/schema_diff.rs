@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 /// to a target schema.
 #[derive(Clone, Default)]
 pub struct SchemaDiff<'a> {
+    #[allow(dead_code)]
     /// The optional "from" schema.
     from_schema: Option<&'a Schema>,
     /// All added namespaces.

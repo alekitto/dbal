@@ -8,8 +8,8 @@ use crate::r#type::IntoType;
 use crate::schema::SchemaManager;
 use crate::util::PlatformBox;
 use crate::{
-    params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameter, ParameterType,
-    Parameters, Result, Row, TypedValueMap, Value, ValueMap,
+    params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
+    TypedValueMap, Value,
 };
 use itertools::Itertools;
 use log::debug;
@@ -285,32 +285,6 @@ impl Connection {
                 .map(|k| platform.quote_identifier(k))
                 .join(", ");
 
-            let values: Vec<_> = values
-                .into_values()
-                .map(|typed| -> Result<Parameter> {
-                    Ok(if let Some(ty) = typed.r#type {
-                        let ty = ty.into_type()?;
-                        Parameter::new(
-                            ty.convert_to_database_value(typed.value, platform)?,
-                            ty.get_binding_type(),
-                        )
-                    } else {
-                        match typed.value {
-                            Value::NULL => Parameter::new(typed.value, ParameterType::Null),
-                            Value::UInt(_) | Value::Int(_) => {
-                                Parameter::new(typed.value, ParameterType::Integer)
-                            }
-                            Value::Float(_) => Parameter::new(typed.value, ParameterType::Float),
-                            Value::Bytes(_) => Parameter::new(typed.value, ParameterType::Binary),
-                            Value::Boolean(_) => {
-                                Parameter::new(typed.value, ParameterType::Boolean)
-                            }
-                            _ => Parameter::new(typed.value, ParameterType::String),
-                        }
-                    })
-                })
-                .try_collect()?;
-
             self.execute_statement(
                 format!(
                     "INSERT INTO {} ({}) VALUES ({})",
@@ -318,7 +292,7 @@ impl Connection {
                     columns,
                     set
                 ),
-                Parameters::from(values),
+                values.into_parameters(platform)?,
             )
             .await
         }
@@ -326,7 +300,7 @@ impl Connection {
 
     /// Executes an SQL DELETE statement on a table.
     /// Table expression and columns are not escaped and are not safe for user-input.
-    pub async fn delete(&self, table: &str, criteria: ValueMap<'_>) -> Result<usize> {
+    pub async fn delete(&self, table: &str, criteria: TypedValueMap<'_>) -> Result<usize> {
         if criteria.is_empty() {
             return Err(Error::empty_criteria());
         }
@@ -336,10 +310,12 @@ impl Connection {
             .keys()
             .map(|k| format!("{} = ?", platform.quote_identifier(k)))
             .join(" AND ");
-        let values = Parameters::from(criteria.values().cloned().collect::<Vec<_>>());
 
-        self.execute_statement(format!("DELETE FROM {} WHERE {}", table, columns), values)
-            .await
+        self.execute_statement(
+            format!("DELETE FROM {} WHERE {}", table, columns),
+            criteria.into_parameters(platform)?,
+        )
+        .await
     }
 
     /// Executes an SQL statement, returning a result set as a vector of Row objects.

@@ -46,5 +46,7 @@ pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use util::const_expr_count;
 pub use value::{TypedValue, TypedValueMap, Value, ValueMap};
 
+pub use creed_macros::{migrator, value_map, IntoIdentifier};
+
 #[cfg(test)]
 pub mod tests;

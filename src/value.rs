@@ -1,6 +1,8 @@
-use crate::r#type::TypePtr;
-use crate::{Error, Result as CreedResult};
+use crate::platform::DatabasePlatform;
+use crate::r#type::{IntoType, TypePtr};
+use crate::{Error, Parameter, ParameterType, Parameters, Result as CreedResult};
 use chrono::{DateTime, Local, TimeZone};
+use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::hash_map::{IntoValues, Keys, Values};
 use std::collections::HashMap;
@@ -446,6 +448,35 @@ impl<'s> TypedValueMap<'s> {
     pub fn into_values(self) -> IntoValues<&'s str, TypedValue> {
         self.0.into_values()
     }
+
+    pub fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'_>> {
+        let values: Vec<_> = self
+            .0
+            .into_values()
+            .map(|typed| -> CreedResult<Parameter> {
+                Ok(if let Some(ty) = typed.r#type {
+                    let ty = ty.into_type()?;
+                    Parameter::new(
+                        ty.convert_to_database_value(typed.value, platform)?,
+                        ty.get_binding_type(),
+                    )
+                } else {
+                    match typed.value {
+                        Value::NULL => Parameter::new(typed.value, ParameterType::Null),
+                        Value::UInt(_) | Value::Int(_) => {
+                            Parameter::new(typed.value, ParameterType::Integer)
+                        }
+                        Value::Float(_) => Parameter::new(typed.value, ParameterType::Float),
+                        Value::Bytes(_) => Parameter::new(typed.value, ParameterType::Binary),
+                        Value::Boolean(_) => Parameter::new(typed.value, ParameterType::Boolean),
+                        _ => Parameter::new(typed.value, ParameterType::String),
+                    }
+                })
+            })
+            .try_collect()?;
+
+        Ok(Parameters::from(values))
+    }
 }
 
 impl<'s> ValueMap<'s> {
@@ -467,6 +498,25 @@ impl<'s> ValueMap<'s> {
 
     pub fn into_values(self) -> IntoValues<&'s str, Value> {
         self.0.into_values()
+    }
+
+    pub fn into_parameters(self) -> Parameters<'s> {
+        let values = self
+            .0
+            .into_values()
+            .map(|value| -> Parameter {
+                match value {
+                    Value::NULL => Parameter::new(value, ParameterType::Null),
+                    Value::UInt(_) | Value::Int(_) => Parameter::new(value, ParameterType::Integer),
+                    Value::Float(_) => Parameter::new(value, ParameterType::Float),
+                    Value::Bytes(_) => Parameter::new(value, ParameterType::Binary),
+                    Value::Boolean(_) => Parameter::new(value, ParameterType::Boolean),
+                    _ => Parameter::new(value, ParameterType::String),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        Parameters::from(values)
     }
 }
 

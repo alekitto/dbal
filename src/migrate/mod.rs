@@ -124,6 +124,7 @@ impl Migrator {
             }
         }
 
+        connection.commit().await?;
         let total_time = chrono::Utc::now() - global_start;
 
         info!(target: "creed_migration", "Migrated database in {}ms, {} migrations executed, {} sql queries", total_time.num_milliseconds(), plans_count, sql_count);

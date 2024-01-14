@@ -10,7 +10,7 @@ repository = "https://github.com/alekitto/dbal"
 [dependencies]
 bitflags = "2"
 chrono = "0.4"
-creed_derive = { path = "./derive" }
+creed_macros = { path = "./derive" }
 crc = "3"
 dashmap = "5"
 delegate = "0.12"
@@ -19,6 +19,7 @@ futures = "0.3"
 hex = "0.4.3"
 itertools = "0.12"
 lazy_static = "1"
+log = "0.4"
 mysql_async = { git = "https://github.com/alekitto/mysql_async", branch = "fix/issue_283", optional = true, default-features = false }
 native-tls = { version = "0.2", optional = true }
 postgres-protocol = { version = "0.6", optional = true }
@@ -50,7 +51,7 @@ tokio-test = "0.4"
 default = ["mysql", "postgres", "sqlite", "runtime-tokio-rustls"]
 mysql = ["mysql_async"]
 native-tls = ["dep:native-tls", "dep:tokio-native-tls", "mysql_async?/default"]
-postgres = ["tokio-postgres", "postgres-protocol"]
+postgres = ["tokio-postgres", "postgres-protocol", "tokio-postgres/with-chrono-0_4"]
 runtime-tokio-native-tls = ["native-tls"]
 runtime-tokio-rustls = ["rustls"]
 rustls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:tokio-rustls", "dep:rustls-webpki", "mysql_async?/default-rustls"]

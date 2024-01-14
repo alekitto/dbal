@@ -5,11 +5,12 @@ use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::sync::Mutex;
 use crate::tls::DbalTls;
-use crate::{Async, EventDispatcher, Result};
+use crate::{Async, AsyncResult, EventDispatcher, Result};
+use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, Opts, OptsBuilder};
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use url::Url;
 use version_compare::{compare_to, Cmp};
@@ -187,5 +188,32 @@ impl<'conn> Connection<'conn> for Driver {
         let statement = super::statement::Statement::new(self, sql)?;
 
         Ok(Box::new(statement))
+    }
+
+    fn begin_transaction(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            let mut connection = self.connection.lock().await;
+            connection.deref_mut().query_drop("BEGIN").await?;
+
+            Ok(())
+        })
+    }
+
+    fn commit(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            let mut connection = self.connection.lock().await;
+            connection.deref_mut().query_drop("COMMIT").await?;
+
+            Ok(())
+        })
+    }
+
+    fn roll_back(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            let mut connection = self.connection.lock().await;
+            connection.deref_mut().query_drop("ROLLBACK").await?;
+
+            Ok(())
+        })
     }
 }

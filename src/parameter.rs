@@ -143,8 +143,22 @@ impl TryFrom<Parameter> for Vec<u8> {
             Value::Float(f) => Ok(f.to_be_bytes().to_vec()),
             Value::Bytes(v) => Ok(v),
             Value::Boolean(b) => Ok(if b { vec![1_u8] } else { vec![0_u8] }),
+            Value::DateTime(dt) => Ok(dt.to_rfc3339().into_bytes()),
+            Value::Json(json) => Ok(json.to_string().into_bytes()),
+            Value::Uuid(uuid) => Ok(uuid.to_string().into_bytes()),
             _ => Err(Error::type_mismatch()),
         }
+    }
+}
+
+impl From<Vec<Parameter>> for Parameters<'_> {
+    fn from(value: Vec<Parameter>) -> Self {
+        let mut v = vec![];
+        for (idx, value) in value.into_iter().enumerate() {
+            v.push((ParameterIndex::Positional(idx), value));
+        }
+
+        Parameters::Vec(v)
     }
 }
 

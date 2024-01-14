@@ -90,13 +90,13 @@ impl<'conn> Statement<'conn> {
     }
 
     async fn internal_query(&'conn self, params: Vec<(ParameterIndex, Parameter)>) -> Result<Rows> {
-        let params = Params::try_from(Parameters::Vec(params));
+        let params = self.parameters_to_params(params)?;
         let mut connection = self.connection.connection.lock().await;
 
         let result = self
             .sql
             .clone()
-            .with(params?)
+            .with(params)
             .run(connection.deref_mut())
             .await?;
 
@@ -116,12 +116,12 @@ impl<'conn> Statement<'conn> {
         &'conn self,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> Result<usize> {
-        let params = Params::try_from(Parameters::Vec(params));
+        let params = self.parameters_to_params(params)?;
         let mut connection = self.connection.connection.lock().await;
 
         self.sql
             .clone()
-            .with(params?)
+            .with(params)
             .ignore(connection.deref_mut())
             .await?;
 
@@ -129,6 +129,13 @@ impl<'conn> Statement<'conn> {
         self.row_count.store(affected_rows, Ordering::SeqCst);
 
         Ok(affected_rows)
+    }
+
+    fn parameters_to_params(
+        &'conn self,
+        params: Vec<(ParameterIndex, Parameter)>,
+    ) -> Result<Params> {
+        Params::try_from(Parameters::Vec(params))
     }
 }
 

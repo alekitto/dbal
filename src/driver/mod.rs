@@ -90,6 +90,21 @@ impl Driver {
             Ok(query_result.unwrap())
         })
     }
+
+    /// Starts a transaction.
+    pub fn begin_transaction(&self) -> AsyncResult<()> {
+        self.inner_driver.begin_transaction()
+    }
+
+    /// Commits a transaction.
+    pub fn commit(&self) -> AsyncResult<()> {
+        self.inner_driver.commit()
+    }
+
+    /// Rolls back a transaction.
+    pub fn roll_back(&self) -> AsyncResult<()> {
+        self.inner_driver.roll_back()
+    }
 }
 
 #[cfg(test)]

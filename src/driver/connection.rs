@@ -1,5 +1,6 @@
 use super::statement::Statement;
 use crate::driver::statement_result::StatementResult;
+use crate::parameter::NO_PARAMS;
 use crate::platform::DatabasePlatform;
 use crate::{Async, AsyncResult, EventDispatcher, Parameters, Result};
 use std::fmt::Debug;
@@ -34,5 +35,29 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
 
         let statement = statement.unwrap();
         Box::new(statement).query_owned(Vec::from(params))
+    }
+
+    /// Starts a transaction.
+    fn begin_transaction(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            self.query("BEGIN", NO_PARAMS).await?;
+            Ok(())
+        })
+    }
+
+    /// Commits a transaction.
+    fn commit(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            self.query("COMMIT", NO_PARAMS).await?;
+            Ok(())
+        })
+    }
+
+    /// Rolls back a transaction.
+    fn roll_back(&'conn self) -> AsyncResult<()> {
+        Box::pin(async move {
+            self.query("ROLLBACK", NO_PARAMS).await?;
+            Ok(())
+        })
     }
 }

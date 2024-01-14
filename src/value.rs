@@ -1,6 +1,9 @@
+use crate::r#type::TypePtr;
 use crate::{Error, Result as CreedResult};
 use chrono::{DateTime, Local, TimeZone};
 use std::cmp::Ordering;
+use std::collections::hash_map::{IntoValues, Keys, Values};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -420,6 +423,76 @@ impl<I: AsRef<str> + From<String>> From<&Value> for Option<I> {
     }
 }
 
+pub struct ValueMap<'s>(pub HashMap<&'s str, Value>);
+pub struct TypedValueMap<'s>(pub HashMap<&'s str, TypedValue>);
+
+impl<'s> TypedValueMap<'s> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn keys(&self) -> Keys<&str, TypedValue> {
+        self.0.keys()
+    }
+
+    pub fn values(&self) -> Values<&str, TypedValue> {
+        self.0.values()
+    }
+
+    pub fn into_values(self) -> IntoValues<&'s str, TypedValue> {
+        self.0.into_values()
+    }
+}
+
+impl<'s> ValueMap<'s> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn keys(&self) -> Keys<&str, Value> {
+        self.0.keys()
+    }
+
+    pub fn values(&self) -> Values<&str, Value> {
+        self.0.values()
+    }
+
+    pub fn into_values(self) -> IntoValues<&'s str, Value> {
+        self.0.into_values()
+    }
+}
+
+#[derive(Clone)]
+pub struct TypedValue {
+    pub value: Value,
+    pub r#type: Option<TypePtr>,
+}
+
+impl From<TypedValue> for Value {
+    fn from(value: TypedValue) -> Self {
+        value.value
+    }
+}
+
+impl<'a> From<TypedValueMap<'a>> for ValueMap<'a> {
+    fn from(value: TypedValueMap<'a>) -> Self {
+        let mut map = HashMap::with_capacity(value.len());
+        for (k, v) in value.0.into_iter() {
+            map.insert(k, v.value);
+        }
+
+        ValueMap(map)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::Value;
@@ -553,17 +626,4 @@ mod tests {
             !value.is_datetime_eq(&DateTime::parse_from_rfc3339("2020-01-01T05:00:00Z").unwrap())
         );
     }
-}
-
-pub macro value_map {
-    ($($key:expr => $val:expr),* ,) => (
-        $crate::value_map!($($key => $val),*)
-    ),
-    ($($key:expr => $val:expr),*) => ({
-        let start_capacity = $crate::const_expr_count!($($key);*);
-        #[allow(unused_mut)]
-        let mut map = ::std::collections::HashMap::<_, $crate::Value>::with_capacity(start_capacity);
-        $( map.insert($key, $val.into()); )*
-        map
-    })
 }

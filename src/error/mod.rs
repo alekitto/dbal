@@ -26,6 +26,10 @@ pub enum ErrorKind {
 
     ConnectionError = 100,
     ConfigurationError = 101,
+    SkipMigration = 102,
+    EmptyCriteria = 103,
+
+    NoActiveTransaction = 500,
 
     PostgresTypeMismatch = 1001,
     PlatformFeatureUnsupported = 2000,
@@ -41,7 +45,7 @@ pub enum ErrorKind {
 }
 
 pub struct Error {
-    kind: ErrorKind,
+    pub(crate) kind: ErrorKind,
     inner: Box<dyn std::error::Error + Send + Sync>,
     backtrace: Backtrace,
 }
@@ -104,6 +108,18 @@ impl Error {
 
     pub fn config(message: &str) -> Self {
         Self::new(ErrorKind::ConfigurationError, message.to_string())
+    }
+
+    pub fn skip_migration() -> Self {
+        Self::new(ErrorKind::SkipMigration, "Migration skipped")
+    }
+
+    pub fn empty_criteria() -> Self {
+        Self::new(ErrorKind::EmptyCriteria, "Empty criteria")
+    }
+
+    pub fn no_active_transaction() -> Self {
+        Self::new(ErrorKind::NoActiveTransaction, "No active transaction")
     }
 
     pub fn connect(error: io::Error) -> Self {

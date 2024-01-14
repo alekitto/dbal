@@ -1,5 +1,5 @@
 [package]
-name = "creed_derive"
+name = "creed_macros"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,5 +7,7 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
+proc-macro2 = "1.0"
 quote = "1.0"
 syn = "2.0"
+sha2 = "0.11.0-pre.1"

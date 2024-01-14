@@ -9,12 +9,12 @@ use sqlparser::ast::{visit_expressions_mut, Expr};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Write};
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_postgres::types::private::BytesMut;
-use tokio_postgres::types::{to_sql_checked, IsNull, ToSql, Type};
+use tokio_postgres::types::{to_sql_checked, Format, IsNull, ToSql, Type};
 
 pub struct Statement<'conn> {
     pub(super) connection: &'conn Driver,
@@ -22,19 +22,6 @@ pub struct Statement<'conn> {
     parameters: DashMap<ParameterIndex, Parameter>,
     row_count: AtomicUsize,
     phantom_data: PhantomData<&'conn Self>,
-}
-
-fn type_to_sql(type_: ParameterType) -> Type {
-    match type_ {
-        ParameterType::Null => Type::INT4,
-        ParameterType::Integer => Type::INT8,
-        ParameterType::String => Type::VARCHAR,
-        ParameterType::LargeObject => Type::BYTEA,
-        ParameterType::Float => Type::FLOAT8,
-        ParameterType::Boolean => Type::BOOL,
-        ParameterType::Binary => Type::BYTEA,
-        ParameterType::Ascii => Type::VARCHAR,
-    }
 }
 
 fn bytes_to_binary(
@@ -64,24 +51,30 @@ impl ToSql for Parameter {
         match self.value_type {
             ParameterType::Null => Ok(IsNull::Yes),
             ParameterType::Integer => match &self.value {
-                Value::Int(val) => <i64 as ToSql>::to_sql(val, ty, out),
-                Value::UInt(val) => <i64 as ToSql>::to_sql(&(*val as i64), ty, out),
+                Value::Int(val) => {
+                    out.write_str(&val.to_string())?;
+                    Ok(IsNull::No)
+                }
+                Value::UInt(val) => {
+                    out.write_str(&val.to_string())?;
+                    Ok(IsNull::No)
+                }
                 _ => Err(Box::new(StdError::from(Error::postgres_type_mismatch()))),
             },
             ParameterType::String | ParameterType::Ascii => match &self.value {
-                Value::String(val) => <&str as ToSql>::to_sql(&val.as_str(), ty, out),
-                Value::DateTime(val) => <String as ToSql>::to_sql(&val.to_rfc3339(), ty, out),
+                Value::String(val) => val.as_str().to_sql(ty, out),
+                Value::DateTime(val) => val.to_sql(ty, out),
                 Value::Json(val) => <String as ToSql>::to_sql(&val.to_string(), ty, out),
                 Value::Uuid(val) => <String as ToSql>::to_sql(&val.to_string(), ty, out),
                 _ => Err(Box::new(StdError::from(Error::postgres_type_mismatch()))),
             },
             ParameterType::LargeObject => bytes_to_binary(&self.value, ty, out),
             ParameterType::Float => match &self.value {
-                Value::Float(val) => <f64 as ToSql>::to_sql(val, ty, out),
+                Value::Float(val) => val.to_sql(ty, out),
                 _ => Err(Box::new(StdError::from(Error::postgres_type_mismatch()))),
             },
             ParameterType::Boolean => match &self.value {
-                Value::Boolean(val) => <bool as ToSql>::to_sql(val, ty, out),
+                Value::Boolean(val) => val.to_sql(ty, out),
                 _ => Err(Box::new(StdError::from(Error::postgres_type_mismatch()))),
             },
             ParameterType::Binary => bytes_to_binary(&self.value, ty, out),
@@ -90,6 +83,13 @@ impl ToSql for Parameter {
 
     fn accepts(_: &Type) -> bool {
         true
+    }
+
+    fn encode_format(&self, _ty: &Type) -> Format {
+        match self.value_type {
+            ParameterType::String | ParameterType::Integer => Format::Text,
+            _ => Format::Binary,
+        }
     }
 
     to_sql_checked!();
@@ -110,7 +110,6 @@ impl<'conn> Statement<'conn> {
         &'conn self,
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> Result<(tokio_postgres::Statement, Vec<Parameter>)> {
-        let mut types = Vec::with_capacity(params.len());
         let mut raw_params = Vec::with_capacity(params.len());
         let mut sql = self.sql.clone();
 
@@ -127,13 +126,8 @@ impl<'conn> Statement<'conn> {
 
             let mut named_map: HashMap<String, usize> = HashMap::new();
             for (i, p) in params {
-                match i {
-                    ParameterIndex::Named(name) => {
-                        named_map.insert(name, raw_params.len());
-                    }
-                    ParameterIndex::Positional(pos) => {
-                        types.insert(pos, type_to_sql(p.value_type));
-                    }
+                if let ParameterIndex::Named(name) = i {
+                    named_map.insert(name, raw_params.len());
                 }
 
                 raw_params.push(p);
@@ -179,11 +173,7 @@ impl<'conn> Statement<'conn> {
             sql = statement.to_string();
         }
 
-        let statement = self
-            .connection
-            .client
-            .prepare_typed(&sql, types.as_slice())
-            .await?;
+        let statement = self.connection.client.prepare(&sql).await?;
 
         Ok((statement, raw_params))
     }

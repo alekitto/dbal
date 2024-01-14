@@ -78,7 +78,7 @@ pub fn remove_type_from_comment<I: IntoType>(
     })
 }
 
-pub trait SchemaManager: Sync {
+pub trait SchemaManager: Sync + Send {
     /// Gets the database connection.
     fn get_connection(&self) -> &Connection;
 
@@ -1441,6 +1441,7 @@ mod tests {
     use crate::tests::{
         create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
     };
+    use crate::SchemaAlterTableRenameColumnEvent;
     use crate::{
         params, Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
         SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
@@ -1448,7 +1449,7 @@ mod tests {
         SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent,
         SchemaIndexDefinitionEvent, Value,
     };
-    use crate::{value_map, SchemaAlterTableRenameColumnEvent};
+    use creed_macros::value_map;
     use itertools::Itertools;
     use serial_test::serial;
     use std::collections::HashMap;

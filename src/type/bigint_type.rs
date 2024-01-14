@@ -1,8 +1,8 @@
 use crate::platform::DatabasePlatform;
 use crate::r#type::Type;
 use crate::schema::ColumnData;
-use crate::Result;
 use crate::{Error, Value};
+use crate::{ParameterType, Result};
 
 pub struct BigintType {}
 
@@ -13,12 +13,23 @@ impl Type for BigintType {
 
     fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
-            Value::NULL | Value::String(_) => Ok(value.clone()),
-            Value::Int(val) => Ok(Value::String(val.to_string())),
+            Value::NULL | Value::Int(_) | Value::UInt(_) => Ok(value.clone()),
+            Value::String(str) => Ok(Value::Int(str.parse()?)),
             _ => Err(Error::conversion_failed_invalid_type(
                 value,
-                "Bigint",
+                self.get_name(),
                 &["NULL", "String", "Integer"],
+            )),
+        }
+    }
+
+    fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Int(_) | Value::UInt(_) => Ok(value),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Integer"],
             )),
         }
     }
@@ -33,6 +44,10 @@ impl Type for BigintType {
         platform: &dyn DatabasePlatform,
     ) -> Result<String> {
         platform.get_bigint_type_declaration_sql(column)
+    }
+
+    fn get_binding_type(&self) -> ParameterType {
+        ParameterType::Integer
     }
 
     fn convert_to_default_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<String> {

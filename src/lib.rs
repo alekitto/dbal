@@ -4,7 +4,7 @@
 #![feature(impl_trait_in_assoc_type)]
 
 extern crate core;
-extern crate creed_derive;
+extern crate creed_macros;
 extern crate self as creed;
 
 mod configuration;
@@ -23,6 +23,7 @@ pub(crate) mod util;
 
 pub mod driver;
 pub mod error;
+pub mod migrate;
 pub mod platform;
 pub mod schema;
 pub mod sync;
@@ -43,7 +44,7 @@ pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use util::const_expr_count;
-pub use value::{value_map, Value};
+pub use value::{TypedValue, TypedValueMap, Value, ValueMap};
 
 #[cfg(test)]
 pub mod tests;

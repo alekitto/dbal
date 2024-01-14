@@ -22,6 +22,17 @@ impl Type for IntegerType {
         }
     }
 
+    fn convert_to_database_value(&self, value: Value, _: &dyn DatabasePlatform) -> Result<Value> {
+        match value {
+            Value::NULL | Value::Int(_) | Value::UInt(_) => Ok(value),
+            _ => Err(Error::conversion_failed_invalid_type(
+                &value,
+                self.get_name(),
+                &["NULL", "Integer"],
+            )),
+        }
+    }
+
     fn get_name(&self) -> &'static str {
         super::INTEGER
     }

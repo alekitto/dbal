@@ -8,12 +8,13 @@ use crate::r#type::IntoType;
 use crate::schema::SchemaManager;
 use crate::util::PlatformBox;
 use crate::{
-    params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
-    Value,
+    params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameter, ParameterType,
+    Parameters, Result, Row, TypedValueMap, Value, ValueMap,
 };
 use itertools::Itertools;
-use std::collections::HashMap;
+use log::debug;
 use std::io::Read;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// The main database connection struct.
@@ -38,6 +39,7 @@ pub struct Connection {
     driver: Option<Arc<Driver>>,
     platform: Option<PlatformBox>,
     event_manager: Arc<EventDispatcher>,
+    transaction_nesting_level: AtomicUsize,
 }
 
 impl Connection {
@@ -64,6 +66,7 @@ impl Connection {
             driver: None,
             platform,
             event_manager,
+            transaction_nesting_level: AtomicUsize::default(),
         }
     }
 
@@ -98,6 +101,7 @@ impl Connection {
             platform: Some(platform),
             driver: Some(driver),
             event_manager,
+            transaction_nesting_level: AtomicUsize::default(),
         })
     }
 
@@ -268,7 +272,7 @@ impl Connection {
     }
 
     /// Inserts a record into the given table.
-    pub async fn insert(&self, table: &str, values: HashMap<&str, Value>) -> Result<usize> {
+    pub async fn insert(&self, table: &str, values: TypedValueMap<'_>) -> Result<usize> {
         if values.is_empty() {
             self.execute_statement(format!("INSERT INTO {} () VALUES ()", table), NO_PARAMS)
                 .await
@@ -280,7 +284,32 @@ impl Connection {
                 .keys()
                 .map(|k| platform.quote_identifier(k))
                 .join(", ");
-            let values = Parameters::from(values.values().cloned().collect::<Vec<_>>());
+
+            let values: Vec<_> = values
+                .into_values()
+                .map(|typed| -> Result<Parameter> {
+                    Ok(if let Some(ty) = typed.r#type {
+                        let ty = ty.into_type()?;
+                        Parameter::new(
+                            ty.convert_to_database_value(typed.value, platform)?,
+                            ty.get_binding_type(),
+                        )
+                    } else {
+                        match typed.value {
+                            Value::NULL => Parameter::new(typed.value, ParameterType::Null),
+                            Value::UInt(_) | Value::Int(_) => {
+                                Parameter::new(typed.value, ParameterType::Integer)
+                            }
+                            Value::Float(_) => Parameter::new(typed.value, ParameterType::Float),
+                            Value::Bytes(_) => Parameter::new(typed.value, ParameterType::Binary),
+                            Value::Boolean(_) => {
+                                Parameter::new(typed.value, ParameterType::Boolean)
+                            }
+                            _ => Parameter::new(typed.value, ParameterType::String),
+                        }
+                    })
+                })
+                .try_collect()?;
 
             self.execute_statement(
                 format!(
@@ -289,10 +318,28 @@ impl Connection {
                     columns,
                     set
                 ),
-                values,
+                Parameters::from(values),
             )
             .await
         }
+    }
+
+    /// Executes an SQL DELETE statement on a table.
+    /// Table expression and columns are not escaped and are not safe for user-input.
+    pub async fn delete(&self, table: &str, criteria: ValueMap<'_>) -> Result<usize> {
+        if criteria.is_empty() {
+            return Err(Error::empty_criteria());
+        }
+
+        let platform = self.platform.as_ref().ok_or_else(Error::not_connected)?;
+        let columns = criteria
+            .keys()
+            .map(|k| format!("{} = ?", platform.quote_identifier(k)))
+            .join(" AND ");
+        let values = Parameters::from(criteria.values().cloned().collect::<Vec<_>>());
+
+        self.execute_statement(format!("DELETE FROM {} WHERE {}", table, columns), values)
+            .await
     }
 
     /// Executes an SQL statement, returning a result set as a vector of Row objects.
@@ -356,6 +403,106 @@ impl Connection {
         } else {
             Err(Error::not_connected())
         }
+    }
+
+    pub async fn begin_transaction(&self) -> Result<()> {
+        let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
+        let old_level = self
+            .transaction_nesting_level
+            .fetch_add(1, Ordering::SeqCst);
+        if old_level == 0 {
+            debug!(target: "creed sql", r#""START TRANSACTION""#);
+            driver.begin_transaction().await?;
+        } else {
+            debug!(target: "creed sql", r#""SAVEPOINT""#);
+            self.create_savepoint(format!(
+                "CREED_SAVEPOINT_{}",
+                self.transaction_nesting_level.load(Ordering::SeqCst)
+            ))
+            .await?;
+        }
+
+        // todo: dispatch event
+
+        Ok(())
+    }
+
+    pub async fn commit(&self) -> Result<()> {
+        let transaction_nesting_level = self.transaction_nesting_level.load(Ordering::SeqCst);
+        if transaction_nesting_level == 0 {
+            return Err(Error::no_active_transaction());
+        }
+
+        let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
+        if transaction_nesting_level == 1 {
+            debug!(target: "creed sql", r#""COMMIT""#);
+            driver.commit().await?;
+        } else {
+            self.release_savepoint(format!("CREED_SAVEPOINT_{}", transaction_nesting_level))
+                .await?;
+        }
+
+        self.transaction_nesting_level
+            .fetch_sub(1, Ordering::SeqCst);
+
+        // todo: dispatch event
+
+        Ok(())
+    }
+
+    /// Cancels any database changes done during the current transaction.
+    pub async fn roll_back(&self) -> Result<()> {
+        let transaction_nesting_level = self.transaction_nesting_level.load(Ordering::SeqCst);
+        if transaction_nesting_level == 0 {
+            return Err(Error::no_active_transaction());
+        }
+
+        let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
+        if transaction_nesting_level == 1 {
+            debug!(target: "creed sql", r#""ROLLBACK""#);
+            driver.roll_back().await?;
+        } else {
+            self.rollback_savepoint(format!("CREED_SAVEPOINT_{}", transaction_nesting_level))
+                .await?;
+        }
+
+        self.transaction_nesting_level
+            .fetch_sub(1, Ordering::SeqCst);
+
+        // todo: dispatch event
+
+        Ok(())
+    }
+
+    /// Creates a new savepoint.
+    pub async fn create_savepoint(&self, savepoint: impl AsRef<str>) -> Result<()> {
+        let platform = self.get_platform()?;
+        self.execute_statement(platform.create_save_point(savepoint.as_ref()), NO_PARAMS)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Releases the given savepoint.
+    pub async fn release_savepoint(&self, savepoint: impl AsRef<str>) -> Result<()> {
+        let platform = self.get_platform()?;
+        if platform.supports_release_savepoints() {
+            debug!(target: "creed sql", r#""RELEASE SAVEPOINT""#);
+        }
+
+        self.execute_statement(platform.release_save_point(savepoint.as_ref()), NO_PARAMS)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Rolls back to the given savepoint.
+    pub async fn rollback_savepoint(&self, savepoint: impl AsRef<str>) -> Result<()> {
+        let platform = self.get_platform()?;
+        self.execute_statement(platform.rollback_save_point(savepoint.as_ref()), NO_PARAMS)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn server_version(&self) -> Result<String> {

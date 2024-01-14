@@ -38,7 +38,7 @@ pub use table_diff::TableDiff;
 pub use unique_constraint::UniqueConstraint;
 pub use view::View;
 
-pub use ::creed_derive::IntoIdentifier;
+pub use ::creed_macros::IntoIdentifier;
 
 use crate::platform::DatabasePlatform;
 use crate::schema::asset::{impl_asset, AbstractAsset};

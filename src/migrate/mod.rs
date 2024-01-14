@@ -38,14 +38,14 @@ pub type PostOpClosure = dyn (Fn(&Schema) -> Result<()>) + Send + Sync;
 
 #[derive(Clone)]
 pub struct Migration {
-    version: i64,
-    description: &'static (dyn (Fn() -> &'static str) + Send + Sync),
-    up: &'static OpClosure,
-    down: &'static OpClosure,
-    pre_up: Option<&'static PreOpClosure>,
-    post_up: Option<&'static PostOpClosure>,
-    pre_down: Option<&'static PreOpClosure>,
-    post_down: Option<&'static PostOpClosure>,
+    pub version: i64,
+    pub description: &'static (dyn (Fn() -> &'static str) + Send + Sync),
+    pub up: &'static OpClosure,
+    pub down: &'static OpClosure,
+    pub pre_up: Option<&'static PreOpClosure>,
+    pub post_up: Option<&'static PostOpClosure>,
+    pub pre_down: Option<&'static PreOpClosure>,
+    pub post_down: Option<&'static PostOpClosure>,
     pub checksum: Cow<'static, [u8]>,
 }
 

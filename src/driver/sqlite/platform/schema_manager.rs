@@ -6,7 +6,7 @@ use crate::schema::{
     Comparator, FKConstraintList, ForeignKeyConstraint, GenericComparator, Identifier, Index,
     IndexList, IntoIdentifier, SchemaManager, Table, TableDiff, TableOptions,
 };
-use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
+use crate::{params, AsyncResult, Connection, Error, Parameters, Result, Row, Value};
 use regex::Regex;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
@@ -118,7 +118,7 @@ impl<'a> SQLiteSchemaManager<'a> {
     WHERE type = 'table'
 AND name = ?
 "#,
-                params![0  => Value::from(table)],
+                params![0 => Value::from(table)],
             )
             .await?
             .fetch_one()
@@ -479,7 +479,7 @@ JOIN pragma_index_list(t.name) i
             sql,
             conditions.join(" AND ")
         );
-        Box::pin(self.connection.query(sql, params.into()))
+        Box::pin(self.connection.query(sql, Parameters::from(params)))
     }
 
     fn fetch_table_options_by_table(

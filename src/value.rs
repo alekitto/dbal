@@ -1,3 +1,4 @@
+use crate::parameter::IntoParameters;
 use crate::platform::DatabasePlatform;
 use crate::r#type::{IntoType, TypePtr};
 use crate::{Error, Parameter, ParameterType, Parameters, Result as CreedResult};
@@ -448,8 +449,10 @@ impl<'s> TypedValueMap<'s> {
     pub fn into_values(self) -> IntoValues<&'s str, TypedValue> {
         self.0.into_values()
     }
+}
 
-    pub fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'_>> {
+impl IntoParameters for TypedValueMap<'_> {
+    fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
         let values: Vec<_> = self
             .0
             .into_values()
@@ -499,8 +502,10 @@ impl<'s> ValueMap<'s> {
     pub fn into_values(self) -> IntoValues<&'s str, Value> {
         self.0.into_values()
     }
+}
 
-    pub fn into_parameters(self) -> Parameters<'s> {
+impl IntoParameters for ValueMap<'_> {
+    fn into_parameters(self, _: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
         let values = self
             .0
             .into_values()
@@ -516,7 +521,7 @@ impl<'s> ValueMap<'s> {
             })
             .collect::<Vec<_>>();
 
-        Parameters::from(values)
+        Ok(Parameters::from(values))
     }
 }
 

@@ -2,52 +2,45 @@ use crate::common::Result;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::Parse;
-use syn::{Error, Expr, Token};
+use syn::punctuated::Punctuated;
+use syn::{Expr, Token};
 
 struct ValueMapInput {
     column_name: Expr,
-    _arrow: Token![=>],
-    ty: Option<Expr>,
-    _col: Option<Token![;]>,
     value: Expr,
+    ty: Option<Expr>,
 }
 
 impl Parse for ValueMapInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let column_name = input.parse()?;
-        let _arrow = input.parse()?;
-        let (ty, _col) = if input.peek2(Token![;]) {
-            (Some(input.parse()?), Some(input.parse()?))
-        } else {
-            (None, None)
-        };
+        let _arrow: Token![=>] = input.parse()?;
         let value = input.parse()?;
+        let ty = if input.peek(Token![typeof]) {
+            let _sep: Token![typeof] = input.parse()?;
+            Some(input.parse()?)
+        } else {
+            None
+        };
 
         Ok(Self {
             column_name,
-            _arrow,
             ty,
-            _col,
             value,
         })
     }
 }
 
 pub(crate) struct ValuesMapInput {
-    inputs: Vec<ValueMapInput>,
+    inputs: Punctuated<ValueMapInput, Token![,]>,
 }
 
 impl Parse for ValuesMapInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut inputs = vec![];
-        while !input.is_empty() {
-            inputs.push(input.parse()?);
-            if input.peek(Token![,]) {
-                let _comma: Token![,] = input.parse()?;
-            } else if !input.is_empty() {
-                return Err(Error::new(input.span(), r#"expected "," or end of input"#));
-            }
-        }
+        let inputs = input.parse_terminated(
+            |stream| stream.parse() as syn::Result<ValueMapInput>,
+            Token![,],
+        )?;
 
         Ok(ValuesMapInput { inputs })
     }
@@ -85,7 +78,7 @@ pub(crate) fn expand_value_map(input: ValuesMapInput) -> Result<TokenStream> {
             #[allow(unused_mut)]
             let mut map = ::std::collections::HashMap::<_, ::creed::TypedValue>::with_capacity(#len);
             #( #values )*
-            ::creed::TypedValueMap(map).into()
+            ::creed::TypedValueMap(map)
         }
     };
 

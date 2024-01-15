@@ -175,9 +175,9 @@ impl MetadataStorage for TableMetadataStorage<'_> {
                     .insert(
                         &self.table_name,
                         value_map! {
-                            version_column_name.as_str() => BIGINT; execution_result.version,
-                            execution_time_column_name.as_str() => INTEGER; execution_result.execution_time,
-                            executed_at_column_name.as_str() => DATETIME; Value::DateTime(execution_result.executed_at.into()),
+                            version_column_name.as_str() => execution_result.version typeof BIGINT,
+                            execution_time_column_name.as_str() => execution_result.execution_time typeof INTEGER,
+                            executed_at_column_name.as_str() => Value::DateTime(execution_result.executed_at.into()) typeof DATETIME,
                         },
                     )
                     .await?;
@@ -186,7 +186,7 @@ impl MetadataStorage for TableMetadataStorage<'_> {
                     .delete(
                         &self.table_name,
                         value_map! {
-                            version_column_name.as_str() => BIGINT; execution_result.version,
+                            version_column_name.as_str() => execution_result.version typeof BIGINT,
                         },
                     )
                     .await?;

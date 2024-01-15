@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::parameter_type::ParameterType;
+use crate::platform::DatabasePlatform;
 use crate::Value;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -173,6 +174,18 @@ impl<T: Into<Value>> From<Vec<T>> for Parameters<'_> {
     }
 }
 
+pub trait IntoParameters {
+    /// Convert this object into a Parameters object.
+    fn into_parameters(self, platform: &dyn DatabasePlatform)
+        -> crate::Result<Parameters<'static>>;
+}
+
+impl IntoParameters for Parameters<'static> {
+    fn into_parameters(self, _: &dyn DatabasePlatform) -> crate::Result<Parameters<'static>> {
+        Ok(self)
+    }
+}
+
 pub const NO_PARAMS: Parameters = Parameters::Array(&[]);
 pub macro params {
     [] => {
@@ -180,10 +193,10 @@ pub macro params {
     },
 
     [$idx:expr=>$value:expr] => {
-        $crate::Parameters::Array(&[ ($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)) ])
+        $crate::Parameters::Vec([ ($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)) ].to_vec())
     },
 
     [$($idx:expr=>$value:expr,)*] => {
-        $crate::Parameters::Array(&[ $(($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)),)* ])
+        $crate::Parameters::Vec([ $(($crate::ParameterIndex::from($idx),$crate::Parameter::from($value)),)* ].to_vec())
     }
 }

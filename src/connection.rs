@@ -2,7 +2,7 @@ use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
 use crate::driver::Driver;
 use crate::event::ConnectionEvent;
-use crate::parameter::NO_PARAMS;
+use crate::parameter::{IntoParameters, NO_PARAMS};
 use crate::platform::DatabasePlatform;
 use crate::r#type::IntoType;
 use crate::schema::SchemaManager;
@@ -245,13 +245,14 @@ impl Connection {
     }
 
     /// Executes an SQL statement, returning a result set as a StatementResult object.
-    pub async fn query<St: Into<String>>(
+    pub async fn query<St: Into<String>, P: IntoParameters>(
         &self,
         sql: St,
-        params: Parameters<'_>,
+        params: P,
     ) -> Result<StatementResult> {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
-        driver.query(sql, params).await
+        let platform = self.platform.as_ref().ok_or_else(Error::not_connected)?;
+        driver.query(sql, params.into_parameters(platform)?).await
     }
 
     /// Executes an SQL statement with the given parameters and returns the number of affected rows.
@@ -261,14 +262,16 @@ impl Connection {
     /// - DCL statements: GRANT, REVOKE, etc.
     /// - Session control statements: ALTER SESSION, SET, DECLARE, etc.
     /// - Other statements that don't yield a row set.
-    pub async fn execute_statement<St: Into<String>>(
+    pub async fn execute_statement<St: Into<String>, P: IntoParameters>(
         &self,
         sql: St,
-        params: Parameters<'_>,
+        params: P,
     ) -> Result<usize> {
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
+        let platform = self.platform.as_ref().ok_or_else(Error::not_connected)?;
+
         let stmt = driver.prepare(sql)?;
-        stmt.execute(params).await
+        stmt.execute(params.into_parameters(platform)?).await
     }
 
     /// Inserts a record into the given table.
@@ -292,7 +295,7 @@ impl Connection {
                     columns,
                     set
                 ),
-                values.into_parameters(platform)?,
+                values,
             )
             .await
         }
@@ -311,18 +314,15 @@ impl Connection {
             .map(|k| format!("{} = ?", platform.quote_identifier(k)))
             .join(" AND ");
 
-        self.execute_statement(
-            format!("DELETE FROM {} WHERE {}", table, columns),
-            criteria.into_parameters(platform)?,
-        )
-        .await
+        self.execute_statement(format!("DELETE FROM {} WHERE {}", table, columns), criteria)
+            .await
     }
 
     /// Executes an SQL statement, returning a result set as a vector of Row objects.
     pub async fn fetch_all<St: Into<String>>(
         &self,
         sql: St,
-        params: Parameters<'_>,
+        params: Parameters<'static>,
     ) -> Result<Vec<Row>> {
         let statement_result = self.query(sql, params).await?;
         statement_result.fetch_all().await

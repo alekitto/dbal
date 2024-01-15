@@ -75,6 +75,9 @@ pub(crate) fn expand_value_map(input: ValuesMapInput) -> Result<TokenStream> {
 
     let result = quote! {
         {
+            #[allow(dead_code)]
+            use ::creed::r#type::IntoType;
+
             #[allow(unused_mut)]
             let mut map = ::std::collections::HashMap::<_, ::creed::TypedValue>::with_capacity(#len);
             #( #values )*

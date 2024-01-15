@@ -1,8 +1,10 @@
+use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;
 use crate::r#type::Type;
 use crate::schema::ColumnData;
 use crate::{Error, Result, Value};
-use chrono::DateTime;
+use chrono::format::ParseErrorKind;
+use chrono::{DateTime, Local, NaiveDateTime};
 
 pub struct DateTimeTzType {}
 
@@ -36,16 +38,31 @@ impl Type for DateTimeTzType {
             Value::String(value) => {
                 if value.is_empty() {
                     Ok(Value::NULL)
-                } else if let Ok(dt) =
-                    DateTime::parse_from_str(value, platform.get_date_time_tz_format_string())
-                {
-                    Ok(Value::DateTime(dt.into()))
                 } else {
-                    Err(Error::conversion_failed_invalid_type(
-                        &Value::String(value.to_string()),
-                        self.get_name(),
-                        &["NULL", "DateTime<Tz>"],
-                    ))
+                    DateTime::parse_from_str(value, platform.get_date_time_tz_format_string())
+                        .map(|dt| -> DateTime<Local> { dt.into() })
+                        .or_else(|e| {
+                            if e.kind() == ParseErrorKind::NotEnough {
+                                let ndt = NaiveDateTime::parse_from_str(
+                                    value,
+                                    platform.get_date_time_tz_format_string(),
+                                )
+                                .map_err(|e| e.to_string())?;
+                                Ok(ndt
+                                    .and_local_timezone(Local)
+                                    .earliest()
+                                    .ok_or_else(|| "cannot set timezone".to_string())?)
+                            } else {
+                                Err(e.to_string())
+                            }
+                        })
+                        .map_err(|e| {
+                            Error::new(
+                                ErrorKind::ConversionFailed,
+                                format!("conversion failed: {}", e),
+                            )
+                        })
+                        .map(Value::DateTime)
                 }
             }
             _ => Err(Error::conversion_failed_invalid_type(

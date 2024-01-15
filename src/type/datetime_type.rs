@@ -1,8 +1,9 @@
+use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;
 use crate::r#type::Type;
 use crate::schema::ColumnData;
 use crate::{Error, Result, Value};
-use chrono::DateTime;
+use chrono::{DateTime, Local, NaiveDateTime};
 
 pub struct DateTimeType {}
 
@@ -36,16 +37,20 @@ impl Type for DateTimeType {
             Value::String(value) => {
                 if value.is_empty() {
                     Ok(Value::NULL)
-                } else if let Ok(dt) =
-                    DateTime::parse_from_str(value, platform.get_date_time_format_string())
-                {
-                    Ok(Value::DateTime(dt.into()))
                 } else {
-                    Err(Error::conversion_failed_invalid_type(
-                        &Value::String(value.to_string()),
-                        self.get_name(),
-                        &["NULL", "DateTime"],
-                    ))
+                    NaiveDateTime::parse_from_str(value, platform.get_date_time_format_string())
+                        .map_err(|e| {
+                            Error::new(
+                                ErrorKind::ConversionFailed,
+                                format!("conversion failed: {}", e),
+                            )
+                        })
+                        .and_then(|ndt| {
+                            ndt.and_local_timezone(Local).earliest().ok_or_else(|| {
+                                Error::new(ErrorKind::ConversionFailed, "conversion failed")
+                            })
+                        })
+                        .map(Value::DateTime)
                 }
             }
             _ => Err(Error::conversion_failed_invalid_type(

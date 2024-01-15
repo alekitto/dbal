@@ -55,7 +55,7 @@ pub(crate) fn expand_value_map(input: ValuesMapInput) -> Result<TokenStream> {
             let key = val.column_name;
             let cur = val.value;
             let ty = if let Some(ty) = val.ty {
-                quote! { Some(#ty.into_type()?) }
+                quote! { Some(#ty.into_type().map_err(::creed::error::StdError::from)?) }
             } else {
                 quote! { None }
             };

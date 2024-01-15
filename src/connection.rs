@@ -387,10 +387,10 @@ impl Connection {
             .transaction_nesting_level
             .fetch_add(1, Ordering::SeqCst);
         if old_level == 0 {
-            debug!(target: "creed sql", r#""START TRANSACTION""#);
+            debug!(target: "creed::sql", r#""START TRANSACTION""#);
             driver.begin_transaction().await?;
         } else {
-            debug!(target: "creed sql", r#""SAVEPOINT""#);
+            debug!(target: "creed::sql", r#""SAVEPOINT""#);
             self.create_savepoint(format!(
                 "CREED_SAVEPOINT_{}",
                 self.transaction_nesting_level.load(Ordering::SeqCst)
@@ -411,7 +411,7 @@ impl Connection {
 
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         if transaction_nesting_level == 1 {
-            debug!(target: "creed sql", r#""COMMIT""#);
+            debug!(target: "creed::sql", r#""COMMIT""#);
             driver.commit().await?;
         } else {
             self.release_savepoint(format!("CREED_SAVEPOINT_{}", transaction_nesting_level))
@@ -435,7 +435,7 @@ impl Connection {
 
         let driver = self.driver.as_ref().ok_or_else(Error::not_connected)?;
         if transaction_nesting_level == 1 {
-            debug!(target: "creed sql", r#""ROLLBACK""#);
+            debug!(target: "creed::sql", r#""ROLLBACK""#);
             driver.roll_back().await?;
         } else {
             self.rollback_savepoint(format!("CREED_SAVEPOINT_{}", transaction_nesting_level))
@@ -463,7 +463,7 @@ impl Connection {
     pub async fn release_savepoint(&self, savepoint: impl AsRef<str>) -> Result<()> {
         let platform = self.get_platform()?;
         if platform.supports_release_savepoints() {
-            debug!(target: "creed sql", r#""RELEASE SAVEPOINT""#);
+            debug!(target: "creed::sql", r#""RELEASE SAVEPOINT""#);
         }
 
         self.execute_statement(platform.release_save_point(savepoint.as_ref()), NO_PARAMS)

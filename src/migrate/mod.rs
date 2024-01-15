@@ -91,10 +91,10 @@ impl Migrator {
             .get_plan_until_version(last_migration.version, connection)
             .await?;
 
-        info!(target: "creed_migration", "Migrating {} to {}", direction, last_migration.version);
+        info!(target: "creed::migrate", "Migrating {} to {}", direction, last_migration.version);
 
         if plans.is_empty() {
-            info!(target: "creed_migration", "No migration to execute.");
+            info!(target: "creed::migrate", "No migration to execute.");
             return Ok(());
         }
 
@@ -127,7 +127,7 @@ impl Migrator {
         connection.commit().await?;
         let total_time = chrono::Utc::now() - global_start;
 
-        info!(target: "creed_migration", "Migrated database in {}ms, {} migrations executed, {} sql queries", total_time.num_milliseconds(), plans_count, sql_count);
+        info!(target: "creed::migrate", "Migrated database in {}ms, {} migrations executed, {} sql queries", total_time.num_milliseconds(), plans_count, sql_count);
 
         Ok(())
     }

@@ -39,7 +39,7 @@ impl<'conn> Executor<'conn> {
         let comparator = schema_manager.create_comparator();
 
         let description = migration.migration.description;
-        info!(target: "creed_migration", "++ {} {} ({})", if migration.direction == Direction::Up {
+        info!(target: "creed::migrate", "++ {} {} ({})", if migration.direction == Direction::Up {
             "migrating"
         } else {
             "reverting"

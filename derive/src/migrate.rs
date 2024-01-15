@@ -172,7 +172,7 @@ pub(crate) fn expand_migrator(path: &Path, migrator_name: &Ident) -> Result<Toke
             true,
         );
 
-        #(#migrations_mods),*
+        #(#migrations_mods)*
     };
 
     Ok(token_stream)

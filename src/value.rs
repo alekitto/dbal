@@ -408,6 +408,17 @@ impl<Tz: TimeZone> From<&DateTime<Tz>> for Value {
     }
 }
 
+impl TryFrom<Value> for DateTime<Local> {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::DateTime(dt) => Ok(dt),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
+}
+
 impl<I: AsRef<str> + From<String>> From<Value> for Option<I> {
     fn from(value: Value) -> Self {
         match value {

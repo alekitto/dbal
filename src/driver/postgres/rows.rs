@@ -1,4 +1,5 @@
 use crate::{Error, Result, Row, Value};
+use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
 use fallible_iterator::FallibleIterator;
 use futures::{Stream, StreamExt};
 use postgres_protocol::types;
@@ -28,14 +29,45 @@ fn simple_type_from_sql(
             let json = serde_json::from_str(&s)?;
             Value::Json(json)
         }
+        Type::TIMESTAMP => {
+            let dt = <NaiveDateTime as FromSql>::from_sql(ty, raw)?;
+            if let Some(dt) = dt.and_local_timezone(Local).earliest() {
+                Value::DateTime(dt)
+            } else {
+                Value::NULL
+            }
+        }
+        Type::TIMESTAMPTZ => {
+            Value::DateTime(<chrono::DateTime<Local> as FromSql>::from_sql(ty, raw)?)
+        }
+        Type::DATE => {
+            let date = <NaiveDate as FromSql>::from_sql(ty, raw)?;
+            if let Some(dt) = date
+                .and_time(NaiveTime::default())
+                .and_local_timezone(Local)
+                .earliest()
+            {
+                Value::DateTime(dt)
+            } else {
+                Value::NULL
+            }
+        }
+        Type::TIME => {
+            let time = <NaiveTime as FromSql>::from_sql(ty, raw)?;
+            if let Some(dt) = NaiveDate::default()
+                .and_time(time)
+                .and_local_timezone(Local)
+                .earliest()
+            {
+                Value::DateTime(dt)
+            } else {
+                Value::NULL
+            }
+        }
         Type::CSTRING
         | Type::NAME
         | Type::VARCHAR
-        | Type::DATE
-        | Type::TIME
         | Type::TIMETZ
-        | Type::TIMESTAMP
-        | Type::TIMESTAMPTZ
         | Type::INET
         | Type::TEXT
         | Type::UUID

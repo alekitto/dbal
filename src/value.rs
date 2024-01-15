@@ -2,7 +2,7 @@ use crate::parameter::IntoParameters;
 use crate::platform::DatabasePlatform;
 use crate::r#type::{IntoType, TypePtr};
 use crate::{Error, Parameter, ParameterType, Parameters, Result as CreedResult};
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::hash_map::{IntoValues, Keys, Values};
@@ -414,6 +414,17 @@ impl TryFrom<Value> for DateTime<Local> {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::DateTime(dt) => Ok(dt),
+            _ => Err(Error::type_mismatch()),
+        }
+    }
+}
+
+impl TryFrom<Value> for DateTime<Utc> {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::DateTime(dt) => Ok(dt.into()),
             _ => Err(Error::type_mismatch()),
         }
     }

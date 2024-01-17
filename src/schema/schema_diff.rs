@@ -1,4 +1,4 @@
-use crate::platform::{CreateFlags, DatabasePlatform};
+use crate::platform::DatabasePlatform;
 use crate::schema::{
     Asset, ForeignKeyConstraint, Identifier, Schema, SchemaManager, Sequence, Table, TableDiff,
 };
@@ -84,19 +84,7 @@ impl<'a> SchemaDiff<'a> {
 
         let mut foreign_key_sql = vec![];
         for table in &self.new_tables {
-            sql.append(
-                &mut schema_manager
-                    .get_create_table_sql(table, Some(CreateFlags::CREATE_INDEXES))?,
-            );
-
-            if platform.supports_foreign_key_constraints() {
-                for foreign_key in table.get_foreign_keys() {
-                    foreign_key_sql.push(
-                        schema_manager
-                            .get_create_foreign_key_sql(foreign_key, table.get_table_name())?,
-                    );
-                }
-            }
+            sql.append(&mut schema_manager.get_create_table_sql(table, None)?);
         }
 
         sql.append(&mut foreign_key_sql);
@@ -144,19 +132,7 @@ impl<'a> SchemaDiff<'a> {
 
         let mut foreign_key_sql = vec![];
         for table in &self.new_tables {
-            sql.append(
-                &mut schema_manager
-                    .get_create_table_sql(table, Some(CreateFlags::CREATE_INDEXES))?,
-            );
-
-            if platform.supports_foreign_key_constraints() {
-                for foreign_key in table.get_foreign_keys() {
-                    foreign_key_sql.push(
-                        schema_manager
-                            .get_create_foreign_key_sql(foreign_key, table.get_table_name())?,
-                    );
-                }
-            }
+            sql.append(&mut schema_manager.get_create_table_sql(table, None)?);
         }
 
         sql.append(&mut foreign_key_sql);

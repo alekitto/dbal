@@ -42,7 +42,7 @@ impl Type for DateTimeType {
                         .map_err(|e| {
                             Error::new(
                                 ErrorKind::ConversionFailed,
-                                format!("conversion failed: {}", e),
+                                format!(r#"conversion failed for value "{}": {}"#, value, e),
                             )
                         })
                         .and_then(|ndt| {

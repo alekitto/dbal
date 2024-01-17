@@ -1162,7 +1162,7 @@ pub fn get_advanced_foreign_key_options_sql(
 
     if let Some(opt) = &foreign_key.on_delete {
         query += &*format!(
-            " ON UPDATE {}",
+            " ON DELETE {}",
             this.get_foreign_key_referential_action_sql(opt)?
         )
     }

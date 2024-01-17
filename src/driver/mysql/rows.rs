@@ -26,10 +26,26 @@ impl TryFrom<mysql_async::Value> for IrValue {
             mysql_async::Value::UInt(u) => Value::UInt(*u),
             mysql_async::Value::Float(f) => Value::Float(*f as f64),
             mysql_async::Value::Double(f) => Value::Float(*f),
-            mysql_async::Value::Date(y, m, d, h, i, s, ms) => Value::String(format!(
-                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}",
-                y, m, d, h, i, s, ms
-            )),
+            mysql_async::Value::Date(y, m, d, h, i, s, ms) => {
+                let Some(date) = chrono::NaiveDate::from_ymd_opt(*y as i32, *m as u32, *d as u32)
+                else {
+                    return Err(FromValueError(v));
+                };
+                let Some(time) =
+                    chrono::NaiveTime::from_hms_milli_opt(*h as u32, *i as u32, *s as u32, *ms)
+                else {
+                    return Err(FromValueError(v));
+                };
+
+                let Some(dt) = chrono::NaiveDateTime::new(date, time)
+                    .and_local_timezone(chrono::Local)
+                    .earliest()
+                else {
+                    return Err(FromValueError(v));
+                };
+
+                Value::DateTime(dt)
+            }
             mysql_async::Value::Time(neg, d, h, i, s, ms) => Value::String(format!(
                 "{}{:02}:{:02}:{:02}.{:06}",
                 if *neg { "-" } else { "" },

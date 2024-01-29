@@ -67,6 +67,48 @@ impl From<Value> for Parameter {
     }
 }
 
+impl From<f64> for Parameter {
+    fn from(value: f64) -> Self {
+        Self::new(Value::Float(value), ParameterType::Float)
+    }
+}
+
+impl From<u64> for Parameter {
+    fn from(value: u64) -> Self {
+        Self::new(Value::UInt(value), ParameterType::Integer)
+    }
+}
+
+impl From<i64> for Parameter {
+    fn from(value: i64) -> Self {
+        Self::new(Value::Int(value), ParameterType::Integer)
+    }
+}
+
+impl From<bool> for Parameter {
+    fn from(value: bool) -> Self {
+        Self::new(Value::Boolean(value), ParameterType::Boolean)
+    }
+}
+
+impl From<String> for Parameter {
+    fn from(value: String) -> Self {
+        Self::new(Value::String(value), ParameterType::String)
+    }
+}
+
+impl From<&str> for Parameter {
+    fn from(value: &str) -> Self {
+        Self::new(Value::String(value.to_string()), ParameterType::String)
+    }
+}
+
+impl From<Vec<u8>> for Parameter {
+    fn from(value: Vec<u8>) -> Self {
+        Self::new(Value::Bytes(value), ParameterType::Binary)
+    }
+}
+
 #[derive(Debug)]
 pub enum Parameters<'a> {
     Vec(Vec<(ParameterIndex, Parameter)>),
@@ -88,12 +130,6 @@ impl From<Parameters<'_>> for Vec<(ParameterIndex, Parameter)> {
             Parameters::Vec(v) => v,
             Parameters::Array(v) => v.to_vec(),
         }
-    }
-}
-
-impl From<i64> for Parameter {
-    fn from(value: i64) -> Self {
-        Parameter::new(Value::from(value), ParameterType::Integer)
     }
 }
 

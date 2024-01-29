@@ -9,6 +9,7 @@ use syn::token::Super;
 use syn::{Item, LitStr, Token, VisRestricted, Visibility};
 
 pub(crate) struct MigrateInput {
+    pub_token: Option<Token![pub]>,
     ident: Ident,
     _comma: Token![,],
     path: LitStr,
@@ -16,7 +17,14 @@ pub(crate) struct MigrateInput {
 
 impl Parse for MigrateInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let pub_token = if input.peek(Token![pub]) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
+
         Ok(Self {
+            pub_token,
             ident: input.parse()?,
             _comma: input.parse()?,
             path: input.parse()?,
@@ -92,10 +100,14 @@ impl ToTokens for QuotedMigration {
 
 pub(crate) fn expand_migrator_from_lit_dir(migrate_input: MigrateInput) -> Result<TokenStream> {
     let path = resolve_path(migrate_input.path.value(), migrate_input.path.span())?;
-    expand_migrator(&path, &migrate_input.ident)
+    expand_migrator(&path, &migrate_input.ident, &migrate_input.pub_token)
 }
 
-pub(crate) fn expand_migrator(path: &Path, migrator_name: &Ident) -> Result<TokenStream> {
+pub(crate) fn expand_migrator(
+    path: &Path,
+    migrator_name: &Ident,
+    pub_token: &Option<Token![pub]>,
+) -> Result<TokenStream> {
     let mut migrations = Vec::new();
     let mut migrations_mods = Vec::new();
 
@@ -164,7 +176,7 @@ pub(crate) fn expand_migrator(path: &Path, migrator_name: &Ident) -> Result<Toke
     }
 
     let token_stream: TokenStream = quote! {
-        const #migrator_name: ::creed::migrate::Migrator = ::creed::migrate::Migrator::new(
+        #pub_token const #migrator_name: ::creed::migrate::Migrator = ::creed::migrate::Migrator::new(
             ::std::borrow::Cow::Borrowed(&[
                 #(#migrations),*
             ]),

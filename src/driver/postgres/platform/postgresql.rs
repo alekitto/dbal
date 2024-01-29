@@ -954,7 +954,7 @@ pub fn get_clob_type_declaration_sql() -> Result<String> {
 }
 
 pub fn get_date_time_tz_format_string() -> &'static str {
-    "Y-m-d H:i:sO"
+    "%Y-%m-%d %H:%M:%S%z"
 }
 
 pub fn get_empty_identity_insert_sql(

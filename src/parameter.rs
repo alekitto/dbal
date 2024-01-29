@@ -210,6 +210,11 @@ impl<T: Into<Value>> From<Vec<T>> for Parameters<'_> {
     }
 }
 
+pub trait IntoParameter {
+    /// Convert this object into a Parameters object.
+    fn into_parameter(self, platform: &dyn DatabasePlatform) -> crate::Result<Parameter>;
+}
+
 pub trait IntoParameters {
     /// Convert this object into a Parameters object.
     fn into_parameters(self, platform: &dyn DatabasePlatform)

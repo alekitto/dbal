@@ -295,7 +295,7 @@ impl Connection {
                     columns,
                     set
                 ),
-                values,
+                values.into_values(),
             )
             .await
         }
@@ -314,8 +314,11 @@ impl Connection {
             .map(|k| format!("{} = ?", platform.quote_identifier(k)))
             .join(" AND ");
 
-        self.execute_statement(format!("DELETE FROM {} WHERE {}", table, columns), criteria)
-            .await
+        self.execute_statement(
+            format!("DELETE FROM {} WHERE {}", table, columns),
+            criteria.into_values(),
+        )
+        .await
     }
 
     /// Executes an SQL statement, returning a result set as a vector of Row objects.

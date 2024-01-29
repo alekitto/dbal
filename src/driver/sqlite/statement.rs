@@ -98,7 +98,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
                 .lock()
                 .unwrap()
                 .0
-                .parameter_index(name.as_str())
+                .parameter_index(format!(":{}", name).as_str())
                 .unwrap()
                 .unwrap(),
         };

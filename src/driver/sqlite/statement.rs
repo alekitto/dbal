@@ -92,7 +92,7 @@ impl<'conn> Debug for Statement<'conn> {
 impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
     fn bind_value(&self, idx: ParameterIndex, value: Parameter) -> Result<()> {
         let idx = match idx {
-            ParameterIndex::Positional(i) => i,
+            ParameterIndex::Positional(i) => i + 1,
             ParameterIndex::Named(name) => self
                 .statement
                 .lock()
@@ -107,7 +107,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
             .lock()
             .unwrap()
             .0
-            .raw_bind_parameter(idx + 1, value)?;
+            .raw_bind_parameter(idx, value)?;
         Ok(())
     }
 

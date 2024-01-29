@@ -127,7 +127,7 @@ impl<'conn> Statement<'conn> {
             let mut named_map: HashMap<String, usize> = HashMap::new();
             for (i, p) in params {
                 if let ParameterIndex::Named(name) = i {
-                    named_map.insert(name, raw_params.len());
+                    named_map.insert(name, raw_params.len() + 1);
                 }
 
                 raw_params.push(p);

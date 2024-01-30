@@ -1,6 +1,7 @@
 use crate::platform::DatabasePlatform;
 use crate::util::PlatformBox;
 use crate::Error;
+use percent_encoding::percent_decode_str;
 #[cfg(any(feature = "mysql", feature = "postgres"))]
 use std::borrow::Cow;
 #[cfg(any(feature = "mysql", feature = "postgres"))]
@@ -153,7 +154,17 @@ impl TryFrom<&str> for ConnectionOptions {
         #[cfg(any(feature = "mysql", feature = "postgres"))]
         let query_params: HashMap<Cow<str>, Cow<str>> = url.query_pairs().collect();
         #[cfg(any(feature = "mysql", feature = "postgres"))]
-        let username = url.username();
+        let username = percent_decode_str(url.username())
+            .decode_utf8()?
+            .to_string();
+        #[cfg(any(feature = "mysql", feature = "postgres"))]
+        let password = {
+            if let Some(password) = url.password() {
+                Some(percent_decode_str(password).decode_utf8()?.to_string())
+            } else {
+                None
+            }
+        };
         #[cfg(any(feature = "mysql", feature = "postgres"))]
         let db_name = url.path().trim_start_matches('/');
 
@@ -175,9 +186,9 @@ impl TryFrom<&str> for ConnectionOptions {
                 .with_username(if username.is_empty() {
                     None
                 } else {
-                    Some(username.to_string())
+                    Some(username)
                 })
-                .with_password(url.password().map(String::from))
+                .with_password(password)
                 .with_host(url.host_str().map(String::from))
                 .with_port(url.port().or(Some(3306)))
                 .with_ssl_mode(ssl_mode)
@@ -196,7 +207,7 @@ impl TryFrom<&str> for ConnectionOptions {
             #[cfg(feature = "postgres")]
             "pg" | "psql" | "postgres" | "postgresql" => {
                 let username = if username.is_empty() {
-                    "postgres"
+                    "postgres".to_string()
                 } else {
                     username
                 };
@@ -209,8 +220,8 @@ impl TryFrom<&str> for ConnectionOptions {
 
                 Ok(options
                     .with_scheme(Some("psql".to_string()))
-                    .with_username(Some(username.to_string()))
-                    .with_password(url.password().map(String::from))
+                    .with_username(Some(username))
+                    .with_password(password)
                     .with_host(url.host_str().map(String::from))
                     .with_port(url.port().or(Some(5432)))
                     .with_ssl_mode(ssl_mode)

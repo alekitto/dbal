@@ -110,7 +110,7 @@ impl Connection {
         self.driver.is_some()
     }
 
-    /// Gets the options this connections has been generated from.
+    /// Gets the options this connection has been generated from.
     pub fn get_params(&self) -> &ConnectionOptions {
         &self.connection_options
     }
@@ -130,7 +130,7 @@ impl Connection {
     /// # Errors
     ///
     /// The connection must be connected to the server for this method to succeed.
-    /// Otherwise will return a "Not Connected" Error.
+    /// Otherwise, will return a "Not Connected" Error.
     pub fn create_schema_manager(&self) -> Result<Box<dyn SchemaManager + '_>> {
         self.get_platform()
             .map(|platform| platform.create_schema_manager(self))

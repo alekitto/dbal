@@ -446,6 +446,7 @@ dependencies = [
  "log",
  "mysql_async",
  "native-tls",
+ "percent-encoding",
  "postgres-protocol",
  "rand",
  "regex",

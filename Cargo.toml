@@ -22,6 +22,7 @@ lazy_static = "1"
 log = "0.4"
 mysql_async = { git = "https://github.com/alekitto/mysql_async", branch = "fix/issue_283", optional = true, default-features = false }
 native-tls = { version = "0.2", optional = true }
+percent-encoding = "2.3"
 postgres-protocol = { version = "0.6", optional = true }
 regex = { version = "1", features = ["default", "pattern"] }
 rusqlite = { version = "0.30", optional = true, features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"] }

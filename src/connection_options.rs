@@ -1,6 +1,7 @@
 use crate::platform::DatabasePlatform;
 use crate::util::PlatformBox;
 use crate::Error;
+#[cfg(any(feature = "mysql", feature = "postgres"))]
 use percent_encoding::percent_decode_str;
 #[cfg(any(feature = "mysql", feature = "postgres"))]
 use std::borrow::Cow;
@@ -201,11 +202,12 @@ impl TryFrom<&str> for ConnectionOptions {
                 )),
             #[cfg(not(feature = "postgres"))]
             platform @ "pg"
+            | platform @ "pgsql"
             | platform @ "psql"
             | platform @ "postgres"
             | platform @ "postgresql" => Err(Error::platform_not_compiled(platform)),
             #[cfg(feature = "postgres")]
-            "pg" | "psql" | "postgres" | "postgresql" => {
+            "pg" | "psql" | "pgsql" | "postgres" | "postgresql" => {
                 let username = if username.is_empty() {
                     "postgres".to_string()
                 } else {
@@ -261,5 +263,94 @@ impl Debug for ConnectionOptions {
             .field("ssl_mode", &self.ssl_mode)
             .field("application_name", &self.application_name)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{ConnectionOptions, Result};
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[test]
+    pub fn should_parse_dsn_correctly_for_mysql() -> Result<()> {
+        let dsn = "mysql://root:p4ssw0rd@mysql.domain.example.com:3300/my_db?ca=root.crt&ssl_mode=require";
+
+        #[cfg(feature = "mysql")]
+        {
+            let opts = ConnectionOptions::try_from(dsn)?;
+            assert_eq!(opts.username.as_deref(), Some("root"));
+            assert_eq!(opts.password.as_deref(), Some("p4ssw0rd"));
+            assert_eq!(opts.host.as_deref(), Some("mysql.domain.example.com"));
+            assert_eq!(opts.port, Some(3300));
+            assert_eq!(opts.database_name.as_deref(), Some("my_db"));
+            assert_eq!(opts.ssl_rootcert.as_deref(), Some("root.crt"));
+            assert_eq!(opts.ssl_mode, super::SslMode::Require);
+        }
+
+        #[cfg(not(feature = "mysql"))]
+        {
+            let opts = ConnectionOptions::try_from(dsn);
+            assert!(opts.is_err());
+            assert!(matches!(
+                opts.unwrap_err().kind(),
+                crate::error::ErrorKind::PlatformNotCompiled
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[test]
+    pub fn should_parse_dsn_correctly_for_postgresql() -> Result<()> {
+        let dsn = "postgres://u%24er:p%23ssw%40rd@postgres.network.internal:4456/my_db?ca=root.crt&ssl_mode=require";
+
+        #[cfg(feature = "postgres")]
+        {
+            let opts = ConnectionOptions::try_from(dsn)?;
+            assert_eq!(opts.username.as_deref(), Some("u$er"));
+            assert_eq!(opts.password.as_deref(), Some("p#ssw@rd"));
+            assert_eq!(opts.host.as_deref(), Some("postgres.network.internal"));
+            assert_eq!(opts.port, Some(4456));
+            assert_eq!(opts.database_name.as_deref(), Some("my_db"));
+            assert_eq!(opts.ssl_rootcert.as_deref(), Some("root.crt"));
+            assert_eq!(opts.ssl_mode, super::SslMode::Require);
+        }
+
+        #[cfg(not(feature = "postgres"))]
+        {
+            let opts = ConnectionOptions::try_from(dsn);
+            assert!(opts.is_err());
+            assert!(matches!(
+                opts.unwrap_err().kind(),
+                crate::error::ErrorKind::PlatformNotCompiled
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
+    #[test]
+    pub fn should_parse_dsn_correctly_for_sqlite() -> Result<()> {
+        let dsn = "sqlite:///home/user/test.db";
+
+        #[cfg(feature = "sqlite")]
+        {
+            let opts = ConnectionOptions::try_from(dsn)?;
+            assert_eq!(opts.file_path.as_deref(), Some("/home/user/test.db"));
+        }
+
+        #[cfg(not(feature = "sqlite"))]
+        {
+            let opts = ConnectionOptions::try_from(dsn);
+            assert!(opts.is_err());
+            assert!(matches!(
+                opts.unwrap_err().kind(),
+                crate::error::ErrorKind::PlatformNotCompiled
+            ));
+        }
+
+        Ok(())
     }
 }

@@ -9,7 +9,7 @@ use crate::schema::SchemaManager;
 use crate::util::PlatformBox;
 use crate::{
     params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
-    TypedValueMap, Value,
+    TypedValueMap, Value, ValueMap,
 };
 use itertools::Itertools;
 use log::debug;

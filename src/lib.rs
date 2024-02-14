@@ -7,6 +7,9 @@ extern crate core;
 extern crate creed_macros;
 extern crate self as creed;
 
+#[cfg(all(feature = "rustls", feature = "native-tls"))]
+compile_error!("You must enable only one of rustls or native-tls features");
+
 mod configuration;
 mod connection;
 mod connection_options;
@@ -44,7 +47,7 @@ pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
 pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use util::const_expr_count;
-pub use value::{TypedValue, TypedValueMap, Value, ValueMap};
+pub use value::{TypedValue, TypedValueMap, UntypedValueMap, Value, ValueMap};
 
 pub use creed_macros::{migrator, value_map, IntoIdentifier};
 

@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::{IntoIter, IntoValues, Keys, Values};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use crate::private::Sealed;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -448,32 +449,16 @@ impl<I: AsRef<str> + From<String>> From<&Value> for Option<I> {
     }
 }
 
-pub struct ValueMap<'s>(pub HashMap<&'s str, Value>);
-pub struct TypedValueMap<'s>(pub HashMap<&'s str, TypedValue>);
-
-impl<'s> TypedValueMap<'s> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn keys(&self) -> Keys<&str, TypedValue> {
-        self.0.keys()
-    }
-
-    pub fn values(&self) -> Values<&str, TypedValue> {
-        self.0.values()
-    }
-
-    pub fn into_values(self) -> IntoValues<&'s str, TypedValue> {
-        self.0.into_values()
-    }
-
-    pub fn into_iter(self) -> IntoIter<&'s str, TypedValue> {
-        self.0.into_iter()
+impl IntoParameter for Value {
+    fn into_parameter(self, _: &dyn DatabasePlatform) -> CreedResult<Parameter> {
+        Ok(match self {
+            Value::NULL => Parameter::new(self, ParameterType::Null),
+            Value::UInt(_) | Value::Int(_) => Parameter::new(self, ParameterType::Integer),
+            Value::Float(_) => Parameter::new(self, ParameterType::Float),
+            Value::Bytes(_) => Parameter::new(self, ParameterType::Binary),
+            Value::Boolean(_) => Parameter::new(self, ParameterType::Boolean),
+            _ => Parameter::new(self, ParameterType::String),
+        })
     }
 }
 
@@ -500,46 +485,85 @@ impl IntoParameter for TypedValue {
     }
 }
 
-impl<'s> ValueMap<'s> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
+pub struct UntypedValueMap<'s>(pub HashMap<&'s str, Value>);
+pub struct TypedValueMap<'s>(pub HashMap<&'s str, TypedValue>);
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
+impl Sealed for UntypedValueMap<'_> {}
+impl Sealed for TypedValueMap<'_> {}
 
-    pub fn keys(&self) -> Keys<&str, Value> {
-        self.0.keys()
-    }
-
-    pub fn values(&self) -> Values<&str, Value> {
-        self.0.values()
-    }
-
-    pub fn into_values(self) -> IntoValues<&'s str, Value> {
-        self.0.into_values()
-    }
-
-    pub fn into_iter(self) -> IntoIter<&'s str, Value> {
-        self.0.into_iter()
+impl<'s> From<UntypedValueMap<'s>> for HashMap<&'s str, Value> {
+    fn from(value: UntypedValueMap<'s>) -> Self {
+        value.0
     }
 }
 
-impl IntoParameter for Value {
-    fn into_parameter(self, _: &dyn DatabasePlatform) -> CreedResult<Parameter> {
-        Ok(match self {
-            Value::NULL => Parameter::new(self, ParameterType::Null),
-            Value::UInt(_) | Value::Int(_) => Parameter::new(self, ParameterType::Integer),
-            Value::Float(_) => Parameter::new(self, ParameterType::Float),
-            Value::Bytes(_) => Parameter::new(self, ParameterType::Binary),
-            Value::Boolean(_) => Parameter::new(self, ParameterType::Boolean),
-            _ => Parameter::new(self, ParameterType::String),
-        })
+impl<'s> From<TypedValueMap<'s>> for HashMap<&'s str, TypedValue> {
+    fn from(value: TypedValueMap<'s>) -> Self {
+        value.0
     }
 }
 
-impl IntoParameters for TypedValueMap<'_> {
+#[allow(private_bounds)]
+pub trait ValueMap<'s>: Into<HashMap<&'s str, Self::Item>> + Sealed {
+    type Item;
+
+    /// Gets the map as std HashMap reference
+    fn as_map(&self) -> &HashMap<&'s str, Self::Item>;
+
+    /// Returns true if the map has no element.
+    fn is_empty(&self) -> bool {
+        self.as_map().is_empty()
+    }
+
+    /// Returns the size of the map.
+    fn len(&self) -> usize {
+        self.as_map().len()
+    }
+
+    /// Returns an iterator visiting all keys in the map.
+    fn keys(&self) -> Keys<&'s str, Self::Item> {
+        self.as_map().keys()
+    }
+
+    /// Returns an iterator visiting all values in the map.
+    fn values(&self) -> Values<&'s str, Self::Item> {
+        self.as_map().values()
+    }
+
+    /// Creates a consuming iterator visiting all the values is the map.
+    /// The map cannot be used after this call.
+    fn into_values(self) -> IntoValues<&'s str, Self::Item> {
+        self.into().into_values()
+    }
+
+    /// Creates a consuming iterator visiting all the key-value pairs in the map.
+    /// The map cannot be used after this call.
+    fn into_iter(self) -> IntoIter<&'s str, Self::Item> {
+        self.into().into_iter()
+    }
+}
+
+impl<'s> ValueMap<'s> for UntypedValueMap<'s> {
+    type Item = Value;
+
+    fn as_map(&self) -> &HashMap<&'s str, Self::Item> {
+        &self.0
+    }
+}
+
+impl<'s> ValueMap<'s> for TypedValueMap<'s> {
+    type Item = TypedValue;
+
+    fn as_map(&self) -> &HashMap<&'s str, Self::Item> {
+        &self.0
+    }
+}
+
+impl<'s, VM> IntoParameters for VM
+where
+    VM: ValueMap<'s>,
+    VM::Item: IntoParameter,
+{
     fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
         let values: Vec<_> = self
             .into_iter()
@@ -557,35 +581,7 @@ impl IntoParameters for TypedValueMap<'_> {
     }
 }
 
-impl IntoParameters for IntoValues<&'_ str, TypedValue> {
-    fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
-        let v: Vec<_> = self
-            .map(|typed| typed.into_parameter(platform))
-            .try_collect()?;
-
-        Ok(Parameters::from(v))
-    }
-}
-
-impl IntoParameters for ValueMap<'_> {
-    fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
-        let values: Vec<_> = self
-            .into_iter()
-            .map(
-                |(name, typed)| -> CreedResult<(ParameterIndex, Parameter)> {
-                    Ok((
-                        ParameterIndex::Named(name.to_string()),
-                        typed.into_parameter(platform)?,
-                    ))
-                },
-            )
-            .try_collect()?;
-
-        Ok(Parameters::Vec(values))
-    }
-}
-
-impl IntoParameters for IntoValues<&'_ str, Value> {
+impl<IP: IntoParameter> IntoParameters for IntoValues<&'_ str, IP> {
     fn into_parameters(self, platform: &dyn DatabasePlatform) -> CreedResult<Parameters<'static>> {
         let v: Vec<_> = self
             .map(|typed| typed.into_parameter(platform))
@@ -607,14 +603,14 @@ impl From<TypedValue> for Value {
     }
 }
 
-impl<'a> From<TypedValueMap<'a>> for ValueMap<'a> {
+impl<'a> From<TypedValueMap<'a>> for UntypedValueMap<'a> {
     fn from(value: TypedValueMap<'a>) -> Self {
         let mut map = HashMap::with_capacity(value.len());
         for (k, v) in value.0.into_iter() {
             map.insert(k, v.value);
         }
 
-        ValueMap(map)
+        Self(map)
     }
 }
 

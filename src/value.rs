@@ -1,5 +1,6 @@
 use crate::parameter::{IntoParameter, IntoParameters};
 use crate::platform::DatabasePlatform;
+use crate::private::Sealed;
 use crate::r#type::{IntoType, TypePtr};
 use crate::{Error, Parameter, ParameterIndex, ParameterType, Parameters, Result as CreedResult};
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -8,7 +9,6 @@ use std::cmp::Ordering;
 use std::collections::hash_map::{IntoIter, IntoValues, Keys, Values};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use crate::private::Sealed;
 
 #[derive(Debug, Clone)]
 pub enum Value {

@@ -305,6 +305,14 @@ impl FKConstraintList {
         }
     }
 
+    pub fn remove<T: NamedListIndex>(&mut self, index: T) -> Option<ForeignKeyConstraint> {
+        let Some((pos, _)) = self.get_position(index) else {
+            return None;
+        };
+
+        Some(self.inner.remove(pos))
+    }
+
     pub fn keys(&self) -> impl Iterator<Item = String> + '_ {
         self.inner.iter().map(|c| c.get_name().into_owned())
     }

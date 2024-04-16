@@ -438,7 +438,23 @@ impl Table {
     pub fn has_foreign_key<T: IntoIdentifier>(&self, fk_name: T) -> bool {
         let name = fk_name.into_identifier();
         let name = name.get_name();
-        self.foreign_keys.iter().any(|i| i.get_name() == name)
+        self.foreign_keys.get(name.as_ref()).is_some()
+    }
+
+    pub fn get_foreign_key<T: IntoIdentifier>(&self, fk_name: T) -> Option<&ForeignKeyConstraint> {
+        let name = fk_name.into_identifier();
+        let name = name.get_name();
+        self.foreign_keys.get(name.as_ref())
+    }
+
+    pub fn remove_foreign_key<T: IntoIdentifier>(
+        &mut self,
+        fk_name: T,
+    ) -> Option<ForeignKeyConstraint> {
+        let name = fk_name.into_identifier();
+        let name = name.get_name();
+
+        self.foreign_keys.remove(name.as_ref())
     }
 
     #[allow(clippy::too_many_arguments)]

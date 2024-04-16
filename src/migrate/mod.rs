@@ -8,7 +8,7 @@ use crate::migrate::metadata::{ExecutedMigrationList, MetadataStorage, TableMeta
 use crate::schema::Schema;
 use crate::sync::Mutex;
 use crate::{Connection, Result};
-use log::info;
+use log::{error, info};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
@@ -49,6 +49,7 @@ pub struct Migration {
     pub checksum: Cow<'static, [u8]>,
 }
 
+#[allow(dead_code)]
 pub struct Migrator {
     migrations: Cow<'static, [Migration]>,
     ignore_missing: bool,
@@ -112,6 +113,13 @@ impl Migrator {
             sql_count += executor.execute(&mut plan, to_schema).await?;
 
             if let Some(execution_result) = plan.execution_result {
+                if let Some(error) = execution_result.error {
+                    error!(target: "creed::migrate", "Error while executing migration {}: {}", plan.version, error);
+                    connection.roll_back().await?;
+
+                    return Err(error);
+                }
+
                 to_schema = execution_result.to_schema.clone();
                 if let Some(metadata_storage) = guard.deref() {
                     metadata_storage.complete(execution_result).await

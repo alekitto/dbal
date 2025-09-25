@@ -206,9 +206,9 @@ impl Migrator {
             }
 
             if executed_migration_list.has_migration(version)
-                && !executed_migration_list
+                && executed_migration_list
                     .last()
-                    .is_some_and(|v| v.version == version)
+                    .is_none_or(|v| v.version != version)
             {
                 Direction::Down
             } else {

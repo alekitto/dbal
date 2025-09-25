@@ -23,14 +23,14 @@ pub(crate) use table::TableOptions;
 pub use check_constraint::CheckConstraint;
 pub use column::{Column, ColumnList};
 pub use column_diff::{ChangedProperty, ColumnDiff};
-pub use comparator::{diff_column, Comparator, GenericComparator};
+pub use comparator::{Comparator, GenericComparator, diff_column};
 pub use foreign_key_constraint::{
     FKConstraintList, ForeignKeyConstraint, ForeignKeyReferentialAction,
 };
 pub use identifier::{Identifier, IntoIdentifier};
 pub use index::{Index, IndexList, IndexOptions};
 pub use schema_diff::SchemaDiff;
-pub use schema_manager::{extract_type_from_comment, remove_type_from_comment, SchemaManager};
+pub use schema_manager::{SchemaManager, extract_type_from_comment, remove_type_from_comment};
 pub(crate) use schema_manager::{get_database, string_from_value};
 pub use sequence::Sequence;
 pub use table::{Table, TableList};
@@ -40,16 +40,16 @@ pub use view::View;
 
 pub use ::creed_macros::IntoIdentifier;
 
-use crate::platform::DatabasePlatform;
-use crate::schema::asset::{impl_asset, AbstractAsset};
-use crate::schema::schema_config::SchemaConfig;
 use crate::Result;
+use crate::platform::DatabasePlatform;
+use crate::schema::asset::{AbstractAsset, impl_asset};
+use crate::schema::schema_config::SchemaConfig;
 use itertools::Itertools;
 
 pub trait NamedListIndex {
     fn is_usize(&self) -> bool;
     fn as_usize(&self) -> usize;
-    fn as_str(&self) -> Cow<str>;
+    fn as_str(&self) -> Cow<'_, str>;
 }
 
 impl NamedListIndex for usize {
@@ -61,7 +61,7 @@ impl NamedListIndex for usize {
         *self
     }
 
-    fn as_str(&self) -> Cow<str> {
+    fn as_str(&self) -> Cow<'_, str> {
         "".into()
     }
 }
@@ -75,7 +75,7 @@ impl NamedListIndex for &str {
         0
     }
 
-    fn as_str(&self) -> Cow<str> {
+    fn as_str(&self) -> Cow<'_, str> {
         self.to_string().into()
     }
 }
@@ -89,7 +89,7 @@ impl NamedListIndex for dyn AsRef<str> {
         0
     }
 
-    fn as_str(&self) -> Cow<str> {
+    fn as_str(&self) -> Cow<'_, str> {
         self.as_ref().into()
     }
 }
@@ -103,7 +103,7 @@ impl NamedListIndex for Identifier {
         0
     }
 
-    fn as_str(&self) -> Cow<str> {
+    fn as_str(&self) -> Cow<'_, str> {
         self.get_name()
     }
 }
@@ -117,7 +117,7 @@ impl NamedListIndex for String {
         0
     }
 
-    fn as_str(&self) -> Cow<str> {
+    fn as_str(&self) -> Cow<'_, str> {
         self.into()
     }
 }

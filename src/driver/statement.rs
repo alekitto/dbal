@@ -8,22 +8,22 @@ pub trait Statement<'conn>: Debug + Send + Sync {
     /// that was used to prepare the statement.
     ///
     /// * `param` Parameter identifier. For a prepared statement using named placeholders, this will
-    ///           be a parameter name of the form :name. For a prepared statement using question
-    ///           mark placeholders, this will be the 1-indexed position of the parameter.
+    ///   be a parameter name of the form :name. For a prepared statement using question
+    ///   mark placeholders, this will be the 1-indexed position of the parameter.
     /// * `value` The value to bind to the parameter.
     fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()>;
 
     /// Executes a prepared statement and returns the resulting rows.
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
-    ///            SQL statement being executed.
-    fn query(&self, params: Parameters) -> AsyncResult<StatementResult>;
+    ///   SQL statement being executed.
+    fn query(&self, params: Parameters) -> AsyncResult<'_, StatementResult>;
 
     /// Executes a prepared statement and returns the resulting rows.
     /// This method consumes the statement.
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
-    ///            SQL statement being executed.
+    ///   SQL statement being executed.
     fn query_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
@@ -32,14 +32,14 @@ pub trait Statement<'conn>: Debug + Send + Sync {
     /// Executes a prepared statement
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
-    ///            SQL statement being executed.
-    fn execute(&self, params: Parameters) -> AsyncResult<usize>;
+    ///   SQL statement being executed.
+    fn execute(&self, params: Parameters) -> AsyncResult<'_, usize>;
 
     /// Executes a prepared statement.
     /// This method consumes the statement.
     ///
     /// * `params` A vector of values with as many elements as there are bound parameters in the
-    ///            SQL statement being executed.
+    ///   SQL statement being executed.
     fn execute_owned(
         self: Box<Self>,
         params: Vec<(ParameterIndex, Parameter)>,
@@ -59,8 +59,8 @@ impl<'conn, T: Statement<'conn> + ?Sized> Statement<'conn> for Box<T> {
     delegate! {
         to (**self) {
             fn bind_value(&self, param: ParameterIndex, value: Parameter) -> Result<()>;
-            fn query(&self, params: Parameters) -> AsyncResult<StatementResult>;
-            fn execute(&self, params: Parameters) -> AsyncResult<usize>;
+            fn query(&self, params: Parameters) -> AsyncResult<'_, StatementResult>;
+            fn execute(&self, params: Parameters) -> AsyncResult<'_, usize>;
             fn row_count(&self) -> usize;
         }
 

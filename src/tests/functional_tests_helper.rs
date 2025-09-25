@@ -1,6 +1,6 @@
-use crate::r#type::{IntoType, INTEGER, STRING};
 use crate::schema::{Asset, Column, IntoIdentifier, SchemaManager, Table};
 use crate::tests::{create_connection, get_database_dsn};
+use crate::r#type::{INTEGER, IntoType, STRING};
 use crate::util::PlatformBox;
 use crate::{Configuration, Connection, Result};
 

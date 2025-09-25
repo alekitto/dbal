@@ -2,17 +2,17 @@ use super::sqlite_platform::AbstractSQLitePlatform;
 use crate::driver::sqlite::platform::AbstractSQLiteSchemaManager;
 use crate::driver::statement_result::StatementResult;
 use crate::error::ErrorKind;
-use crate::platform::{default, CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode};
-use crate::r#type::{IntoType, BIGINT, DATE, DATETIME, INTEGER, STRING, TIME};
+use crate::platform::{CreateFlags, DatabasePlatform, DateIntervalUnit, TrimMode, default};
 use crate::schema::{
     Asset, Column, ColumnData, ForeignKeyConstraint, Identifier, Index, SchemaManager, Table,
     TableDiff, TableOptions,
 };
 use crate::schema::{ColumnList, IntoIdentifier};
-use crate::{params, Error, Parameters, Result, Row, TransactionIsolationLevel, Value};
+use crate::r#type::{BIGINT, DATE, DATETIME, INTEGER, IntoType, STRING, TIME};
+use crate::{Error, Parameters, Result, Row, TransactionIsolationLevel, Value, params};
 use creed::schema::IndexList;
 use itertools::Itertools;
-use regex::{escape, Regex};
+use regex::{Regex, escape};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -192,10 +192,9 @@ fn get_non_autoincrement_primary_key_definition(
                 if let Some(column) = columns
                     .iter()
                     .find(|c| c.name.cmp(key_column) == Ordering::Equal)
+                    && column.autoincrement
                 {
-                    if column.autoincrement {
-                        return "".to_string();
-                    }
+                    return "".to_string();
                 }
             }
 
@@ -431,7 +430,7 @@ fn get_indexes_in_altered_table(diff: &TableDiff, from_table: &Table) -> Vec<Ind
         let mut index_columns = vec![];
         for column_name in &index.get_columns() {
             let normalized_column_name = column_name.to_lowercase();
-            if column_names.get(&normalized_column_name).is_some() {
+            if column_names.contains_key(&normalized_column_name) {
                 index_columns.push(normalized_column_name.clone());
                 if *column_name == normalized_column_name {
                     continue;
@@ -661,12 +660,13 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
 
     // Suppress changes on integer type autoincrement columns.
     for column_diff in diff.changed_columns.drain(..) {
-        if column_diff.column.is_autoincrement() && column_diff.column.get_type() == integer_type {
-            if let Some(from_column) = &column_diff.from_column {
-                let from_column_type = from_column.get_type();
-                if from_column_type == integer_type || from_column_type == bigint_type {
-                    continue;
-                }
+        if column_diff.column.is_autoincrement()
+            && column_diff.column.get_type() == integer_type
+            && let Some(from_column) = &column_diff.from_column
+        {
+            let from_column_type = from_column.get_type();
+            if from_column_type == integer_type || from_column_type == bigint_type {
+                continue;
             }
         }
 
@@ -732,15 +732,13 @@ fn get_simple_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
         }
 
         let (res, mut table_sql) = this.on_schema_alter_table(diff, vec![])?;
-        if !res {
-            if let Some(new_name) = &diff.new_name {
-                let new_name = Identifier::new(new_name, false);
-                sql.push(format!(
-                    "ALTER TABLE {} RENAME TO {}",
-                    table_name,
-                    new_name.get_quoted_name(&platform)
-                ));
-            }
+        if !res && let Some(new_name) = &diff.new_name {
+            let new_name = Identifier::new(new_name, false);
+            sql.push(format!(
+                "ALTER TABLE {} RENAME TO {}",
+                table_name,
+                new_name.get_quoted_name(&platform)
+            ));
         }
 
         sql.append(&mut table_sql);
@@ -792,13 +790,12 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
             }
 
             let column_name = column.get_name().to_lowercase();
-            if columns.remove(column_name.as_str()).is_some() {
-                if let Some((p, _)) = old_column_names
+            if columns.remove(column_name.as_str()).is_some()
+                && let Some((p, _)) = old_column_names
                     .iter()
                     .find_position(|c| *c == &column_name)
-                {
-                    old_column_names.remove(p);
-                }
+            {
+                old_column_names.remove(p);
             }
         }
 
@@ -907,7 +904,10 @@ pub fn get_alter_table_sql<T: AbstractSQLiteSchemaManager + Sync + ?Sized>(
 
         Ok(sql)
     } else {
-        Err(Error::new(ErrorKind::UnknownError, "Sqlite platform requires for alter table the table diff with reference to original table schema"))
+        Err(Error::new(
+            ErrorKind::UnknownError,
+            "Sqlite platform requires for alter table the table diff with reference to original table schema",
+        ))
     }
 }
 

@@ -1,6 +1,6 @@
+use crate::Error;
 use crate::migrate::Direction;
 use crate::schema::Schema;
-use crate::Error;
 
 pub struct ExecutionResult {
     pub sql: Vec<String>,

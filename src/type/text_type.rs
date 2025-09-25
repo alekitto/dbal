@@ -1,7 +1,7 @@
-use crate::platform::DatabasePlatform;
-use crate::r#type::Type;
-use crate::schema::ColumnData;
 use crate::Result;
+use crate::platform::DatabasePlatform;
+use crate::schema::ColumnData;
+use crate::r#type::Type;
 use crate::{Error, Value};
 
 pub struct TextType {}

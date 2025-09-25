@@ -1,5 +1,5 @@
 use super::asset::AbstractAsset;
-use crate::schema::asset::{impl_asset, Asset};
+use crate::schema::asset::{Asset, impl_asset};
 use creed_macros::IntoIdentifier;
 use std::borrow::{Borrow, Cow};
 use std::fmt::Display;

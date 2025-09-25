@@ -1,10 +1,10 @@
 mod executed_migration;
 
-use crate::migrate::execution_result::ExecutionResult;
 use crate::migrate::Direction;
-use crate::r#type::{IntoType, BIGINT, DATETIME, INTEGER};
+use crate::migrate::execution_result::ExecutionResult;
 use crate::schema::{Column, Table};
-use crate::{params, AsyncResult, Connection};
+use crate::r#type::{BIGINT, DATETIME, INTEGER, IntoType};
+use crate::{AsyncResult, Connection, params};
 use chrono::TimeZone;
 use creed::Value;
 use creed_macros::value_map;
@@ -12,8 +12,8 @@ pub use executed_migration::{ExecutedMigration, ExecutedMigrationList};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub trait MetadataStorage {
-    fn get_executed_migration(&self) -> AsyncResult<ExecutedMigrationList>;
-    fn complete(&self, execution_result: ExecutionResult) -> AsyncResult<()>;
+    fn get_executed_migration(&self) -> AsyncResult<'_, ExecutedMigrationList>;
+    fn complete(&self, execution_result: ExecutionResult) -> AsyncResult<'_, ()>;
 }
 
 pub struct TableMetadataStorage<'conn> {
@@ -116,7 +116,7 @@ impl<'conn> TableMetadataStorage<'conn> {
 }
 
 impl MetadataStorage for TableMetadataStorage<'_> {
-    fn get_executed_migration(&self) -> AsyncResult<ExecutedMigrationList> {
+    fn get_executed_migration(&self) -> AsyncResult<'_, ExecutedMigrationList> {
         Box::pin(async move {
             if !self.is_initialized(self.connection).await? {
                 Ok(ExecutedMigrationList { items: vec![] })
@@ -162,7 +162,7 @@ impl MetadataStorage for TableMetadataStorage<'_> {
         })
     }
 
-    fn complete(&self, execution_result: ExecutionResult) -> AsyncResult<()> {
+    fn complete(&self, execution_result: ExecutionResult) -> AsyncResult<'_, ()> {
         let version_column_name = self.version_column_name.clone();
         let execution_time_column_name = self.execution_time_column_name.clone();
         let executed_at_column_name = self.executed_at_column_name.clone();

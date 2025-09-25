@@ -6,12 +6,13 @@ use crate::{Error, Parameter, ParameterIndex, ParameterType, Parameters, Result 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use itertools::Itertools;
 use std::cmp::Ordering;
-use std::collections::hash_map::{IntoIter, IntoValues, Keys, Values};
 use std::collections::HashMap;
+use std::collections::hash_map::{IntoIter, IntoValues, Keys, Values};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum Value {
+    #[default]
     NULL,
     Int(i64),
     UInt(u64),
@@ -30,12 +31,6 @@ pub enum Value {
 
     /// uuid
     Uuid(uuid::Uuid),
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Self::NULL
-    }
 }
 
 impl Default for &Value {
@@ -338,7 +333,7 @@ impl<V: Into<Value> + 'static> From<Vec<V>> for Value {
     fn from(value: Vec<V>) -> Self {
         use std::any::TypeId;
         if TypeId::of::<V>() == TypeId::of::<u8>() {
-            Value::Bytes(unsafe { std::mem::transmute(value) })
+            Value::Bytes(unsafe { std::mem::transmute::<Vec<V>, Vec<u8>>(value) })
         } else {
             Value::Array(value.into_iter().map(|v| v.into()).collect::<Vec<_>>())
         }
@@ -521,12 +516,12 @@ pub trait ValueMap<'s>: Into<HashMap<&'s str, Self::Item>> + Sealed {
     }
 
     /// Returns an iterator visiting all keys in the map.
-    fn keys(&self) -> Keys<&'s str, Self::Item> {
+    fn keys(&self) -> Keys<'_, &'s str, Self::Item> {
         self.as_map().keys()
     }
 
     /// Returns an iterator visiting all values in the map.
-    fn values(&self) -> Values<&'s str, Self::Item> {
+    fn values(&self) -> Values<'_, &'s str, Self::Item> {
         self.as_map().values()
     }
 

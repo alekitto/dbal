@@ -128,7 +128,7 @@ pub(crate) fn expand_migrator(
 
         let end = file_name.len() - 3;
         let version: i64 = file_name[8..end].parse()?;
-        let migration_file = read_to_string(&entry.path())?;
+        let migration_file = read_to_string(entry.path())?;
 
         let version_mod_name: Ident = syn::parse_str(&format!("version_{}", version))?;
         let checksum = Vec::from(Sha384::digest(migration_file.as_bytes()).as_slice());

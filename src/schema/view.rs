@@ -1,4 +1,4 @@
-use crate::schema::asset::{impl_asset, Asset};
+use crate::schema::asset::{Asset, impl_asset};
 use crate::schema::{Identifier, IntoIdentifier};
 
 #[derive(Clone, IntoIdentifier)]

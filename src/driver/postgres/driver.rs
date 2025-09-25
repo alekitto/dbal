@@ -124,10 +124,10 @@ impl Debug for Driver {
 impl Driver {
     fn build_dsn(options: ConnectionOptions) -> (String, DbalTls) {
         let mut dsn = String::new();
-        if let Some(host) = options.host {
-            if !host.is_empty() {
-                dsn += &format!("host={} ", host);
-            }
+        if let Some(host) = options.host
+            && !host.is_empty()
+        {
+            dsn += &format!("host={} ", host);
         }
 
         if let Some(port) = options.port {
@@ -154,10 +154,10 @@ impl Driver {
             }
         );
 
-        if let Some(application_name) = options.application_name {
-            if !application_name.is_empty() {
-                dsn += &format!("application_name={} ", application_name);
-            }
+        if let Some(application_name) = options.application_name
+            && !application_name.is_empty()
+        {
+            dsn += &format!("application_name={} ", application_name);
         }
 
         (
@@ -207,13 +207,13 @@ impl<'conn> Connection<'conn> for Driver {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
-    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+    ) -> Async<'_, Box<dyn DatabasePlatform + Send + Sync>> {
         Box::pin(async move {
-            Box::new(PostgreSQLPlatform::new(ev)) as Box<(dyn DatabasePlatform + Send + Sync)>
+            Box::new(PostgreSQLPlatform::new(ev)) as Box<dyn DatabasePlatform + Send + Sync>
         })
     }
 
-    fn server_version(&self) -> Async<Option<String>> {
+    fn server_version(&self) -> Async<'_, Option<String>> {
         Box::pin(async move {
             let row = self
                 .client
@@ -238,7 +238,7 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement<'conn> + 'conn>> {
         Ok(Box::new(super::statement::Statement::new(self, sql)))
     }
 }
@@ -246,10 +246,10 @@ impl<'conn> Connection<'conn> for Driver {
 #[cfg(test)]
 mod tests {
     use crate::driver::connection::{Connection, DriverConnection};
-    use crate::driver::postgres::driver::Driver;
     use crate::driver::postgres::ConnectionOptions;
+    use crate::driver::postgres::driver::Driver;
     use crate::rows::ColumnIndex;
-    use crate::{params, Result, Value};
+    use crate::{Result, Value, params};
     use serial_test::serial;
     use url::Url;
 

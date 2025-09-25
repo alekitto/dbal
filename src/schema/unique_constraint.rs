@@ -1,7 +1,7 @@
-use crate::platform::DatabasePlatform;
-use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
-use crate::schema::{Identifier, IntoIdentifier};
 use crate::Value;
+use crate::platform::DatabasePlatform;
+use crate::schema::asset::{AbstractAsset, Asset, impl_asset};
+use crate::schema::{Identifier, IntoIdentifier};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, IntoIdentifier)]

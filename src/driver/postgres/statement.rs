@@ -5,16 +5,18 @@ use crate::error::{Error, StdError};
 use crate::parameter_type::ParameterType;
 use crate::{AsyncResult, Parameter, ParameterIndex, Parameters, Result, Rows, Value};
 use dashmap::DashMap;
-use sqlparser::ast::{visit_expressions_mut, Expr};
-use sqlparser::dialect::PostgreSqlDialect;
+use log::debug;
+use sqlparser::ast::{Expr, VisitMut, VisitorMut};
+use sqlparser::dialect::{Dialect, GenericDialect, MySqlDialect, PostgreSqlDialect};
 use sqlparser::parser::Parser;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write};
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_postgres::types::private::BytesMut;
-use tokio_postgres::types::{to_sql_checked, Format, IsNull, ToSql, Type};
+use tokio_postgres::types::{Format, IsNull, ToSql, Type, to_sql_checked};
 
 pub struct Statement<'conn> {
     pub(super) connection: &'conn Driver,
@@ -111,7 +113,7 @@ impl<'conn> Statement<'conn> {
         params: Vec<(ParameterIndex, Parameter)>,
     ) -> Result<(tokio_postgres::Statement, Vec<Parameter>)> {
         let mut raw_params = Vec::with_capacity(params.len());
-        let mut sql = self.sql.clone();
+        let sql = self.sql.clone();
 
         if !params.is_empty() {
             let positional = params
@@ -132,50 +134,67 @@ impl<'conn> Statement<'conn> {
 
                 raw_params.push(p);
             }
-
-            // We should parse the SQL query in order to replace the "?" or named parameters
-            // with the postgresql indexed parameters ($1, $2, ...)
-            let mut statement = Parser::new(&PostgreSqlDialect {})
-                .try_with_sql(&self.sql)?
-                .parse_statement()?;
-            let mut last_pos: usize = 0;
-
-            let flow = visit_expressions_mut(&mut statement, |expr| {
-                if let Expr::Value(sqlparser::ast::Value::Placeholder(placeholder)) = expr {
-                    let s: String = placeholder.to_string();
-                    let new_value = if s.starts_with(':') {
-                        // query has named parameters
-                        let name = s.get(1..).unwrap(); // remove the starting colon
-
-                        // Search for parameter in the named parameters map
-                        let Some(pos) = named_map.get(name).copied() else {
-                            return ControlFlow::Break(Error::cannot_find_named_parameter(name));
-                        };
-
-                        format!("${}", pos)
-                    } else if s.starts_with('$') {
-                        s.clone()
-                    } else {
-                        last_pos += 1;
-                        format!("${}", last_pos)
-                    };
-
-                    *expr = Expr::Value(sqlparser::ast::Value::Placeholder(new_value));
-                }
-
-                ControlFlow::Continue(())
-            });
-
-            if let ControlFlow::Break(e) = flow {
-                return Err(e);
-            }
-
-            sql = statement.to_string();
         }
 
+        // We should parse the SQL query in order to replace the "?" or named parameters
+        // with the postgresql indexed parameters ($1, $2, ...)
+        let sql = Self::rewrite_placeholders(&sql);
         let statement = self.connection.client.prepare(&sql).await?;
 
         Ok((statement, raw_params))
+    }
+
+    fn rewrite_placeholders(sql: &str) -> Cow<'_, str> {
+        let postgres = PostgreSqlDialect {};
+        let mysql = MySqlDialect {};
+        let generic = GenericDialect {};
+        let dialects: [&dyn Dialect; 3] = [&postgres, &mysql, &generic];
+        let mut last_error = None;
+
+        for dialect in dialects {
+            match Parser::parse_sql(dialect, sql) {
+                Ok(mut statements) => {
+                    let mut rewriter = PlaceholderRewriter::new();
+                    let _ = VisitMut::visit(&mut statements, &mut rewriter);
+
+                    if !rewriter.replaced {
+                        return Cow::Borrowed(sql);
+                    }
+
+                    let rewritten = statements
+                        .into_iter()
+                        .map(|statement| statement.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ");
+
+                    let trimmed_start = sql.trim_start_matches(char::is_whitespace);
+                    let leading_len = sql.len() - trimmed_start.len();
+                    let leading_ws = &sql[..leading_len];
+                    let trimmed_end = trimmed_start.trim_end_matches(char::is_whitespace);
+                    let trailing_ws = &trimmed_start[trimmed_end.len()..];
+                    let had_semicolon = trimmed_end.ends_with(';');
+
+                    let mut output = String::with_capacity(sql.len() + 8);
+                    output.push_str(leading_ws);
+                    output.push_str(&rewritten);
+
+                    if had_semicolon {
+                        output.push(';');
+                    }
+
+                    output.push_str(trailing_ws);
+
+                    return Cow::Owned(output);
+                }
+                Err(err) => last_error = Some(err),
+            }
+        }
+
+        if let Some(err) = last_error {
+            debug!("failed to parse SQL for placeholder rewrite: {err}");
+        }
+
+        Cow::Borrowed(sql)
     }
 
     async fn internal_query(&'conn self, params: Vec<(ParameterIndex, Parameter)>) -> Result<Rows> {
@@ -224,7 +243,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<StatementResult> {
+    fn query(&self, params: Parameters) -> AsyncResult<'_, StatementResult> {
         let params = Vec::from(params);
 
         Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
@@ -237,7 +256,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
-    fn execute(&self, params: Parameters) -> AsyncResult<usize> {
+    fn execute(&self, params: Parameters) -> AsyncResult<'_, usize> {
         let params = Vec::from(params);
 
         Box::pin(async move { self.internal_execute(params).await })
@@ -252,5 +271,68 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
 
     fn row_count(&self) -> usize {
         self.row_count.load(Ordering::SeqCst)
+    }
+}
+
+struct PlaceholderRewriter {
+    next_index: usize,
+    replaced: bool,
+}
+
+impl PlaceholderRewriter {
+    fn new() -> Self {
+        Self {
+            next_index: 1,
+            replaced: false,
+        }
+    }
+}
+
+impl VisitorMut for PlaceholderRewriter {
+    type Break = ();
+
+    fn pre_visit_expr(&mut self, expr: &mut Expr) -> ControlFlow<Self::Break> {
+        if let Expr::Value(v) = expr
+            && let sqlparser::ast::Value::Placeholder(placeholder) = &mut v.value
+            && placeholder.starts_with('?')
+        {
+            *placeholder = format!("${}", self.next_index);
+            self.next_index += 1;
+            self.replaced = true;
+        }
+
+        ControlFlow::Continue(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewrites_placeholders_for_postgres() {
+        let sql = "SELECT ? FROM cache_entries WHERE id = ?";
+        let rewritten = Statement::rewrite_placeholders(sql);
+        assert_eq!(
+            rewritten.as_ref(),
+            "SELECT $1 FROM cache_entries WHERE id = $2"
+        );
+    }
+
+    #[test]
+    fn ignores_question_marks_inside_literals() {
+        let sql = "SELECT '?' AS literal, ? AS param";
+        let rewritten = Statement::rewrite_placeholders(sql);
+        assert_eq!(rewritten.as_ref(), "SELECT '?' AS literal, $1 AS param");
+    }
+
+    #[test]
+    fn falls_back_to_original_when_parse_fails() {
+        let sql = "SELECT ? FROM";
+        let rewritten = Statement::rewrite_placeholders(sql);
+        assert!(matches!(
+            rewritten,
+            Cow::Borrowed(returned) if std::ptr::eq(returned, sql)
+        ));
     }
 }

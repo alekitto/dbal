@@ -1,6 +1,6 @@
 use crate::platform::DatabasePlatform;
-use crate::r#type::Type;
 use crate::schema::ColumnData;
+use crate::r#type::Type;
 use crate::{Error, ParameterType, Result, Value};
 
 pub struct FloatType {}
@@ -13,7 +13,7 @@ impl Type for FloatType {
     fn convert_to_value(&self, value: &Value, _: &dyn DatabasePlatform) -> Result<Value> {
         match value {
             Value::NULL | Value::Float(_) => Ok(value.clone()),
-            Value::String(ref str) => {
+            Value::String(str) => {
                 if let Ok(result) = str.parse() {
                     Ok(Value::Float(result))
                 } else {

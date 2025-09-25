@@ -1,7 +1,7 @@
+use crate::Value;
 use crate::error::Error;
 use crate::parameter_type::ParameterType;
 use crate::platform::DatabasePlatform;
-use crate::Value;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ParameterIndex {
@@ -218,7 +218,7 @@ pub trait IntoParameter {
 pub trait IntoParameters {
     /// Convert this object into a Parameters object.
     fn into_parameters(self, platform: &dyn DatabasePlatform)
-        -> crate::Result<Parameters<'static>>;
+    -> crate::Result<Parameters<'static>>;
 }
 
 impl IntoParameters for Parameters<'static> {

@@ -4,25 +4,25 @@ use crate::event::{
     SchemaAlterTableAddColumnEvent, SchemaAlterTableRemoveColumnEvent, SchemaCreateTableEvent,
     SchemaDropTableEvent,
 };
-use crate::r#type::{TypeManager, TypePtr};
 use crate::schema::{
-    get_database, string_from_value, Asset, CheckConstraint, Column, ColumnData, ColumnDiff,
-    ColumnList, FKConstraintList, ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier,
-    Index, IndexOptions, IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableList,
-    TableOptions, UniqueConstraint, View,
+    Asset, CheckConstraint, Column, ColumnData, ColumnDiff, ColumnList, FKConstraintList,
+    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexOptions,
+    IntoIdentifier, SchemaManager, Sequence, Table, TableDiff, TableList, TableOptions,
+    UniqueConstraint, View, get_database, string_from_value,
 };
+use crate::r#type::{TypeManager, TypePtr};
 use crate::util::{filter_asset_names, function_name};
 use crate::{
-    params, AsyncResult, Error, Result, Row, SchemaAlterTableChangeColumnEvent,
-    SchemaAlterTableEvent, SchemaAlterTableRenameColumnEvent, SchemaColumnDefinitionEvent,
-    SchemaCreateTableColumnEvent, SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value,
+    AsyncResult, Error, Result, Row, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
+    SchemaAlterTableRenameColumnEvent, SchemaColumnDefinitionEvent, SchemaCreateTableColumnEvent,
+    SchemaIndexDefinitionEvent, TransactionIsolationLevel, Value, params,
 };
 use creed::schema::IndexList;
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::fmt::Display;
 
 pub fn get_ascii_string_type_declaration_sql(
@@ -293,10 +293,10 @@ pub fn get_drop_table_sql(
             platform.clone(),
         ))?;
 
-    if ev.is_default_prevented() {
-        if let Some(ref sql) = ev.sql {
-            return Ok(sql.clone());
-        }
+    if ev.is_default_prevented()
+        && let Some(ref sql) = ev.sql
+    {
+        return Ok(sql.clone());
     }
 
     Ok(format!("DROP TABLE {}", table_arg))
@@ -418,10 +418,10 @@ pub fn get_create_table_sql(
             Some(comment)
         };
 
-        if let Some(p) = &options.primary {
-            if p.0.iter().any(|n| n.eq(&column_data.name)) {
-                column_data.primary = true;
-            }
+        if let Some(p) = &options.primary
+            && p.0.iter().any(|n| n.eq(&column_data.name))
+        {
+            column_data.primary = true;
         }
 
         columns.push(column_data);
@@ -440,10 +440,10 @@ pub fn get_create_table_sql(
     let mut sql =
         this._get_create_table_sql(table.get_table_name(), columns.as_slice(), &options)?;
 
-    if platform.supports_comment_on_statement() {
-        if let Some(comment) = options.comment.as_deref() {
-            sql.push(this.get_comment_on_table_sql(table.get_table_name(), comment)?);
-        }
+    if platform.supports_comment_on_statement()
+        && let Some(comment) = options.comment.as_deref()
+    {
+        sql.push(this.get_comment_on_table_sql(table.get_table_name(), comment)?);
     }
 
     sql.append(&mut column_sql);
@@ -975,12 +975,11 @@ pub fn get_column_declaration_sql(
             .get_type(column.r#type.clone())?
             .get_sql_declaration(column, platform.as_dyn())?;
         let mut comment_decl = "".to_string();
-        if platform.supports_inline_column_comments() {
-            if let Some(comment) = column.comment.as_ref() {
-                if !comment.is_empty() {
-                    comment_decl = format!(" {}", this.get_inline_column_comment_sql(comment)?);
-                }
-            }
+        if platform.supports_inline_column_comments()
+            && let Some(comment) = column.comment.as_ref()
+            && !comment.is_empty()
+        {
+            comment_decl = format!(" {}", this.get_inline_column_comment_sql(comment)?);
         }
 
         format!(
@@ -1438,7 +1437,7 @@ pub fn columns_equal(this: &dyn SchemaManager, column1: &Column, column2: &Colum
     })
 }
 
-pub fn list_databases(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier>> {
+pub fn list_databases(this: &dyn SchemaManager) -> AsyncResult<'_, Vec<Identifier>> {
     Box::pin(async {
         let sql = this.get_list_databases_sql()?;
         let databases = this.get_connection().fetch_all(sql, params!()).await?;
@@ -1447,7 +1446,7 @@ pub fn list_databases(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier>> 
     })
 }
 
-pub fn list_sequences(this: &dyn SchemaManager) -> AsyncResult<Vec<Sequence>> {
+pub fn list_sequences(this: &dyn SchemaManager) -> AsyncResult<'_, Vec<Sequence>> {
     Box::pin(async move {
         let conn = this.get_connection();
         let database = get_database(conn, function_name!()).await?;
@@ -1557,28 +1556,28 @@ pub async fn list_table_details(this: &dyn SchemaManager, name: String) -> Resul
     table.add_foreign_keys_raw(foreign_keys.into_iter());
 
     if let Some(opt) = options.get(&name) {
-        if let Ok(Value::String(coll)) = opt.get("collation") {
-            if !coll.is_empty() {
-                table.set_collation(coll);
-            }
+        if let Ok(Value::String(coll)) = opt.get("collation")
+            && !coll.is_empty()
+        {
+            table.set_collation(coll);
         }
 
-        if let Ok(Value::String(charset)) = opt.get("charset") {
-            if !charset.is_empty() {
-                table.set_charset(charset);
-            }
+        if let Ok(Value::String(charset)) = opt.get("charset")
+            && !charset.is_empty()
+        {
+            table.set_charset(charset);
         }
 
-        if let Ok(Value::String(engine)) = opt.get("engine") {
-            if !engine.is_empty() {
-                table.set_engine(Some(engine.clone()));
-            }
+        if let Ok(Value::String(engine)) = opt.get("engine")
+            && !engine.is_empty()
+        {
+            table.set_engine(Some(engine.clone()));
         }
 
-        if let Ok(Value::String(str)) = opt.get("comment") {
-            if !str.is_empty() {
-                table.set_comment(str);
-            }
+        if let Ok(Value::String(str)) = opt.get("comment")
+            && !str.is_empty()
+        {
+            table.set_comment(str);
         }
     }
 

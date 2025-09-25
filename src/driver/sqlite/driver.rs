@@ -5,16 +5,16 @@ use crate::driver::statement::Statement;
 use crate::platform::DatabasePlatform;
 use crate::{Async, EventDispatcher, Parameter, Result, Value};
 use itertools::Itertools;
+use rusqlite::ToSql;
 use rusqlite::functions::{Context, FunctionFlags};
 use rusqlite::types::ToSqlOutput;
-use rusqlite::ToSql;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
 use url::Url;
 
-pub type Udf = dyn FnMut(&Context) -> rusqlite::Result<Box<dyn ToSql>>
+pub type Udf = dyn Fn(&'_ Context) -> rusqlite::Result<Box<dyn ToSql>>
     + Sync
     + Send
     + std::panic::UnwindSafe
@@ -29,7 +29,7 @@ pub struct ConnectionOptions {
 impl From<&crate::ConnectionOptions> for ConnectionOptions {
     fn from(opts: &crate::ConnectionOptions) -> Self {
         Self {
-            path: opts.file_path.as_ref().cloned().map(String::from),
+            path: opts.file_path.as_ref().cloned(),
             memory: opts
                 .host
                 .as_ref()
@@ -197,17 +197,17 @@ impl<'conn> DbalConnection<'conn> for Driver {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
-    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+    ) -> Async<'_, Box<dyn DatabasePlatform + Send + Sync>> {
         Box::pin(async move {
-            Box::new(SQLitePlatform::new(ev)) as Box<(dyn DatabasePlatform + Send + Sync)>
+            Box::new(SQLitePlatform::new(ev)) as Box<dyn DatabasePlatform + Send + Sync>
         })
     }
 
-    fn server_version(&self) -> Async<Option<String>> {
+    fn server_version(&self) -> Async<'_, Option<String>> {
         Box::pin(async move { None })
     }
 
-    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement<'conn> + 'conn>> {
         Ok(Box::new(sqlite::statement::Statement::new(self, sql)?))
     }
 }
@@ -246,8 +246,8 @@ impl ToSql for Value {
 #[cfg(test)]
 mod tests {
     use crate::driver::connection::Connection;
-    use crate::driver::sqlite::driver::{Driver, DriverConnection};
     use crate::driver::sqlite::ConnectionOptions;
+    use crate::driver::sqlite::driver::{Driver, DriverConnection};
     use crate::driver::statement::Statement;
     use crate::params;
     use crate::{Result, Row, Value};

@@ -1,8 +1,8 @@
 use super::statement::Statement;
 use crate::{Result, Row, Value};
 use futures::Stream;
-use rusqlite::types::ValueRef;
 use rusqlite::Column;
+use rusqlite::types::ValueRef;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 

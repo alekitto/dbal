@@ -1,7 +1,7 @@
 use crate::error::ErrorKind;
+use crate::migrate::Direction;
 use crate::migrate::execution_result::ExecutionResult;
 use crate::migrate::migration_plan::MigrationPlan;
-use crate::migrate::Direction;
 use crate::parameter::NO_PARAMS;
 use crate::schema::{Schema, SchemaManager};
 use crate::util::PlatformBox;

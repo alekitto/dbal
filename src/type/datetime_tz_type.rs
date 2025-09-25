@@ -1,7 +1,7 @@
 use crate::error::ErrorKind;
 use crate::platform::DatabasePlatform;
-use crate::r#type::Type;
 use crate::schema::ColumnData;
+use crate::r#type::Type;
 use crate::{Error, Result, Value};
 use chrono::format::ParseErrorKind;
 use chrono::{DateTime, Local, NaiveDateTime};

@@ -11,11 +11,11 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
       # this is cheaper than requesting the non-minimal profile
       - run: rustup component add rustfmt
@@ -31,11 +31,11 @@ jobs:
         runtime: [tokio]
         tls: [native-tls, rustls]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
       - name: Run cargo check
         run: cargo check --no-default-features --features sqlite,postgres,mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }}
@@ -48,25 +48,27 @@ jobs:
         runtime: [tokio]
         tls: [native-tls, rustls]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
-      - name: Run unit tests
-        run: cargo test --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }}
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run unit tests with code coverage
+        run: cargo llvm-cov --no-default-features --features runtime-${{ matrix.runtime }}-${{ matrix.tls }} --lcov --output-path lcov.info
         env:
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Aggregate code coverage with grcov
-        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
-      - name: Remove GCDA files
-        run: find target/ -name *.gcda -delete
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   sqlite:
     name: SQLite
@@ -76,26 +78,28 @@ jobs:
         runtime: [tokio]
     needs: check
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
-      - name: Run tests
-        run: cargo test --no-default-features --features sqlite,runtime-${{ matrix.runtime }}-rustls,functional-tests -- --test-threads=1
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests with code coverage
+        run: cargo llvm-cov --no-default-features --features sqlite,runtime-${{ matrix.runtime }}-rustls,functional-tests --lcov --output-path lcov.info -- --test-threads=1
         env:
           DATABASE_DSN: 'sqlite://:memory:'
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Aggregate code coverage with grcov
-        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
-      - name: Remove GCDA files
-        run: find target/ -name *.gcda -delete
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   postgres:
     name: Postgres
@@ -107,39 +111,41 @@ jobs:
         tls: [native-tls, rustls]
     needs: check
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
       - run: |
-          docker-compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
-          docker-compose run -d -p 5433:5432 --name postgres_${{ matrix.postgres }}_ssl postgres_${{ matrix.postgres }}_ssl
+          docker compose run -d -p 5432:5432 --name postgres_${{ matrix.postgres }} postgres_${{ matrix.postgres }}
+          docker compose run -d -p 5433:5432 --name postgres_${{ matrix.postgres }}_ssl postgres_${{ matrix.postgres }}_ssl
           docker exec postgres_${{ matrix.postgres }} bash -c "until pg_isready; do sleep 1; done"
 
-      - name: Run tests
-        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests with code coverage
+        run: cargo llvm-cov --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests --lcov --output-path lcov.info
         env:
           DATABASE_DSN: postgres://postgres:password@localhost:5432/dbal
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Run SSL tests
-        run: cargo test --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+      - name: Run SSL tests with code coverage
+        run: cargo llvm-cov --no-default-features --features postgres,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests --lcov --output-path lcov-ssl.info
         env:
           DATABASE_DSN: postgres://postgres:password@localhost:5433/dbal?ssl_mode=verify-ca&ca=.%2Ftests%2Fpostgres%2Fcerts%2Fca.crt
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Aggregate code coverage with grcov
-        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
-      - name: Remove GCDA files
-        run: find target/ -name *.gcda -delete
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info,lcov-ssl.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   mysql:
     name: MySQL
@@ -151,39 +157,41 @@ jobs:
         tls: [native-tls, rustls]
     needs: check
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
       - run: |
-          docker-compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
-          docker-compose run -d -p 3307:3306 mysql_${{ matrix.mysql }}_ssl
+          docker compose run -d -p 3306:3306 mysql_${{ matrix.mysql }}
+          docker compose run -d -p 3307:3306 mysql_${{ matrix.mysql }}_ssl
       - run: sleep 60
 
-      - name: Run tests
-        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests with code coverage
+        run: cargo llvm-cov --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests --lcov --output-path lcov.info
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Run SSL tests
-        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+      - name: Run SSL tests with code coverage
+        run: cargo llvm-cov --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests --lcov --output-path lcov-ssl.info
         env:
           DATABASE_DSN: mysql://root:password@localhost:3307/dbal?ssl_mode=verify-ca&ca=.%2Ftests%2Fmysql%2Fcerts%2Fca.crt
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Aggregate code coverage with grcov
-        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
-      - name: Remove GCDA files
-        run: find target/ -name *.gcda -delete
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info,lcov-ssl.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   mariadb:
     name: MariaDB
@@ -195,26 +203,28 @@ jobs:
         tls: [native-tls, rustls]
     needs: check
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
-      - uses: moonrepo/setup-rust@v0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: nightly
+          toolchain: nightly
 
-      - run: docker-compose run -d -p 3306:3306 mariadb_${{ matrix.mariadb }}
+      - run: docker compose run -d -p 3306:3306 mariadb_${{ matrix.mariadb }}
       - run: sleep 30
 
-      - name: Run tests
-        run: cargo test --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests with code coverage
+        run: cargo llvm-cov --no-default-features --features mysql,runtime-${{ matrix.runtime }}-${{ matrix.tls }},functional-tests --lcov --output-path lcov.info
         env:
           DATABASE_DSN: mysql://root:password@localhost:3306/dbal
           CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTFLAGS: '-Cinstrument-coverage -Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
+          RUSTDOCFLAGS: '-Cinstrument-coverage -Ccodegen-units=1 -Cllvm-args=--inline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
 
-      - name: Aggregate code coverage with grcov
-        uses: alekitto/grcov@v0.2
       - name: Upload code coverage
-        uses: codecov/codecov-action@v3
-      - name: Remove GCDA files
-        run: find target/ -name *.gcda -delete
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

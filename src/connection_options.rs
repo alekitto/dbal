@@ -1,6 +1,6 @@
+use crate::Error;
 use crate::platform::DatabasePlatform;
 use crate::util::PlatformBox;
-use crate::Error;
 #[cfg(any(feature = "mysql", feature = "postgres"))]
 use percent_encoding::percent_decode_str;
 #[cfg(any(feature = "mysql", feature = "postgres"))]
@@ -11,20 +11,15 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use url::Url;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SslMode {
+    #[default]
     None,
     Allow,
     Prefer,
     Require,
     VerifyCa,
     VerifyFull,
-}
-
-impl Default for SslMode {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl<T: AsRef<str>> From<T> for SslMode {
@@ -105,7 +100,7 @@ impl ConnectionOptions {
 
     pub fn with_platform(
         mut self,
-        platform: Option<Box<(dyn DatabasePlatform + Sync + Send)>>,
+        platform: Option<Box<dyn DatabasePlatform + Sync + Send>>,
     ) -> Self {
         self.platform = platform.map(Arc::new);
         self

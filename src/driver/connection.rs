@@ -18,16 +18,16 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
-    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>>;
+    ) -> Async<'_, Box<dyn DatabasePlatform + Send + Sync>>;
 
     /// Retrieves the server version (if any).
-    fn server_version(&self) -> Async<Option<String>>;
+    fn server_version(&self) -> Async<'_, Option<String>>;
 
     /// Prepares a statement for execution and returns a Statement object.
-    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>>;
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement<'conn> + 'conn>>;
 
     /// Executes an SQL statement, returning a result set as a Statement object.
-    fn query(&'conn self, sql: &str, params: Parameters) -> AsyncResult<StatementResult> {
+    fn query(&'conn self, sql: &str, params: Parameters) -> AsyncResult<'conn, StatementResult> {
         let statement = self.prepare(sql);
         if let Err(e) = statement {
             return Box::pin(async move { Err(e) });
@@ -38,7 +38,7 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     }
 
     /// Starts a transaction.
-    fn begin_transaction(&'conn self) -> AsyncResult<()> {
+    fn begin_transaction(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             self.query("BEGIN", NO_PARAMS).await?;
             Ok(())
@@ -46,7 +46,7 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     }
 
     /// Commits a transaction.
-    fn commit(&'conn self) -> AsyncResult<()> {
+    fn commit(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             self.query("COMMIT", NO_PARAMS).await?;
             Ok(())
@@ -54,7 +54,7 @@ pub trait Connection<'conn>: Debug + Send + Sync + 'conn {
     }
 
     /// Rolls back a transaction.
-    fn roll_back(&'conn self) -> AsyncResult<()> {
+    fn roll_back(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             self.query("ROLLBACK", NO_PARAMS).await?;
             Ok(())

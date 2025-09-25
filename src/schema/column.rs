@@ -1,8 +1,8 @@
 use crate::platform::DatabasePlatform;
+use crate::schema::asset::{AbstractAsset, Asset, impl_asset};
+use crate::schema::{CheckConstraint, IntoIdentifier, NamedListIndex};
 use crate::r#type::IntoType;
 use crate::r#type::TypePtr;
-use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
-use crate::schema::{CheckConstraint, IntoIdentifier, NamedListIndex};
 use crate::{Result, Value};
 use itertools::Itertools;
 use std::slice::Iter;

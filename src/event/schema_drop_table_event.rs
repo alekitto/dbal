@@ -1,5 +1,5 @@
-use crate::util::PlatformBox;
 use crate::Event;
+use crate::util::PlatformBox;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 

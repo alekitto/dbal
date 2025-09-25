@@ -1,8 +1,6 @@
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
-use crate::platform::{default, CreateFlags, DatabasePlatform};
-use crate::r#type;
-use crate::r#type::{IntoType, TypeManager, TypePtr};
+use crate::platform::{CreateFlags, DatabasePlatform, default};
 use crate::schema::schema_config::SchemaConfig;
 use crate::schema::table::TableList;
 use crate::schema::{
@@ -10,8 +8,10 @@ use crate::schema::{
     ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IntoIdentifier, Schema,
     SchemaDiff, Sequence, Table, TableDiff, TableOptions, UniqueConstraint, View,
 };
-use crate::util::{function_name, ToSqlStatementList};
-use crate::{params, AsyncResult, Connection, Error, Result, Row, Value};
+use crate::r#type;
+use crate::r#type::{IntoType, TypeManager, TypePtr};
+use crate::util::{ToSqlStatementList, function_name};
+use crate::{AsyncResult, Connection, Error, Result, Row, Value, params};
 use creed::schema::index::IndexList;
 use regex::Regex;
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ pub(crate) fn string_from_value(conn: &Connection, value: Result<&Value>) -> Res
     })
 }
 
-fn _exec_sql<S: ToSqlStatementList>(connection: &Connection, sql: S) -> AsyncResult<()> {
+fn _exec_sql<S: ToSqlStatementList>(connection: &Connection, sql: S) -> AsyncResult<'_, ()> {
     let sql = sql.to_statement_list();
     Box::pin(async move {
         for stmt in sql? {
@@ -396,22 +396,26 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Lists the available databases for this connection.
-    fn list_databases(&self) -> AsyncResult<Vec<Identifier>> {
+    fn list_databases(&self) -> AsyncResult<'_, Vec<Identifier>> {
         default::list_databases(self.as_dyn())
     }
 
     /// Returns a list of the names of all schemata in the current database.
-    fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>> {
+    fn list_schema_names(&self) -> AsyncResult<'_, Vec<Identifier>> {
         Box::pin(async move { Err(Error::platform_feature_unsupported("list schema names")) })
     }
 
     /// Lists the available sequences for this connection.
-    fn list_sequences(&self) -> AsyncResult<Vec<Sequence>> {
+    fn list_sequences(&self) -> AsyncResult<'_, Vec<Sequence>> {
         default::list_sequences(self.as_dyn())
     }
 
     /// Lists the columns for a given table.
-    fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList> {
+    fn list_table_columns(
+        &self,
+        table: &str,
+        database: Option<&str>,
+    ) -> AsyncResult<'_, ColumnList> {
         let table = table.to_string();
         let database = database.map(ToString::to_string);
 
@@ -420,30 +424,30 @@ pub trait SchemaManager: Sync + Send {
 
     /// Lists the indexes for a given table returning an array of Index instances.
     /// Keys of the portable indexes list are all lower-cased.
-    fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList> {
+    fn list_table_indexes(&self, table: &str) -> AsyncResult<'_, IndexList> {
         let table = table.to_string();
 
         Box::pin(async move { default::list_table_indexes(self.as_dyn(), table).await })
     }
 
     /// Whether all the given tables exist.
-    fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool> {
+    fn tables_exist(&self, names: &[&str]) -> AsyncResult<'_, bool> {
         let names = names.iter().map(|s| s.to_lowercase()).collect::<Vec<_>>();
 
         Box::pin(async move { default::tables_exist(self.as_dyn(), names).await })
     }
 
     /// Returns a list of all tables in the current database.
-    fn list_table_names(&self) -> AsyncResult<Vec<String>> {
+    fn list_table_names(&self) -> AsyncResult<'_, Vec<String>> {
         Box::pin(async move { default::list_table_names(self.as_dyn()).await })
     }
 
     /// Lists the tables for this connection.
-    fn list_tables(&self) -> AsyncResult<TableList> {
+    fn list_tables(&self) -> AsyncResult<'_, TableList> {
         Box::pin(async move { default::list_tables(self.as_dyn()).await })
     }
 
-    fn list_table_details(&self, name: &str) -> AsyncResult<Table> {
+    fn list_table_details(&self, name: &str) -> AsyncResult<'_, Table> {
         let name = name.to_string();
 
         Box::pin(async move { default::list_table_details(self.as_dyn(), name).await })
@@ -460,7 +464,7 @@ pub trait SchemaManager: Sync + Send {
     /// Selects names of tables in the specified database.
     /// # Abstract
     #[allow(unused_variables)]
-    fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult> {
+    fn select_table_names(&self, database_name: &str) -> AsyncResult<'_, StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -472,7 +476,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -483,7 +487,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -494,7 +498,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -512,7 +516,7 @@ pub trait SchemaManager: Sync + Send {
     fn fetch_table_columns_by_table(
         &self,
         database_name: &str,
-    ) -> AsyncResult<HashMap<String, Vec<Row>>> {
+    ) -> AsyncResult<'_, HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
             default::fetch_table_columns_by_table(self.as_dyn(), database_name).await
@@ -524,7 +528,7 @@ pub trait SchemaManager: Sync + Send {
     fn fetch_index_columns_by_table(
         &self,
         database_name: &str,
-    ) -> AsyncResult<HashMap<String, Vec<Row>>> {
+    ) -> AsyncResult<'_, HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
             default::fetch_index_columns_by_table(self.as_dyn(), database_name).await
@@ -536,7 +540,7 @@ pub trait SchemaManager: Sync + Send {
     fn fetch_foreign_key_columns_by_table(
         &self,
         database_name: &str,
-    ) -> AsyncResult<HashMap<String, Vec<Row>>> {
+    ) -> AsyncResult<'_, HashMap<String, Vec<Row>>> {
         let database_name = database_name.to_string();
         Box::pin(async move {
             default::fetch_foreign_key_columns_by_table(self.as_dyn(), database_name).await
@@ -551,7 +555,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<HashMap<String, Row>> {
+    ) -> AsyncResult<'_, HashMap<String, Row>> {
         Box::pin(async move { Err(Error::platform_feature_unsupported(function_name!())) })
     }
 
@@ -562,18 +566,18 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Introspects the table with the given name.
-    fn introspect_table(&self, name: &str) -> AsyncResult<Table> {
+    fn introspect_table(&self, name: &str) -> AsyncResult<'_, Table> {
         let name = name.to_string();
         Box::pin(async move { default::introspect_table(self.as_dyn(), name).await })
     }
 
     /// Lists the views this connection has.
-    fn list_views(&self) -> AsyncResult<Vec<View>> {
+    fn list_views(&self) -> AsyncResult<'_, Vec<View>> {
         Box::pin(async move { default::list_views(self.as_dyn()).await })
     }
 
     /// Lists the foreign keys for the given table.
-    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList> {
+    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<'_, FKConstraintList> {
         let table = table.to_string();
         Box::pin(async move { default::list_table_foreign_keys(self.as_dyn(), table).await })
     }
@@ -598,13 +602,13 @@ pub trait SchemaManager: Sync + Send {
     ///
     /// # Note
     /// You cannot drop the database this SchemaManager is currently connected to.
-    fn drop_database(&self, database: &str) -> AsyncResult<()> {
+    fn drop_database(&self, database: &str) -> AsyncResult<'_, ()> {
         let database = database.to_string();
         _exec_sql(self.get_connection(), self.get_drop_database_sql(&database))
     }
 
     /// Drops a schema.
-    fn drop_schema(&self, schema_name: &str) -> AsyncResult<()> {
+    fn drop_schema(&self, schema_name: &str) -> AsyncResult<'_, ()> {
         let schema_name = schema_name.to_string();
         _exec_sql(
             self.get_connection(),
@@ -613,7 +617,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Drops the given table.
-    fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<()> {
+    fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()> {
         let name = name.into_identifier();
         _exec_sql(self.get_connection(), self.get_drop_table_sql(&name))
     }
@@ -623,7 +627,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         index: &dyn IntoIdentifier,
         table: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         let index = index.into_identifier();
         let table = table.into_identifier();
 
@@ -638,7 +642,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         foreign_key: &dyn IntoIdentifier,
         table: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         let foreign_key = foreign_key.into_identifier();
         let table = table.into_identifier();
         _exec_sql(
@@ -648,7 +652,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Drops a sequence with a given name.
-    fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<()> {
+    fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()> {
         let name = name.into_identifier();
         _exec_sql(self.get_connection(), self.get_drop_sequence_sql(&name))
     }
@@ -658,7 +662,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         name: &dyn IntoIdentifier,
         table_name: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         let name = name.into_identifier();
         let table_name = table_name.into_identifier();
         _exec_sql(
@@ -668,13 +672,13 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Drops a view.
-    fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<()> {
+    fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()> {
         let name = name.into_identifier();
         _exec_sql(self.get_connection(), self.get_drop_view_sql(&name))
     }
 
     /// Creates a new database.
-    fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<()> {
+    fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<'_, ()> {
         let database = database.into_identifier();
 
         Box::pin(async move {
@@ -687,7 +691,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Creates a new table.
-    fn create_table(&self, table: &Table) -> AsyncResult<()> {
+    fn create_table(&self, table: &Table) -> AsyncResult<'_, ()> {
         let create_flags = CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS;
         _exec_sql(
             self.get_connection(),
@@ -696,7 +700,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Creates a new sequence.
-    fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<()> {
+    fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<'_, ()> {
         _exec_sql(
             self.get_connection(),
             self.get_create_sequence_sql(sequence),
@@ -704,7 +708,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Creates a new index on a table.
-    fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<()> {
+    fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()> {
         _exec_sql(
             self.get_connection(),
             self.get_create_index_sql(index, &table.into_identifier()),
@@ -716,7 +720,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         foreign_key: &ForeignKeyConstraint,
         table: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         let table = table.into_identifier();
         let table_name = table.get_name().to_string();
         let foreign_key = foreign_key.clone();
@@ -731,7 +735,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         unique_constraint: &UniqueConstraint,
         table: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         _exec_sql(
             self.get_connection(),
             self.get_create_unique_constraint_sql(unique_constraint, &table.into_identifier()),
@@ -739,27 +743,27 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Creates a new view.
-    fn create_view(&self, view: &View) -> AsyncResult<()> {
+    fn create_view(&self, view: &View) -> AsyncResult<'_, ()> {
         _exec_sql(self.get_connection(), self.get_create_view_sql(view))
     }
 
-    fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()> {
+    fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()> {
         let sql = schema.to_sql(self.as_dyn());
         Box::pin(async move { _exec_sql(self.get_connection(), sql?).await })
     }
 
-    fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()> {
+    fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()> {
         let sql = schema.to_drop_sql(self.as_dyn());
         Box::pin(async move { _exec_sql(self.get_connection(), sql?).await })
     }
 
     /// Alters an existing schema.
-    fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<()> {
+    fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<'_, ()> {
         _exec_sql(self.get_connection(), schema_diff.to_sql(self))
     }
 
     /// Migrates an existing schema to a new schema.
-    fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()> {
+    fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<'_, ()> {
         Box::pin(async move {
             let comparator = self.create_comparator();
             let from_schema = self.introspect_schema().await?;
@@ -770,7 +774,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Alters an existing tables schema.
-    fn alter_table(&self, mut table_diff: TableDiff) -> AsyncResult<()> {
+    fn alter_table(&self, mut table_diff: TableDiff) -> AsyncResult<'_, ()> {
         _exec_sql(
             self.get_connection(),
             self.get_alter_table_sql(&mut table_diff),
@@ -782,7 +786,7 @@ pub trait SchemaManager: Sync + Send {
         &self,
         name: &dyn IntoIdentifier,
         new_name: &dyn IntoIdentifier,
-    ) -> AsyncResult<()> {
+    ) -> AsyncResult<'_, ()> {
         let mut table_diff = TableDiff::new(name.into_identifier().get_name(), None);
         table_diff.new_name = Some(new_name.into_identifier().get_name().into_owned());
 
@@ -1006,7 +1010,7 @@ pub trait SchemaManager: Sync + Send {
         table: &str,
         database: &str,
         table_columns: Vec<Row>,
-    ) -> AsyncResult<ColumnList> {
+    ) -> AsyncResult<'_, ColumnList> {
         let table = table.to_string();
         let database = database.to_string();
 
@@ -1023,14 +1027,14 @@ pub trait SchemaManager: Sync + Send {
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> AsyncResult<IndexList> {
+    ) -> AsyncResult<'_, IndexList> {
         let table_name = table_name.to_string();
         Box::pin(async move {
             default::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
         })
     }
 
-    fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>> {
+    fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<'_, Vec<Identifier>> {
         Box::pin(async move {
             let mut list = vec![];
             for table in &tables {
@@ -1041,7 +1045,7 @@ pub trait SchemaManager: Sync + Send {
         })
     }
 
-    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier> {
+    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<'_, Identifier> {
         let name = string_from_value(self.get_connection(), table.get(0));
         Box::pin(async move { Ok(Identifier::new(name?, false)) })
     }
@@ -1087,16 +1091,16 @@ pub trait SchemaManager: Sync + Send {
         let foreign_columns = string_from_value(connection, foreign_key.get("foreign_columns"))?;
 
         let mut options = HashMap::new();
-        if let Ok(deferrable) = foreign_key.get("deferrable") {
-            if bool::from(deferrable) {
-                options.insert("deferrable".to_string(), true.into());
-            }
+        if let Ok(deferrable) = foreign_key.get("deferrable")
+            && bool::from(deferrable)
+        {
+            options.insert("deferrable".to_string(), true.into());
         }
 
-        if let Ok(deferred) = foreign_key.get("deferred") {
-            if bool::from(deferred) {
-                options.insert("deferred".to_string(), true.into());
-            }
+        if let Ok(deferred) = foreign_key.get("deferred")
+            && bool::from(deferred)
+        {
+            options.insert("deferred".to_string(), true.into());
         }
 
         let mut constraint = ForeignKeyConstraint::new(
@@ -1123,7 +1127,7 @@ pub trait SchemaManager: Sync + Send {
     }
 
     /// Creates a schema instance for the current database.
-    fn introspect_schema(&self) -> AsyncResult<Schema> {
+    fn introspect_schema(&self) -> AsyncResult<'_, Schema> {
         Box::pin(async move {
             let platform = self.get_platform()?;
             let schema_names = if platform.supports_schemas() {
@@ -1197,52 +1201,52 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_drop_foreign_key_sql(&self, foreign_key: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_view_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
-            fn list_databases(&self) -> AsyncResult<Vec<Identifier>>;
-            fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>>;
-            fn list_sequences(&self) -> AsyncResult<Vec<Sequence>>;
-            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList>;
-            fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList>;
-            fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool>;
-            fn list_table_names(&self) -> AsyncResult<Vec<String>>;
-            fn list_tables(&self) -> AsyncResult<TableList>;
-            fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
+            fn list_databases(&self) -> AsyncResult<'_, Vec<Identifier>>;
+            fn list_schema_names(&self) -> AsyncResult<'_, Vec<Identifier>>;
+            fn list_sequences(&self) -> AsyncResult<'_, Vec<Sequence>>;
+            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<'_, ColumnList>;
+            fn list_table_indexes(&self, table: &str) -> AsyncResult<'_, IndexList>;
+            fn tables_exist(&self, names: &[&str]) -> AsyncResult<'_, bool>;
+            fn list_table_names(&self) -> AsyncResult<'_, Vec<String>>;
+            fn list_tables(&self) -> AsyncResult<'_, TableList>;
+            fn list_table_details(&self, name: &str) -> AsyncResult<'_, Table>;
             fn normalize_name(&self, name: &str) -> String;
-            fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
-            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
-            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
-            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_table_names(&self, database_name: &str) -> AsyncResult<'_, StatementResult>;
+            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
+            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
+            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
             fn quote_string_literal(&self, str: &str) -> String;
-            fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Row>>;
+            fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, HashMap<String, Row>>;
             fn get_list_views_sql(&self, database: &str) -> Result<String>;
-            fn list_views(&self) -> AsyncResult<Vec<View>>;
-            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList>;
+            fn list_views(&self) -> AsyncResult<'_, Vec<View>>;
+            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<'_, FKConstraintList>;
             fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String>;
             fn get_partial_index_sql(&self, index: &Index) -> Result<String>;
             fn get_column_comment(&self, column: &Column) -> Result<String>;
-            fn drop_database(&self, database: &str) -> AsyncResult<()>;
-            fn drop_schema(&self, schema_name: &str) -> AsyncResult<()>;
-            fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_index(&self, index: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_foreign_key(&self, foreign_key: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_unique_constraint(&self, name: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_table(&self, table: &Table) -> AsyncResult<()>;
-            fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<()>;
-            fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_view(&self, view: &View) -> AsyncResult<()>;
-            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
-            fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
-            fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<()>;
-            fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()>;
-            fn alter_table(&self, table_diff: TableDiff) -> AsyncResult<()>;
-            fn rename_table(&self, name: &dyn IntoIdentifier, new_name: &dyn IntoIdentifier) -> AsyncResult<()>;
+            fn drop_database(&self, database: &str) -> AsyncResult<'_, ()>;
+            fn drop_schema(&self, schema_name: &str) -> AsyncResult<'_, ()>;
+            fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_index(&self, index: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_foreign_key(&self, foreign_key: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_unique_constraint(&self, name: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_table(&self, table: &Table) -> AsyncResult<'_, ()>;
+            fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<'_, ()>;
+            fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_view(&self, view: &View) -> AsyncResult<'_, ()>;
+            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()>;
+            fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()>;
+            fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<'_, ()>;
+            fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<'_, ()>;
+            fn alter_table(&self, table_diff: TableDiff) -> AsyncResult<'_, ()>;
+            fn rename_table(&self, name: &dyn IntoIdentifier, new_name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
             fn get_pre_alter_table_index_foreign_key_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_post_alter_table_index_foreign_key_sql(&self, diff: &TableDiff) -> Result<Vec<String>>;
             fn get_check_declaration_sql(&self, definition: &[ColumnData]) -> Result<String>;
@@ -1269,16 +1273,16 @@ impl<T: SchemaManager + ?Sized> SchemaManager for &mut T {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<ColumnList>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<'_, ColumnList>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<IndexList>;
-            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
-            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<'_, IndexList>;
+            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<'_, Vec<Identifier>>;
+            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<'_, Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
             fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<FKConstraintList>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
-            fn introspect_schema(&self) -> AsyncResult<Schema>;
+            fn introspect_schema(&self) -> AsyncResult<'_, Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
             fn get_default_schema_name(&self) -> Option<&'static str>;
         }
@@ -1332,52 +1336,52 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_drop_foreign_key_sql(&self, foreign_key: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_sequence_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
             fn get_drop_view_sql(&self, sequence: &dyn IntoIdentifier) -> Result<String>;
-            fn list_databases(&self) -> AsyncResult<Vec<Identifier>>;
-            fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>>;
-            fn list_sequences(&self) -> AsyncResult<Vec<Sequence>>;
-            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<ColumnList>;
-            fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList>;
-            fn tables_exist(&self, names: &[&str]) -> AsyncResult<bool>;
-            fn list_table_names(&self) -> AsyncResult<Vec<String>>;
-            fn list_tables(&self) -> AsyncResult<TableList>;
-            fn list_table_details(&self, name: &str) -> AsyncResult<Table>;
+            fn list_databases(&self) -> AsyncResult<'_, Vec<Identifier>>;
+            fn list_schema_names(&self) -> AsyncResult<'_, Vec<Identifier>>;
+            fn list_sequences(&self) -> AsyncResult<'_, Vec<Sequence>>;
+            fn list_table_columns(&self, table: &str, database: Option<&str>) -> AsyncResult<'_, ColumnList>;
+            fn list_table_indexes(&self, table: &str) -> AsyncResult<'_, IndexList>;
+            fn tables_exist(&self, names: &[&str]) -> AsyncResult<'_, bool>;
+            fn list_table_names(&self) -> AsyncResult<'_, Vec<String>>;
+            fn list_tables(&self) -> AsyncResult<'_, TableList>;
+            fn list_table_details(&self, name: &str) -> AsyncResult<'_, Table>;
             fn normalize_name(&self, name: &str) -> String;
-            fn select_table_names(&self, database_name: &str) -> AsyncResult<StatementResult>;
-            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
-            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
-            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<StatementResult>;
+            fn select_table_names(&self, database_name: &str) -> AsyncResult<'_, StatementResult>;
+            fn select_table_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
+            fn select_index_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
+            fn select_foreign_key_columns(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, StatementResult>;
             fn quote_string_literal(&self, str: &str) -> String;
-            fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<HashMap<String, Vec<Row>>>;
-            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<HashMap<String, Row>>;
+            fn fetch_table_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_index_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_foreign_key_columns_by_table(&self, database_name: &str) -> AsyncResult<'_, HashMap<String, Vec<Row>>>;
+            fn fetch_table_options_by_table(&self, database_name: &str, table_name: Option<&str>) -> AsyncResult<'_, HashMap<String, Row>>;
             fn get_list_views_sql(&self, database: &str) -> Result<String>;
-            fn list_views(&self) -> AsyncResult<Vec<View>>;
-            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList>;
+            fn list_views(&self) -> AsyncResult<'_, Vec<View>>;
+            fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<'_, FKConstraintList>;
             fn get_column_declaration_sql(&self, name: &str, column: &ColumnData) -> Result<String>;
             fn get_partial_index_sql(&self, index: &Index) -> Result<String>;
             fn get_column_comment(&self, column: &Column) -> Result<String>;
-            fn drop_database(&self, database: &str) -> AsyncResult<()>;
-            fn drop_schema(&self, schema_name: &str) -> AsyncResult<()>;
-            fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_index(&self, index: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_foreign_key(&self, foreign_key: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_unique_constraint(&self, name: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_table(&self, table: &Table) -> AsyncResult<()>;
-            fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<()>;
-            fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<()>;
-            fn create_view(&self, view: &View) -> AsyncResult<()>;
-            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
-            fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<()>;
-            fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<()>;
-            fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<()>;
-            fn alter_table(&self, table_diff: TableDiff) -> AsyncResult<()>;
-            fn rename_table(&self, name: &dyn IntoIdentifier, new_name: &dyn IntoIdentifier) -> AsyncResult<()>;
+            fn drop_database(&self, database: &str) -> AsyncResult<'_, ()>;
+            fn drop_schema(&self, schema_name: &str) -> AsyncResult<'_, ()>;
+            fn drop_table(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_index(&self, index: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_foreign_key(&self, foreign_key: &dyn IntoIdentifier, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_sequence(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_unique_constraint(&self, name: &dyn IntoIdentifier, table_name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn drop_view(&self, name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_database(&self, database: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_table(&self, table: &Table) -> AsyncResult<'_, ()>;
+            fn create_sequence(&self, sequence: &Sequence) -> AsyncResult<'_, ()>;
+            fn create_index(&self, index: &Index, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_foreign_key(&self, foreign_key: &ForeignKeyConstraint, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_unique_constraint(&self, unique_constraint: &UniqueConstraint, table: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
+            fn create_view(&self, view: &View) -> AsyncResult<'_, ()>;
+            fn create_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()>;
+            fn drop_schema_objects(&self, schema: &Schema) -> AsyncResult<'_, ()>;
+            fn alter_schema(&self, schema_diff: SchemaDiff) -> AsyncResult<'_, ()>;
+            fn migrate_schema(&self, to_schema: Schema) -> AsyncResult<'_, ()>;
+            fn alter_table(&self, table_diff: TableDiff) -> AsyncResult<'_, ()>;
+            fn rename_table(&self, name: &dyn IntoIdentifier, new_name: &dyn IntoIdentifier) -> AsyncResult<'_, ()>;
             fn get_pre_alter_table_index_foreign_key_sql(&self, diff: &mut TableDiff) -> Result<Vec<String>>;
             fn get_post_alter_table_index_foreign_key_sql(&self, diff: &TableDiff) -> Result<Vec<String>>;
             fn get_check_declaration_sql(&self, definition: &[ColumnData]) -> Result<String>;
@@ -1404,16 +1408,16 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
             fn get_portable_database_definition(&self, row: &Row) -> Result<Identifier>;
             fn get_portable_sequences_list(&self, sequences: Vec<Row>) -> Result<Vec<Sequence>>;
             fn get_portable_sequence_definition(&self, row: &Row) -> Result<Sequence>;
-            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<ColumnList>;
+            fn get_portable_table_column_list(&self, table: &str, database: &str, table_columns: Vec<Row>) -> AsyncResult<'_, ColumnList>;
             fn get_portable_table_column_definition(&self, table_column: &Row) -> Result<Column>;
-            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<IndexList>;
-            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<Vec<Identifier>>;
-            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier>;
+            fn get_portable_table_indexes_list(&self, table_indexes: Vec<Row>, table_name: &str) -> AsyncResult<'_, IndexList>;
+            fn get_portable_tables_list(&self, tables: Vec<Row>) -> AsyncResult<'_, Vec<Identifier>>;
+            fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<'_, Identifier>;
             fn get_portable_views_list(&self, rows: Vec<Row>) -> Result<Vec<View>>;
             fn get_portable_view_definition(&self, view: &Row) -> Result<Option<View>>;
             fn get_portable_table_foreign_keys_list(&self, table_foreign_keys: Vec<Row>) -> Result<FKConstraintList>;
             fn get_portable_table_foreign_key_definition(&self, foreign_key: &Row) -> Result<ForeignKeyConstraint>;
-            fn introspect_schema(&self) -> AsyncResult<Schema>;
+            fn introspect_schema(&self) -> AsyncResult<'_, Schema>;
             fn create_comparator(&self) -> Box<dyn Comparator + Send + '_>;
             fn get_default_schema_name(&self) -> Option<&'static str>;
         }
@@ -1427,34 +1431,34 @@ impl<T: SchemaManager + ?Sized> SchemaManager for Box<T> {
 #[cfg(test)]
 #[cfg(feature = "functional-tests")]
 mod tests {
+    use crate::SchemaAlterTableRenameColumnEvent;
     use crate::platform::DatabasePlatform;
-    use crate::r#type::{
-        IntoType, TypeManager, BINARY, BLOB, BOOLEAN, DATE, DATETIME, DECIMAL, GUID, INTEGER, JSON,
-        SIMPLE_ARRAY, STRING, TEXT, TIME,
-    };
     use crate::schema::schema_manager::_exec_sql;
     use crate::schema::{
-        extract_type_from_comment, Asset, Column, ColumnData, ColumnDiff, Comparator,
-        ForeignKeyConstraint, ForeignKeyReferentialAction, Index, IntoIdentifier, Schema,
-        SchemaDiff, SchemaManager, Sequence, Table, TableDiff, UniqueConstraint, View,
+        Asset, Column, ColumnData, ColumnDiff, Comparator, ForeignKeyConstraint,
+        ForeignKeyReferentialAction, Index, IntoIdentifier, Schema, SchemaDiff, SchemaManager,
+        Sequence, Table, TableDiff, UniqueConstraint, View, extract_type_from_comment,
     };
     use crate::tests::{
-        create_connection, get_database_dsn, FunctionalTestsHelper, MockConnection,
+        FunctionalTestsHelper, MockConnection, create_connection, get_database_dsn,
     };
-    use crate::SchemaAlterTableRenameColumnEvent;
+    use crate::r#type::{
+        BINARY, BLOB, BOOLEAN, DATE, DATETIME, DECIMAL, GUID, INTEGER, IntoType, JSON,
+        SIMPLE_ARRAY, STRING, TEXT, TIME, TypeManager,
+    };
     use crate::{
-        params, Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
+        Configuration, Connection, ConnectionOptions, Error, EventDispatcher, Result,
         SchemaAlterTableAddColumnEvent, SchemaAlterTableChangeColumnEvent, SchemaAlterTableEvent,
         SchemaAlterTableRemoveColumnEvent, SchemaColumnDefinitionEvent,
         SchemaCreateTableColumnEvent, SchemaCreateTableEvent, SchemaDropTableEvent,
-        SchemaIndexDefinitionEvent, Value,
+        SchemaIndexDefinitionEvent, Value, params,
     };
     use creed_macros::value_map;
     use itertools::Itertools;
     use serial_test::serial;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use version_compare::{compare_to, Cmp};
+    use version_compare::{Cmp, compare_to};
 
     #[tokio::test]
     async fn can_overwrite_drop_table_sql_via_event_listener() {
@@ -1866,9 +1870,11 @@ mod tests {
             schema_manager.create_database(&name).await?;
 
             let databases = schema_manager.list_databases().await?;
-            assert!(databases
-                .into_iter()
-                .any(|d| d.get_name().to_lowercase() == name));
+            assert!(
+                databases
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name)
+            );
         }
 
         Ok(())
@@ -1887,9 +1893,11 @@ mod tests {
             let _ = schema_manager.drop_schema(name).await;
 
             let schemas = schema_manager.list_schema_names().await?;
-            assert!(!schemas
-                .into_iter()
-                .any(|d| d.get_name().to_lowercase() == name));
+            assert!(
+                !schemas
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name)
+            );
 
             connection
                 .prepare(schema_manager.get_create_schema_sql(&name)?)?
@@ -1897,9 +1905,11 @@ mod tests {
                 .await?;
 
             let schemas = schema_manager.list_schema_names().await?;
-            assert!(schemas
-                .into_iter()
-                .any(|d| d.get_name().to_lowercase() == name));
+            assert!(
+                schemas
+                    .into_iter()
+                    .any(|d| d.get_name().to_lowercase() == name)
+            );
         }
 
         Ok(())
@@ -2684,14 +2694,18 @@ mod tests {
         assert!(!schema.has_table("table_to_drop"));
         assert!(schema.has_table("table_to_create"));
         assert!(schema.has_table("table_to_alter"));
-        assert!(!schema
-            .get_table("table_to_alter")
-            .unwrap()
-            .has_column("foreign_key_test"));
-        assert!(schema
-            .get_table("table_to_alter")
-            .unwrap()
-            .has_column("number"));
+        assert!(
+            !schema
+                .get_table("table_to_alter")
+                .unwrap()
+                .has_column("foreign_key_test")
+        );
+        assert!(
+            schema
+                .get_table("table_to_alter")
+                .unwrap()
+                .has_column("number")
+        );
 
         Ok(())
     }
@@ -2905,22 +2919,26 @@ mod tests {
         helper
             .create_test_table("testschema.my_table_in_namespace")
             .await?;
-        assert!(schema_manager
-            .list_table_names()
-            .await?
-            .iter()
-            .any(|n| n == "testschema.my_table_in_namespace"));
+        assert!(
+            schema_manager
+                .list_table_names()
+                .await?
+                .iter()
+                .any(|n| n == "testschema.my_table_in_namespace")
+        );
 
         // Tables without namespace should be created in default namespace
         // Default namespaces are ignored in table listings
         helper
             .create_test_table("my_table_not_in_namespace")
             .await?;
-        assert!(schema_manager
-            .list_table_names()
-            .await?
-            .iter()
-            .any(|n| n == "my_table_not_in_namespace"));
+        assert!(
+            schema_manager
+                .list_table_names()
+                .await?
+                .iter()
+                .any(|n| n == "my_table_not_in_namespace")
+        );
 
         Ok(())
     }
@@ -3484,10 +3502,12 @@ mod tests {
     pub async fn get_non_existing_table() {
         let helper = FunctionalTestsHelper::default().await;
         let schema_manager = helper.get_schema_manager();
-        assert!(schema_manager
-            .introspect_table("non_existing")
-            .await
-            .is_err());
+        assert!(
+            schema_manager
+                .introspect_table("non_existing")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -3675,16 +3695,20 @@ mod tests {
             online_columns.get("comment2").unwrap().get_comment(),
             &expected_comment2.map(|s| s.to_string())
         );
-        assert!(online_columns
-            .get("no_comment1")
-            .unwrap()
-            .get_comment()
-            .is_none());
-        assert!(online_columns
-            .get("no_comment2")
-            .unwrap()
-            .get_comment()
-            .is_none());
+        assert!(
+            online_columns
+                .get("no_comment1")
+                .unwrap()
+                .get_comment()
+                .is_none()
+        );
+        assert!(
+            online_columns
+                .get("no_comment2")
+                .unwrap()
+                .get_comment()
+                .is_none()
+        );
 
         let online_columns = online_table.columns_mut();
         online_columns
@@ -3822,8 +3846,8 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    pub async fn comparator_should_not_add_comment_to_json_type_since_it_is_the_default(
-    ) -> Result<()> {
+    pub async fn comparator_should_not_add_comment_to_json_type_since_it_is_the_default()
+    -> Result<()> {
         let helper = FunctionalTestsHelper::default().await;
         let schema_manager = helper.get_schema_manager();
         let platform = helper.platform.clone();

@@ -1,8 +1,8 @@
+use crate::Result;
 use crate::platform::DatabasePlatform;
 use crate::schema::{
     Asset, ForeignKeyConstraint, Identifier, Schema, SchemaManager, Sequence, Table, TableDiff,
 };
-use crate::Result;
 use std::collections::BTreeMap;
 
 /// Differences between two schemas.

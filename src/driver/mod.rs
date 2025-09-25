@@ -72,7 +72,7 @@ impl Driver {
         &self,
         sql: St,
         params: Parameters<'_>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         let params = Vec::from(params);
         let prepared = self.prepare(sql);
 
@@ -92,17 +92,17 @@ impl Driver {
     }
 
     /// Starts a transaction.
-    pub fn begin_transaction(&self) -> AsyncResult<()> {
+    pub fn begin_transaction(&self) -> AsyncResult<'_, ()> {
         self.inner_driver.begin_transaction()
     }
 
     /// Commits a transaction.
-    pub fn commit(&self) -> AsyncResult<()> {
+    pub fn commit(&self) -> AsyncResult<'_, ()> {
         self.inner_driver.commit()
     }
 
     /// Rolls back a transaction.
-    pub fn roll_back(&self) -> AsyncResult<()> {
+    pub fn roll_back(&self) -> AsyncResult<'_, ()> {
         self.inner_driver.roll_back()
     }
 }
@@ -110,7 +110,7 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use crate::driver::Driver;
-    use crate::{params, ConnectionOptions};
+    use crate::{ConnectionOptions, params};
     use serial_test::serial;
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]

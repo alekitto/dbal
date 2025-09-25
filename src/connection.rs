@@ -1,21 +1,21 @@
+use crate::driver::Driver;
 use crate::driver::statement::Statement;
 use crate::driver::statement_result::StatementResult;
-use crate::driver::Driver;
 use crate::event::ConnectionEvent;
 use crate::parameter::{IntoParameters, NO_PARAMS};
 use crate::platform::DatabasePlatform;
-use crate::r#type::IntoType;
 use crate::schema::SchemaManager;
+use crate::r#type::IntoType;
 use crate::util::PlatformBox;
 use crate::{
-    params, Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
-    TypedValueMap, Value, ValueMap,
+    Configuration, ConnectionOptions, Error, EventDispatcher, Parameters, Result, Row,
+    TypedValueMap, Value, ValueMap, params,
 };
 use itertools::Itertools;
 use log::debug;
 use std::io::Read;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The main database connection struct.
 ///
@@ -518,11 +518,11 @@ mod tests {
     use crate::event::ConnectionEvent;
     use crate::rows::ColumnIndex;
     use crate::tests::get_database_dsn;
-    use crate::{params, r#type, Connection, EventDispatcher, Result, Row, Value};
+    use crate::{Connection, EventDispatcher, Result, Row, Value, params, r#type};
     use lazy_static::lazy_static;
     use serial_test::serial;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
     #[tokio::test]

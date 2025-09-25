@@ -1,6 +1,6 @@
+use crate::Event;
 use crate::schema::TableDiff;
 use crate::util::PlatformBox;
-use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -40,7 +40,7 @@ impl<'table> SchemaAlterTableEvent<'table> {
         self.prevent_default_flag.load(Ordering::SeqCst)
     }
 
-    pub fn get_table_diff(&self) -> &TableDiff {
+    pub fn get_table_diff(&self) -> &TableDiff<'_> {
         self.table_diff
     }
 

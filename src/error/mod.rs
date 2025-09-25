@@ -1,6 +1,6 @@
+use crate::Value;
 use crate::schema::IntoIdentifier;
 use crate::schema::{Asset, Identifier};
-use crate::Value;
 use std::any::TypeId;
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
@@ -103,7 +103,13 @@ impl Error {
     }
 
     pub fn unknown_driver(scheme: &str) -> Self {
-        Self::new(ErrorKind::UnknownDriver, format!("Unknown driver protocol \"{}\". Use Driver::create_with_connection to use a custom driver connection", scheme))
+        Self::new(
+            ErrorKind::UnknownDriver,
+            format!(
+                "Unknown driver protocol \"{}\". Use Driver::create_with_connection to use a custom driver connection",
+                scheme
+            ),
+        )
     }
 
     pub fn config(message: &str) -> Self {
@@ -177,7 +183,10 @@ impl Error {
     pub fn unknown_type(r#type: TypeId) -> Self {
         Self::new(
             ErrorKind::UnknownType,
-            format!("You have requested a non-existent type {:?}. Please register it in the type manager before trying to use it", r#type)
+            format!(
+                "You have requested a non-existent type {:?}. Please register it in the type manager before trying to use it",
+                r#type
+            ),
         )
     }
 

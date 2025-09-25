@@ -1,6 +1,6 @@
 use crate::platform::DatabasePlatform;
-use crate::r#type::Type;
 use crate::schema::ColumnData;
+use crate::r#type::Type;
 use crate::{Error, Value};
 use crate::{ParameterType, Result};
 

@@ -2,7 +2,7 @@ use crate::connection_options::SslMode;
 use crate::error::StdError;
 use std::future::Future;
 use std::io;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
@@ -14,7 +14,7 @@ pub enum PgMaybeTlsStream {
     #[cfg(unix)]
     Unix(UnixStream),
     #[cfg(feature = "rustls")]
-    Tls(tokio_rustls::client::TlsStream<TcpStream>),
+    Tls(Box<tokio_rustls::client::TlsStream<TcpStream>>),
     #[cfg(feature = "native-tls")]
     Tls(tokio_native_tls::TlsStream<TcpStream>),
 }
@@ -154,7 +154,7 @@ impl TlsConnect<PgMaybeTlsStream> for PgDbalTlsConnect {
                 )
                 .await?;
 
-            Ok(PgMaybeTlsStream::Tls(client_conn))
+            Ok(PgMaybeTlsStream::Tls(Box::new(client_conn)))
         })
     }
 
@@ -282,7 +282,7 @@ impl TlsConfig {
                         format!("could not load PEM file {root_cert:?}: {err}"),
                     )),
                 })
-                .try_collect()?;
+                .try_collect::<_, (), _>()?;
         }
 
         Ok(root_store)
@@ -353,14 +353,14 @@ impl TlsConfig {
 #[cfg(feature = "rustls")]
 mod internal {
     use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-    use rustls::crypto::ring::default_provider;
+    use rustls::crypto::aws_lc_rs::default_provider;
     use rustls::crypto::{
-        verify_tls12_signature, verify_tls13_signature, WebPkiSupportedAlgorithms,
+        WebPkiSupportedAlgorithms, verify_tls12_signature, verify_tls13_signature,
     };
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
     use rustls::{
-        pki_types, CertRevocationListError, CertificateError, DigitallySignedStruct, Error,
-        OtherError, RootCertStore, SignatureScheme,
+        CertRevocationListError, CertificateError, DigitallySignedStruct, Error, OtherError,
+        RootCertStore, SignatureScheme, pki_types,
     };
     use std::sync::Arc;
     use webpki::EndEntityCert;
@@ -380,14 +380,16 @@ mod internal {
         }
     }
 
+    #[allow(deprecated)]
     fn pki_error(error: webpki::Error) -> Error {
         use webpki::Error::*;
         match error {
             BadDer | BadDerTime | TrailingData(_) => CertificateError::BadEncoding.into(),
-            CertNotValidYet => CertificateError::NotValidYet.into(),
-            CertExpired | InvalidCertValidity => CertificateError::Expired.into(),
+            CertNotValidYet { .. } => CertificateError::NotValidYet.into(),
+            CertExpired { .. } => CertificateError::Expired.into(),
+            InvalidCertValidity => CertificateError::Expired.into(),
             UnknownIssuer => CertificateError::UnknownIssuer.into(),
-            CertNotValidForName => CertificateError::NotValidForName.into(),
+            CertNotValidForName(_) => CertificateError::NotValidForName.into(),
             CertRevoked => CertificateError::Revoked.into(),
             UnknownRevocationStatus => CertificateError::UnknownRevocationStatus.into(),
             IssuerNotCrlSigner => CertRevocationListError::IssuerInvalidForCrl.into(),

@@ -1,11 +1,11 @@
 use super::postgresql;
 use crate::driver::postgres::platform::PostgreSQLSchemaManager;
-use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList};
+use crate::platform::{DatabasePlatform, DateIntervalUnit, KeywordList, platform_debug};
+use crate::schema::{ColumnData, SchemaManager};
 use crate::r#type::{
     BigintType, BlobType, BooleanType, DateTimeType, DateTimeTzType, DateType, DecimalType,
     FloatType, GuidType, IntegerType, JsonType, StringType, TextType, TimeType,
 };
-use crate::schema::{ColumnData, SchemaManager};
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 use dashmap::DashMap;
 use std::any::TypeId;
@@ -281,13 +281,13 @@ impl DatabasePlatform for PostgreSQLPlatform {
 
 #[cfg(test)]
 mod tests {
-    use crate::driver::postgres::PostgreSQLPlatform;
-    use crate::platform::DatabasePlatform;
-    use crate::r#type::{BINARY, GUID, JSON};
-    use crate::schema::Column;
-    use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
     use crate::Result;
+    use crate::driver::postgres::PostgreSQLPlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::schema::Column;
+    use crate::tests::common_platform_tests;
+    use crate::r#type::{BINARY, GUID, JSON};
     use std::sync::Arc;
 
     pub fn create_postgresql_platform() -> PostgreSQLPlatform {

@@ -156,7 +156,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Ok(())
     }
 
-    fn query(&self, params: Parameters) -> AsyncResult<StatementResult> {
+    fn query(&self, params: Parameters) -> AsyncResult<'_, StatementResult> {
         let params = Vec::from(params);
 
         Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
@@ -169,7 +169,7 @@ impl<'conn> crate::driver::statement::Statement<'conn> for Statement<'conn> {
         Box::pin(async move { Ok(StatementResult::new(self.internal_query(params).await?)) })
     }
 
-    fn execute(&self, params: Parameters) -> AsyncResult<usize> {
+    fn execute(&self, params: Parameters) -> AsyncResult<'_, usize> {
         let params = Vec::from(params);
         Box::pin(async move { self.internal_execute(params).await })
     }

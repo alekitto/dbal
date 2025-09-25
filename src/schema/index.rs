@@ -1,7 +1,7 @@
-use crate::platform::DatabasePlatform;
-use crate::schema::asset::{impl_asset, AbstractAsset, Asset};
-use crate::schema::{Identifier, IntoIdentifier, NamedListIndex};
 use crate::Value;
+use crate::platform::DatabasePlatform;
+use crate::schema::asset::{AbstractAsset, Asset, impl_asset};
+use crate::schema::{Identifier, IntoIdentifier, NamedListIndex};
 use itertools::Itertools;
 use std::collections::{HashMap, VecDeque};
 use std::slice::Iter;
@@ -105,7 +105,7 @@ impl IndexList {
         self.inner.iter().any(|i| i == other)
     }
 
-    pub fn iter(&self) -> Iter<Index> {
+    pub fn iter(&self) -> Iter<'_, Index> {
         self.into_iter()
     }
 }
@@ -309,10 +309,10 @@ impl Index {
             .iter()
             .map(|c| {
                 let mut n = c.get_quoted_name(platform);
-                if let Some(len) = lengths.pop_front() {
-                    if len != Value::NULL {
-                        n += &format!("({})", len);
-                    }
+                if let Some(len) = lengths.pop_front()
+                    && len != Value::NULL
+                {
+                    n += &format!("({})", len);
                 }
 
                 n
@@ -474,10 +474,10 @@ impl IndexOptions {
 
         let mut options = HashMap::new();
         options.insert("lengths".to_string(), lengths);
-        if let Some(val) = self.options_where.as_deref() {
-            if !val.is_empty() {
-                options.insert("where".to_string(), Value::String(val.to_string()));
-            }
+        if let Some(val) = self.options_where.as_deref()
+            && !val.is_empty()
+        {
+            options.insert("where".to_string(), Value::String(val.to_string()));
         }
 
         Index::new(

@@ -1,6 +1,6 @@
+use crate::Event;
 use crate::schema::{Column, TableDiff};
 use crate::util::PlatformBox;
-use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -53,7 +53,7 @@ impl<'table, 'column: 'table> SchemaAlterTableRenameColumnEvent<'table, 'column>
         &self.old_column_name
     }
 
-    pub fn get_table_diff(&self) -> &TableDiff {
+    pub fn get_table_diff(&self) -> &TableDiff<'_> {
         self.table_diff
     }
 

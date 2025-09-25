@@ -13,7 +13,7 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use url::Url;
-use version_compare::{compare_to, Cmp};
+use version_compare::{Cmp, compare_to};
 
 pub struct Driver {
     pub(super) connection: Mutex<Conn>,
@@ -97,11 +97,7 @@ impl ConnectionOptions {
             password,
             db_name: {
                 let path = url.path().trim_start_matches('/').to_string();
-                if path.is_empty() {
-                    None
-                } else {
-                    Some(path)
-                }
+                if path.is_empty() { None } else { Some(path) }
             },
             ssl_mode,
             ssl_cert,
@@ -146,7 +142,7 @@ impl<'conn> Connection<'conn> for Driver {
     fn create_platform(
         &self,
         ev: Arc<EventDispatcher>,
-    ) -> Async<Box<dyn DatabasePlatform + Send + Sync>> {
+    ) -> Async<'_, Box<dyn DatabasePlatform + Send + Sync>> {
         Box::pin(async move {
             let version = self
                 .server_version()
@@ -169,7 +165,7 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn server_version(&self) -> Async<Option<String>> {
+    fn server_version(&self) -> Async<'_, Option<String>> {
         Box::pin(async move {
             let connection = self.connection.lock().await;
             let (major, minor, mut patch) = connection.server_version();
@@ -184,13 +180,13 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement + 'conn>> {
+    fn prepare(&'conn self, sql: &str) -> Result<Box<dyn Statement<'conn> + 'conn>> {
         let statement = super::statement::Statement::new(self, sql)?;
 
         Ok(Box::new(statement))
     }
 
-    fn begin_transaction(&'conn self) -> AsyncResult<()> {
+    fn begin_transaction(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             let mut connection = self.connection.lock().await;
             connection.deref_mut().query_drop("BEGIN").await?;
@@ -199,7 +195,7 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn commit(&'conn self) -> AsyncResult<()> {
+    fn commit(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             let mut connection = self.connection.lock().await;
             connection.deref_mut().query_drop("COMMIT").await?;
@@ -208,7 +204,7 @@ impl<'conn> Connection<'conn> for Driver {
         })
     }
 
-    fn roll_back(&'conn self) -> AsyncResult<()> {
+    fn roll_back(&'conn self) -> AsyncResult<'conn, ()> {
         Box::pin(async move {
             let mut connection = self.connection.lock().await;
             connection.deref_mut().query_drop("ROLLBACK").await?;

@@ -6,7 +6,7 @@ use regex::{Captures, Regex};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(crate) type PlatformBox = Arc<Box<(dyn DatabasePlatform + Sync + Send)>>;
+pub(crate) type PlatformBox = Arc<Box<dyn DatabasePlatform + Sync + Send>>;
 
 pub trait ToSqlStatementList: Send + Sync {
     fn to_statement_list(self) -> Result<Vec<String>>;

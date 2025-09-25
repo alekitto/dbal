@@ -3,50 +3,50 @@ name = "creed"
 description = "Extensible Database Abstraction Layer for SQL databases"
 version = "0.1.0"
 authors = ["Alessandro Chitolina <alekitto@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/alekitto/dbal"
 
 [dependencies]
-bitflags = "2"
-chrono = "0.4"
+bitflags = { version = "2" }
+chrono = { version = "0.4" }
+crc = { version = "3" }
 creed_macros = { path = "./derive" }
-crc = "3"
-dashmap = "5"
-delegate = "0.12"
-fallible-iterator = "0.2"
-futures = "0.3"
-hex = "0.4.3"
-itertools = "0.12"
-lazy_static = "1"
-log = "0.4"
+dashmap = { version = "6" }
+delegate = "0.13"
+fallible-iterator = { version = "0.2" }
+futures = { version = "0.3" }
+hex = { version = "0.4.3" }
+itertools = { version = "0.14" }
+lazy_static = { version = "1" }
+log = { version = "0.4" }
 mysql_async = { git = "https://github.com/alekitto/mysql_async", branch = "fix/issue_283", optional = true, default-features = false }
 native-tls = { version = "0.2", optional = true }
-percent-encoding = "2.3"
+percent-encoding = { version = "2.3" }
 postgres-protocol = { version = "0.6", optional = true }
 regex = { version = "1", features = ["default", "pattern"] }
-rusqlite = { version = "0.30", optional = true, features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"] }
-rustls = { version = "0.22", optional = true }
-rustls-native-certs = { version = "0.7", optional = true }
+rusqlite = { version = "0.37", optional = true, features = ["bundled", "chrono", "column_decltype", "functions", "serde_json", "uuid"] }
+rustls = { version = "0.23", optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
 rustls-pemfile = { version = "2.0", optional = true }
-rustls-webpki = { version = "0.102", optional = true }
-serde_json = "1"
-socket2 = "0.5"
-sqlparser = { version = "0.43", features = ["default", "visitor"] }
+rustls-webpki = { version = "0.103", optional = true }
+serde_json = { version = "1" }
+socket2 = { version = "0.6" }
+sqlparser = { version = "0.59", features = ["default", "visitor"] }
 tokio = { version = "1", features = ["default", "fs", "macros", "rt", "rt-multi-thread"] }
 tokio-native-tls = { version = "0.3", optional = true }
 tokio-postgres = { version = "0.7", optional = true }
-tokio-rustls = { version = "0.25", optional = true }
-url = "2"
-uuid = "1"
-version-compare = "0.1"
-rand = "0.8.5"
+tokio-rustls = { version = "0.26", optional = true }
+url = { version = "2" }
+uuid = { version = "1" }
+version-compare = { version = "0.2" }
+rand = { version = "0.9" }
 
 [dev-dependencies]
-chrono-tz = "0.8"
-env_logger = "0.11"
-serial_test = "3.0"
-tokio-test = "0.4"
+chrono-tz = { version = "0.10" }
+env_logger = { version = "0.11" }
+serial_test = { version = "3.0" }
+tokio-test = { version = "0.4" }
 
 [features]
 default = ["mysql", "postgres", "sqlite", "runtime-tokio-rustls"]

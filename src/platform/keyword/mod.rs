@@ -35,7 +35,7 @@ impl KeywordList {
 
     /// Checks if the given word is a keyword of this dialect/vendor platform.
     pub fn is_keyword(&self, word: &str) -> bool {
-        self.keyword_map.get(&word.to_uppercase()).is_some()
+        self.keyword_map.contains_key(&word.to_uppercase())
     }
 
     #[cfg(feature = "mysql")]

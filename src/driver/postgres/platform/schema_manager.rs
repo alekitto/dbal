@@ -1,9 +1,9 @@
 use super::postgresql;
 use crate::schema::{
-    string_from_value, Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator,
-    Identifier, Index, IndexList, IntoIdentifier, SchemaManager, Sequence, TableDiff, TableOptions,
+    Column, ColumnData, Comparator, ForeignKeyConstraint, GenericComparator, Identifier, Index,
+    IndexList, IntoIdentifier, SchemaManager, Sequence, TableDiff, TableOptions, string_from_value,
 };
-use crate::{params, AsyncResult, Connection, Result, Row};
+use crate::{AsyncResult, Connection, Result, Row, params};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -51,10 +51,10 @@ impl<'a> PostgreSQLSchemaManager<'a> {
 pub trait AbstractPostgreSQLSchemaManager: SchemaManager {
     /// Gets names of all existing schemas in the current users search path.
     /// This is a PostgreSQL only function.
-    fn get_existing_schema_search_paths(&self) -> AsyncResult<&Vec<String>>;
+    fn get_existing_schema_search_paths(&self) -> AsyncResult<'_, &Vec<String>>;
 
     /// Returns the name of the current schema.
-    fn get_current_schema(&self) -> AsyncResult<String> {
+    fn get_current_schema(&self) -> AsyncResult<'_, String> {
         Box::pin(async {
             Ok(self
                 .get_existing_schema_search_paths()
@@ -67,7 +67,7 @@ pub trait AbstractPostgreSQLSchemaManager: SchemaManager {
 }
 
 impl AbstractPostgreSQLSchemaManager for PostgreSQLSchemaManager<'_> {
-    fn get_existing_schema_search_paths(&self) -> AsyncResult<&Vec<String>> {
+    fn get_existing_schema_search_paths(&self) -> AsyncResult<'_, &Vec<String>> {
         Box::pin(async {
             if let Some(sp) = self.existing_schema_search_path.get() {
                 Ok(sp)
@@ -119,7 +119,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         postgresql::get_list_tables_sql()
     }
 
-    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<Identifier> {
+    fn get_portable_table_definition(&self, table: &Row) -> AsyncResult<'_, Identifier> {
         let schema_name = string_from_value(self.connection, table.get("schema_name"));
         let table_name = string_from_value(self.connection, table.get("table_name"));
 
@@ -211,7 +211,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         postgresql::get_drop_sequence_sql(self.get_platform()?.as_dyn(), sequence)
     }
 
-    fn list_schema_names(&self) -> AsyncResult<Vec<Identifier>> {
+    fn list_schema_names(&self) -> AsyncResult<'_, Vec<Identifier>> {
         postgresql::list_schema_names(self.as_dyn())
     }
 
@@ -263,7 +263,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> AsyncResult<IndexList> {
+    ) -> AsyncResult<'_, IndexList> {
         let table_name = table_name.to_string();
         Box::pin(async move {
             postgresql::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name)
@@ -285,7 +285,7 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
         &self,
         _: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<HashMap<String, Row>> {
+    ) -> AsyncResult<'_, HashMap<String, Row>> {
         let table_name = table_name.map(|t| t.to_string());
         Box::pin(async move {
             postgresql::fetch_table_options_by_table(self.as_dyn(), table_name.as_deref()).await
@@ -296,13 +296,13 @@ impl<'a> SchemaManager for PostgreSQLSchemaManager<'a> {
 #[cfg(test)]
 mod tests {
     use crate::platform::CreateFlags;
-    use crate::r#type::{IntoType, BOOLEAN, INTEGER, SIMPLE_ARRAY, STRING};
     use crate::result::Result;
     use crate::schema::{
         Asset, ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
     };
     use crate::tests::create_connection;
+    use crate::r#type::{BOOLEAN, INTEGER, IntoType, SIMPLE_ARRAY, STRING};
     use serial_test::serial;
     use std::collections::HashMap;
 
@@ -326,9 +326,12 @@ mod tests {
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
 
-        assert_eq!(sql, vec![
-            "CREATE TABLE test (id SERIAL NOT NULL, test VARCHAR(255) DEFAULT NULL, PRIMARY KEY(id))"
-        ]);
+        assert_eq!(
+            sql,
+            vec![
+                "CREATE TABLE test (id SERIAL NOT NULL, test VARCHAR(255) DEFAULT NULL, PRIMARY KEY(id))"
+            ]
+        );
 
         Ok(())
     }
@@ -425,7 +428,10 @@ mod tests {
         );
 
         let sql = schema_manager.get_create_foreign_key_sql(&fk, &"test")?;
-        assert_eq!(sql, "ALTER TABLE test ADD FOREIGN KEY (fk_name_id) REFERENCES other_table (id) NOT DEFERRABLE INITIALLY IMMEDIATE");
+        assert_eq!(
+            sql,
+            "ALTER TABLE test ADD FOREIGN KEY (fk_name_id) REFERENCES other_table (id) NOT DEFERRABLE INITIALLY IMMEDIATE"
+        );
 
         Ok(())
     }
@@ -464,7 +470,10 @@ mod tests {
         );
 
         let sql = schema_manager.get_create_foreign_key_sql(&fk, &"test")?;
-        assert_eq!(sql, "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES \"foreign\" (id) NOT DEFERRABLE INITIALLY IMMEDIATE");
+        assert_eq!(
+            sql,
+            "ALTER TABLE test ADD FOREIGN KEY (fk_name) REFERENCES \"foreign\" (id) NOT DEFERRABLE INITIALLY IMMEDIATE"
+        );
 
         Ok(())
     }
@@ -633,7 +642,12 @@ mod tests {
         table.set_primary_key(&["create"], None)?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &["CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"
+            ]
+        );
 
         Ok(())
     }

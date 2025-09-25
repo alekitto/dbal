@@ -1,6 +1,6 @@
+use crate::Event;
 use crate::schema::{Column, Table};
 use crate::util::PlatformBox;
-use crate::Event;
 use std::any::TypeId;
 use std::sync::atomic::{AtomicBool, Ordering};
 

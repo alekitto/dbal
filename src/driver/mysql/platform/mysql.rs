@@ -1,25 +1,25 @@
+use crate::driver::mysql::MySQLSchemaManager;
+use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
 use crate::driver::mysql::platform::mysql_platform::{
     AbstractMySQLPlatform, LENGTH_LIMIT_BLOB, LENGTH_LIMIT_LONGBLOB, LENGTH_LIMIT_LONGTEXT,
     LENGTH_LIMIT_MEDIUMBLOB, LENGTH_LIMIT_MEDIUMTEXT, LENGTH_LIMIT_TEXT, LENGTH_LIMIT_TINYBLOB,
     LENGTH_LIMIT_TINYTEXT,
 };
-use crate::driver::mysql::platform::AbstractMySQLSchemaManager;
-use crate::driver::mysql::MySQLSchemaManager;
-use crate::platform::{default, DatabasePlatform, DateIntervalUnit};
-use crate::r#type::{IntoType, BLOB, STRING, TEXT};
+use crate::platform::{DatabasePlatform, DateIntervalUnit, default};
 use crate::schema::{
-    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData,
-    FKConstraintList, ForeignKeyConstraint, Identifier, Index, TableDiff, TableOptions,
+    Asset, Column, ColumnData, FKConstraintList, ForeignKeyConstraint, Identifier, Index,
+    TableDiff, TableOptions, extract_type_from_comment, remove_type_from_comment,
 };
-use crate::schema::{string_from_value, SchemaManager};
+use crate::schema::{SchemaManager, string_from_value};
+use crate::r#type::{BLOB, IntoType, STRING, TEXT};
 use crate::util::strtr;
 use crate::{Error, Result, Row, SchemaDropTableEvent, TransactionIsolationLevel, Value};
 use core::option::Option::Some;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
 pub fn build_table_options(
@@ -422,19 +422,19 @@ pub fn get_alter_table_sql(this: &dyn SchemaManager, diff: &mut TableDiff) -> Re
         .find_position(|index| (*index).is_primary())
     {
         for column_name in primary_index.get_columns() {
-            if let Some(added_column) = diff.get_added_column(&column_name) {
-                if added_column.is_autoincrement() {
-                    {
-                        let columns = primary_index.get_columns();
-                        let mut key_columns = columns.iter().unique();
+            if let Some(added_column) = diff.get_added_column(&column_name)
+                && added_column.is_autoincrement()
+            {
+                {
+                    let columns = primary_index.get_columns();
+                    let mut key_columns = columns.iter().unique();
 
-                        query_parts.push("DROP PRIMARY KEY".to_string());
-                        query_parts.push(format!("ADD PRIMARY KEY ({})", key_columns.join(", ")));
-                    }
-
-                    diff.changed_indexes.remove(pos);
-                    break;
+                    query_parts.push("DROP PRIMARY KEY".to_string());
+                    query_parts.push(format!("ADD PRIMARY KEY ({})", key_columns.join(", ")));
                 }
+
+                diff.changed_indexes.remove(pos);
+                break;
             }
         }
     }
@@ -478,7 +478,7 @@ fn get_pre_alter_table_alter_primary_key_sql(
     let from_table = diff.from_table.unwrap();
 
     for column_name in index.get_columns() {
-        if let Some(column) = from_table.get_column(&Identifier::new(&column_name, false)) {
+        if let Some(column) = from_table.get_column(Identifier::new(&column_name, false)) {
             if !column.is_autoincrement() {
                 continue;
             }
@@ -718,10 +718,10 @@ pub fn get_drop_temporary_table_sql(
             platform.clone(),
         ))?;
 
-    if ev.is_default_prevented() {
-        if let Some(ref sql) = ev.sql {
-            return Ok(sql.clone());
-        }
+    if ev.is_default_prevented()
+        && let Some(ref sql) = ev.sql
+    {
+        return Ok(sql.clone());
     }
 
     Ok(format!("DROP TEMPORARY TABLE {}", table_arg))

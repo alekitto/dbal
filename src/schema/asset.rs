@@ -1,6 +1,6 @@
 use crate::platform::DatabasePlatform;
 use crate::schema::{Identifier, IntoIdentifier};
-use crc::{Crc, CRC_32_ISO_HDLC};
+use crc::{CRC_32_ISO_HDLC, Crc};
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, Default, Eq, IntoIdentifier, PartialEq)]
@@ -172,7 +172,7 @@ pub(crate) macro impl_asset($t:ident,$e:ident) {
 }
 
 impl Asset for AbstractAsset {
-    fn get_name(&self) -> Cow<str> {
+    fn get_name(&self) -> Cow<'_, str> {
         if let Some(namespace) = self.namespace.clone() {
             Cow::Owned(format!("{}.{}", namespace, &self.name))
         } else {

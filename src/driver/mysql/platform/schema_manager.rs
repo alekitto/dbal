@@ -192,7 +192,7 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
         &self,
         database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<HashMap<String, Row>> {
+    ) -> AsyncResult<'_, HashMap<String, Row>> {
         let database_name = database_name.to_string();
         let table_name = table_name.map(|t| t.to_string());
         Box::pin(async move {
@@ -203,17 +203,17 @@ impl<'a> SchemaManager for MySQLSchemaManager<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::Result;
     use crate::platform::CreateFlags;
-    use crate::r#type::{IntoType, BOOLEAN};
-    use crate::r#type::{INTEGER, SIMPLE_ARRAY, STRING};
     use crate::schema::{
         Asset, ChangedProperty, Column, ColumnDiff, ForeignKeyConstraint, Index, Table, TableDiff,
         UniqueConstraint,
     };
     use crate::tests::create_connection;
-    use crate::Result;
+    use crate::r#type::{BOOLEAN, IntoType};
+    use crate::r#type::{INTEGER, SIMPLE_ARRAY, STRING};
     use std::collections::HashMap;
-    use version_compare::{compare_to, Cmp};
+    use version_compare::{Cmp, compare_to};
 
     #[tokio::test]
     pub async fn generates_table_creation_sql() -> Result<()> {
@@ -234,7 +234,10 @@ mod tests {
         table.set_primary_key(&["id"], None)?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql[0], "CREATE TABLE test (id INT AUTO_INCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL, PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB");
+        assert_eq!(
+            sql[0],
+            "CREATE TABLE test (id INT AUTO_INCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL, PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"
+        );
 
         Ok(())
     }
@@ -258,9 +261,12 @@ mod tests {
         table.add_unique_index(&["foo", "bar"], None, HashMap::default())?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, vec![
-            "CREATE TABLE test (foo VARCHAR(255) DEFAULT NULL, bar VARCHAR(255) DEFAULT NULL, UNIQUE INDEX UNIQ_D87F7E0C8C73652176FF8CAA (foo, bar)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
-        ]);
+        assert_eq!(
+            sql,
+            vec![
+                "CREATE TABLE test (foo VARCHAR(255) DEFAULT NULL, bar VARCHAR(255) DEFAULT NULL, UNIQUE INDEX UNIQ_D87F7E0C8C73652176FF8CAA (foo, bar)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+            ]
+        );
 
         Ok(())
     }
@@ -421,7 +427,12 @@ mod tests {
         let connection = create_connection().await?;
         let schema_manager = connection.create_schema_manager()?;
         let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
-        assert_eq!(sql, &["ALTER TABLE mytable RENAME TO userlist, ADD quota INT DEFAULT NULL, DROP foo, CHANGE bar baz VARCHAR(255) DEFAULT 'def' NOT NULL, CHANGE bloo bloo TINYINT(1) DEFAULT 0 NOT NULL COMMENT '(CRType:boolean)'"]);
+        assert_eq!(
+            sql,
+            &[
+                "ALTER TABLE mytable RENAME TO userlist, ADD quota INT DEFAULT NULL, DROP foo, CHANGE bar baz VARCHAR(255) DEFAULT 'def' NOT NULL, CHANGE bloo bloo TINYINT(1) DEFAULT 0 NOT NULL COMMENT '(CRType:boolean)'"
+            ]
+        );
 
         Ok(())
     }
@@ -437,7 +448,12 @@ mod tests {
         let connection = create_connection().await?;
         let schema_manager = connection.create_schema_manager()?;
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &["CREATE TABLE test (id INT NOT NULL COMMENT 'This is a comment', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (id INT NOT NULL COMMENT 'This is a comment', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"
+            ]
+        );
 
         Ok(())
     }
@@ -467,7 +483,12 @@ mod tests {
         let connection = create_connection().await?;
         let schema_manager = connection.create_schema_manager()?;
         let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
-        assert_eq!(sql, &["ALTER TABLE mytable ADD quota INT NOT NULL COMMENT 'A comment', CHANGE foo foo VARCHAR(255) NOT NULL, CHANGE bar baz VARCHAR(255) NOT NULL COMMENT 'B comment'"]);
+        assert_eq!(
+            sql,
+            &[
+                "ALTER TABLE mytable ADD quota INT NOT NULL COMMENT 'A comment', CHANGE foo foo VARCHAR(255) NOT NULL, CHANGE bar baz VARCHAR(255) NOT NULL COMMENT 'B comment'"
+            ]
+        );
 
         Ok(())
     }
@@ -483,9 +504,12 @@ mod tests {
         let schema_manager = connection.create_schema_manager()?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &[
-            "CREATE TABLE test (id INT NOT NULL, data LONGTEXT NOT NULL COMMENT '(CRType:simple_array)', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
-        ]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (id INT NOT NULL, data LONGTEXT NOT NULL COMMENT '(CRType:simple_array)', PRIMARY KEY(id)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+            ]
+        );
 
         Ok(())
     }
@@ -500,7 +524,12 @@ mod tests {
         table.set_primary_key(&["create"], None)?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &["CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, PRIMARY KEY(`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, PRIMARY KEY(`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB"
+            ]
+        );
 
         Ok(())
     }
@@ -522,9 +551,12 @@ mod tests {
         let schema_manager = connection.create_schema_manager()?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &[
-            "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, INDEX IDX_22660D028FD6E0FB (`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
-        ]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, INDEX IDX_22660D028FD6E0FB (`create`)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+            ]
+        );
 
         Ok(())
     }
@@ -546,9 +578,12 @@ mod tests {
         let schema_manager = connection.create_schema_manager()?;
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &[
-            "CREATE TABLE test (column1 VARCHAR(255) NOT NULL, INDEX `key` (column1)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
-        ]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE test (column1 VARCHAR(255) NOT NULL, INDEX `key` (column1)) DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
+            ]
+        );
 
         Ok(())
     }
@@ -633,17 +668,20 @@ mod tests {
             &table,
             Some(CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS),
         )?;
-        assert_eq!(sql, &[
-            "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, foo VARCHAR(255) NOT NULL, \
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE `quoted` (`create` VARCHAR(255) NOT NULL, foo VARCHAR(255) NOT NULL, \
             `bar` VARCHAR(255) NOT NULL, INDEX IDX_22660D028FD6E0FB8C73652176FF8CAA (`create`, foo, `bar`)) \
             DEFAULT CHARACTER SET utf8 COLLATE `utf8_unicode_ci` ENGINE = InnoDB",
-            "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_RESERVED_KEYWORD FOREIGN KEY (`create`, foo, `bar`) \
+                "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_RESERVED_KEYWORD FOREIGN KEY (`create`, foo, `bar`) \
             REFERENCES `foreign` (`create`, bar, `foo-bar`)",
-            "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_NON_RESERVED_KEYWORD FOREIGN KEY (`create`, foo, `bar`) \
+                "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_NON_RESERVED_KEYWORD FOREIGN KEY (`create`, foo, `bar`) \
             REFERENCES foo (`create`, bar, `foo-bar`)",
-            "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_INTENDED_QUOTATION FOREIGN KEY (`create`, foo, `bar`) \
+                "ALTER TABLE `quoted` ADD CONSTRAINT FK_WITH_INTENDED_QUOTATION FOREIGN KEY (`create`, foo, `bar`) \
             REFERENCES `foo-bar` (`create`, bar, `foo-bar`)",
-        ]);
+            ]
+        );
 
         Ok(())
     }

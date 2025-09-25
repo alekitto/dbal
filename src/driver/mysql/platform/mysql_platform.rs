@@ -1,12 +1,12 @@
 use super::mysql;
-use crate::driver::mysql::platform::{mariadb, MySQLVariant};
 use crate::driver::mysql::MySQLSchemaManager;
-use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList};
+use crate::driver::mysql::platform::{MySQLVariant, mariadb};
+use crate::platform::{DatabasePlatform, DateIntervalUnit, KeywordList, platform_debug};
+use crate::schema::{ColumnData, SchemaManager};
 use crate::r#type::{
     BigintType, BinaryType, BlobType, BooleanType, DateTimeType, DateType, DecimalType, FloatType,
     IntegerType, JsonType, SimpleArrayType, StringType, TextType, TimeType,
 };
-use crate::schema::{ColumnData, SchemaManager};
 use crate::{Connection, Error};
 use crate::{EventDispatcher, Result, TransactionIsolationLevel};
 use dashmap::DashMap;
@@ -98,11 +98,10 @@ impl DatabasePlatform for MySQLPlatform {
     }
 
     /// Gets the SQL snippet used to declare a CLOB column type.
-    ///     TINYTEXT   : 2 ^  8 - 1 = 255
-    ///     TEXT       : 2 ^ 16 - 1 = 65535
-    ///     MEDIUMTEXT : 2 ^ 24 - 1 = 16777215
-    ///     LONGTEXT   : 2 ^ 32 - 1 = 4294967295
-
+    ///   TINYTEXT   : 2 ^  8 - 1 = 255
+    ///   TEXT       : 2 ^ 16 - 1 = 65535
+    ///   MEDIUMTEXT : 2 ^ 24 - 1 = 16777215
+    ///   LONGTEXT   : 2 ^ 32 - 1 = 4294967295
     fn get_clob_type_declaration_sql(&self, column: &ColumnData) -> Result<String> {
         mysql::get_clob_type_declaration_sql(column)
     }
@@ -278,14 +277,14 @@ impl DatabasePlatform for MySQLPlatform {
 
 #[cfg(test)]
 mod tests {
+    use crate::EventDispatcher;
+    use crate::Result;
     use crate::driver::mysql::MySQLPlatform;
     use crate::driver::mysql::MySQLVariant;
     use crate::platform::DatabasePlatform;
-    use crate::r#type::{BINARY, GUID, JSON};
     use crate::schema::Column;
     use crate::tests::common_platform_tests;
-    use crate::EventDispatcher;
-    use crate::Result;
+    use crate::r#type::{BINARY, GUID, JSON};
     use std::sync::Arc;
 
     pub fn create_mysql_platform() -> MySQLPlatform {

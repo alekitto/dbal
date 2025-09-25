@@ -1,4 +1,4 @@
-use crate::schema::asset::{generate_identifier_name, impl_asset, Asset};
+use crate::schema::asset::{Asset, generate_identifier_name, impl_asset};
 use crate::schema::schema_config::SchemaConfig;
 use crate::schema::{
     Column, ColumnList, FKConstraintList, ForeignKeyConstraint, ForeignKeyReferentialAction,
@@ -112,7 +112,7 @@ impl TableList {
         self.inner.is_empty()
     }
 
-    pub fn iter(&self) -> Iter<Table> {
+    pub fn iter(&self) -> Iter<'_, Table> {
         self.into_iter()
     }
 }
@@ -485,7 +485,7 @@ impl Table {
         });
 
         for local_column in local_columns {
-            if !self.has_column(&local_column.to_string()) {
+            if !self.has_column(local_column.to_string()) {
                 return Err(Error::column_does_not_exist(local_column, &self.get_name()));
             }
         }

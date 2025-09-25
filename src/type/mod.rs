@@ -35,7 +35,7 @@ pub use integer_type::IntegerType;
 pub use json_type::JsonType;
 use lazy_static::lazy_static;
 pub use simple_array_type::SimpleArrayType;
-use std::any::{type_name, TypeId};
+use std::any::{TypeId, type_name};
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 pub use string_type::StringType;

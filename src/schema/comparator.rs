@@ -1,10 +1,10 @@
-use crate::r#type::DECIMAL;
-use crate::r#type::{IntoType, BINARY, GUID, STRING};
 use crate::schema::{
     Asset, ChangedProperty, Column, ColumnData, Index, Schema, SchemaDiff, SchemaManager, Sequence,
     Table, TableDiff,
 };
 use crate::schema::{ColumnDiff, ForeignKeyConstraint};
+use crate::r#type::DECIMAL;
+use crate::r#type::{BINARY, GUID, IntoType, STRING};
 use crate::{Result, Value};
 use itertools::Itertools;
 use std::collections::btree_map::Entry::{Occupied, Vacant};
@@ -419,13 +419,12 @@ pub trait Comparator {
                 to_table.get_primary_key()
             } else {
                 to_table.get_index(index_name)
-            } {
-                if self.diff_index(index, to_table_index) {
-                    table_differences
-                        .changed_indexes
-                        .push(to_table_index.clone());
-                    changes += 1;
-                }
+            } && self.diff_index(index, to_table_index)
+            {
+                table_differences
+                    .changed_indexes
+                    .push(to_table_index.clone());
+                changes += 1;
             }
         }
 

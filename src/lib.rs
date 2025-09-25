@@ -38,10 +38,10 @@ pub use connection::Connection;
 pub use connection_options::ConnectionOptions;
 pub use error::Error;
 pub use event::*;
-pub use parameter::params;
 pub use parameter::Parameter;
 pub use parameter::ParameterIndex;
 pub use parameter::Parameters;
+pub use parameter::params;
 pub use parameter_type::ParameterType;
 pub use result::{Async, AsyncResult, Result};
 pub use rows::{Row, Rows};
@@ -49,7 +49,7 @@ pub use transaction_isolation_level::TransactionIsolationLevel;
 pub use util::const_expr_count;
 pub use value::{TypedValue, TypedValueMap, UntypedValueMap, Value, ValueMap};
 
-pub use creed_macros::{migrator, value_map, IntoIdentifier};
+pub use creed_macros::{IntoIdentifier, migrator, value_map};
 
 #[cfg(test)]
 pub mod tests;

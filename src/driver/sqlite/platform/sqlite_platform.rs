@@ -1,11 +1,11 @@
 use super::sqlite;
 use crate::driver::sqlite::SQLiteSchemaManager;
-use crate::platform::{platform_debug, DatabasePlatform, DateIntervalUnit, KeywordList, TrimMode};
+use crate::platform::{DatabasePlatform, DateIntervalUnit, KeywordList, TrimMode, platform_debug};
+use crate::schema::{ColumnData, SchemaManager};
 use crate::r#type::{
     BigintType, BinaryType, BlobType, BooleanType, DateTimeType, DateType, DecimalType, FloatType,
     IntegerType, StringType, TextType, TimeType,
 };
-use crate::schema::{ColumnData, SchemaManager};
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel};
 use dashmap::DashMap;
 use std::any::TypeId;
@@ -243,13 +243,13 @@ impl DatabasePlatform for SQLitePlatform {
 
 #[cfg(test)]
 mod tests {
-    use crate::driver::sqlite::SQLitePlatform;
-    use crate::platform::DatabasePlatform;
-    use crate::r#type::{BINARY, GUID, JSON};
-    use crate::schema::Column;
-    use crate::tests::common_platform_tests;
     use crate::EventDispatcher;
     use crate::Result;
+    use crate::driver::sqlite::SQLitePlatform;
+    use crate::platform::DatabasePlatform;
+    use crate::schema::Column;
+    use crate::tests::common_platform_tests;
+    use crate::r#type::{BINARY, GUID, JSON};
     use std::sync::Arc;
 
     fn create_sqlite_platform() -> SQLitePlatform {

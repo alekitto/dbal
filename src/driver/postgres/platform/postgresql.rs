@@ -2,14 +2,14 @@ use crate::error::ErrorKind;
 use crate::parameter::NO_PARAMS;
 use crate::params;
 use crate::platform::DatabasePlatform;
-use crate::platform::{default, DateIntervalUnit};
-use crate::r#type::{IntoType, TypeManager, BINARY, BLOB, STRING};
+use crate::platform::{DateIntervalUnit, default};
 use crate::schema::{
-    extract_type_from_comment, Asset, ChangedProperty, Column, ColumnData, ColumnDiff,
-    ForeignKeyConstraint, ForeignKeyReferentialAction, Identifier, Index, IndexList,
-    IntoIdentifier, Sequence, TableDiff, TableOptions,
+    Asset, ChangedProperty, Column, ColumnData, ColumnDiff, ForeignKeyConstraint,
+    ForeignKeyReferentialAction, Identifier, Index, IndexList, IntoIdentifier, Sequence, TableDiff,
+    TableOptions, extract_type_from_comment,
 };
-use crate::schema::{remove_type_from_comment, SchemaManager};
+use crate::schema::{SchemaManager, remove_type_from_comment};
+use crate::r#type::{BINARY, BLOB, IntoType, STRING, TypeManager};
 use crate::{AsyncResult, Error, Result, Row, TransactionIsolationLevel, Value};
 use itertools::Itertools;
 use regex::Regex;
@@ -844,11 +844,7 @@ fn do_convert_booleans(item: &Value, callback: fn(Option<bool>) -> String) -> Re
 pub fn convert_boolean(item: Value) -> Result<Value> {
     do_convert_booleans(&item, |value| {
         if let Some(value) = value {
-            if value {
-                "true"
-            } else {
-                "false"
-            }
+            if value { "true" } else { "false" }
         } else {
             "NULL"
         }
@@ -1151,12 +1147,11 @@ pub fn get_portable_table_column_definition(
         }
 
         _ => {
-            if !col_default.is_null() {
-                if let Some(matches) =
+            if !col_default.is_null()
+                && let Some(matches) =
                     Regex::new("('([^']+)'::)")?.captures(&col_default.to_string())
-                {
-                    col_default = Value::String(matches.get(1).unwrap().as_str().to_string());
-                }
+            {
+                col_default = Value::String(matches.get(1).unwrap().as_str().to_string());
             }
 
             col_default = ty.convert_to_value(&col_default, this.get_platform()?.as_dyn())?;
@@ -1212,7 +1207,7 @@ pub fn get_portable_sequence_definition(row: &Row) -> Result<Sequence> {
     Ok(Sequence::new(sequence_name, increment_by, min_value, None))
 }
 
-pub fn list_schema_names(this: &dyn SchemaManager) -> AsyncResult<Vec<Identifier>> {
+pub fn list_schema_names(this: &dyn SchemaManager) -> AsyncResult<'_, Vec<Identifier>> {
     Box::pin(async move {
         let conn = this.get_connection();
         let rows = conn

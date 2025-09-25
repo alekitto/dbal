@@ -1,8 +1,8 @@
 use super::asset::Asset;
-use crate::platform::DatabasePlatform;
-use crate::schema::asset::{impl_asset, AbstractAsset};
-use crate::schema::{Identifier, Index, IntoIdentifier, NamedListIndex};
 use crate::Value;
+use crate::platform::DatabasePlatform;
+use crate::schema::asset::{AbstractAsset, impl_asset};
+use crate::schema::{Identifier, Index, IntoIdentifier, NamedListIndex};
 use itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -306,10 +306,7 @@ impl FKConstraintList {
     }
 
     pub fn remove<T: NamedListIndex>(&mut self, index: T) -> Option<ForeignKeyConstraint> {
-        let Some((pos, _)) = self.get_position(index) else {
-            return None;
-        };
-
+        let (pos, _) = self.get_position(index)?;
         Some(self.inner.remove(pos))
     }
 
@@ -329,7 +326,7 @@ impl FKConstraintList {
         self.inner.iter().any(|i| i == other)
     }
 
-    pub fn iter(&self) -> Iter<ForeignKeyConstraint> {
+    pub fn iter(&self) -> Iter<'_, ForeignKeyConstraint> {
         self.into_iter()
     }
 }

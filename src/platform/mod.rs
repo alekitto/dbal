@@ -5,9 +5,9 @@ mod keyword;
 mod lock_mode;
 mod trim_mode;
 
-use crate::r#type::{TypeManager, TypePtr};
 use crate::schema::ColumnData;
 use crate::schema::SchemaManager;
+use crate::r#type::{TypeManager, TypePtr};
 use crate::{Connection, Error, EventDispatcher, Result, TransactionIsolationLevel, Value};
 pub use create_flags::CreateFlags;
 pub use date_interval_unit::DateIntervalUnit;
@@ -340,7 +340,7 @@ pub trait DatabasePlatform: Debug {
     /// * `operator` - The arithmetic operator (+ or -).
     /// * `interval` - The interval that shall be calculated into the date.
     /// * `unit` - The unit of the interval that shall be calculated into the date.
-    ///            One of the DATE_INTERVAL_UNIT_* constants.
+    ///   One of the DATE_INTERVAL_UNIT_* constants.
     #[allow(unused_variables)]
     fn get_date_arithmetic_interval_expression(
         &self,

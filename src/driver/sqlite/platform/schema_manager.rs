@@ -1,15 +1,15 @@
 use super::sqlite;
 use crate::driver::statement_result::StatementResult;
-use crate::platform::{default, CreateFlags};
+use crate::platform::{CreateFlags, default};
 use crate::schema::{
-    extract_type_from_comment, remove_type_from_comment, Asset, Column, ColumnData, ColumnList,
-    Comparator, FKConstraintList, ForeignKeyConstraint, GenericComparator, Identifier, Index,
-    IndexList, IntoIdentifier, SchemaManager, Table, TableDiff, TableOptions,
+    Asset, Column, ColumnData, ColumnList, Comparator, FKConstraintList, ForeignKeyConstraint,
+    GenericComparator, Identifier, Index, IndexList, IntoIdentifier, SchemaManager, Table,
+    TableDiff, TableOptions, extract_type_from_comment, remove_type_from_comment,
 };
-use crate::{params, AsyncResult, Connection, Error, Parameters, Result, Row, Value};
+use crate::{AsyncResult, Connection, Error, Parameters, Result, Row, Value, params};
 use regex::Regex;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 
 struct FkConstraintDetails {
     constraint_name: Option<String>,
@@ -308,7 +308,7 @@ impl<'a> SchemaManager for SQLiteSchemaManager<'a> {
         table: &str,
         database: &str,
         table_columns: Vec<Row>,
-    ) -> AsyncResult<ColumnList> {
+    ) -> AsyncResult<'_, ColumnList> {
         let table = table.to_string();
         let database = database.to_string();
 
@@ -365,15 +365,15 @@ AND name = ?
                     autoincrement_column = Some(table_column.get("name").unwrap().to_string());
                 }
 
-                if autoincrement_count == 1 {
-                    if let Some(autoincrement_column) = autoincrement_column {
-                        for column in list.iter_mut() {
-                            if autoincrement_column != column.get_name() {
-                                continue;
-                            }
-
-                            column.set_autoincrement(true);
+                if autoincrement_count == 1
+                    && let Some(autoincrement_column) = autoincrement_column
+                {
+                    for column in list.iter_mut() {
+                        if autoincrement_column != column.get_name() {
+                            continue;
                         }
+
+                        column.set_autoincrement(true);
                     }
                 }
             }
@@ -402,14 +402,14 @@ AND name = ?
         &self,
         table_indexes: Vec<Row>,
         table_name: &str,
-    ) -> AsyncResult<IndexList> {
+    ) -> AsyncResult<'_, IndexList> {
         let table_name = table_name.to_string();
         Box::pin(async move {
             sqlite::get_portable_table_indexes_list(self.as_dyn(), table_indexes, table_name).await
         })
     }
 
-    fn list_table_indexes(&self, table: &str) -> AsyncResult<IndexList> {
+    fn list_table_indexes(&self, table: &str) -> AsyncResult<'_, IndexList> {
         let table = self.normalize_name(table);
 
         Box::pin(async move {
@@ -426,7 +426,7 @@ AND name = ?
         Box::new(GenericComparator::new(self))
     }
 
-    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<FKConstraintList> {
+    fn list_table_foreign_keys(&self, table: &str) -> AsyncResult<'_, FKConstraintList> {
         let table = table.to_string();
         Box::pin(async move {
             let columns = self
@@ -446,7 +446,7 @@ AND name = ?
         &self,
         _: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         let table_name = table_name.map(|t| t.to_string());
         Box::pin(async move { sqlite::select_foreign_key_columns(self.as_dyn(), table_name).await })
     }
@@ -455,7 +455,7 @@ AND name = ?
         &self,
         _database_name: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<StatementResult> {
+    ) -> AsyncResult<'_, StatementResult> {
         let sql = r#"
 SELECT t.name AS table_name,
 i.*
@@ -486,7 +486,7 @@ JOIN pragma_index_list(t.name) i
         &self,
         _: &str,
         table_name: Option<&str>,
-    ) -> AsyncResult<HashMap<String, Row>> {
+    ) -> AsyncResult<'_, HashMap<String, Row>> {
         let table_name = table_name.map(|t| t.to_string());
         Box::pin(
             async move { sqlite::fetch_table_options_by_table(self.as_dyn(), table_name).await },
@@ -496,13 +496,13 @@ JOIN pragma_index_list(t.name) i
 
 #[cfg(test)]
 mod tests {
+    use crate::Result;
     use crate::platform::CreateFlags;
-    use crate::r#type::{IntoType, BOOLEAN, INTEGER, STRING};
     use crate::schema::{
         ChangedProperty, Column, ColumnDiff, Index, Table, TableDiff, UniqueConstraint,
     };
     use crate::tests::create_connection;
-    use crate::Result;
+    use crate::r#type::{BOOLEAN, INTEGER, IntoType, STRING};
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -528,9 +528,12 @@ mod tests {
         let sql = schema_manager
             .get_create_table_sql(&table, None)
             .expect("Failed to generate table SQL");
-        assert_eq!(sql, vec![
-            "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL)"
-        ]);
+        assert_eq!(
+            sql,
+            vec![
+                "CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, test VARCHAR(255) DEFAULT NULL)"
+            ]
+        );
 
         Ok(())
     }
@@ -675,14 +678,17 @@ mod tests {
         let connection = create_connection().await?;
         let schema_manager = connection.create_schema_manager()?;
         let sql = schema_manager.get_alter_table_sql(&mut table_diff)?;
-        assert_eq!(sql, &[
-            "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id, bar, bloo FROM mytable",
-            "DROP TABLE mytable",
-            "CREATE TABLE mytable (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, baz VARCHAR(255) DEFAULT 'def' NOT NULL, bloo BOOLEAN DEFAULT 0 NOT NULL, quota INTEGER DEFAULT NULL)",
-            "INSERT INTO mytable (id, baz, bloo) SELECT id, bar, bloo FROM __temp__mytable",
-            "DROP TABLE __temp__mytable",
-            "ALTER TABLE mytable RENAME TO userlist",
-        ]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TEMPORARY TABLE __temp__mytable AS SELECT id, bar, bloo FROM mytable",
+                "DROP TABLE mytable",
+                "CREATE TABLE mytable (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, baz VARCHAR(255) DEFAULT 'def' NOT NULL, bloo BOOLEAN DEFAULT 0 NOT NULL, quota INTEGER DEFAULT NULL)",
+                "INSERT INTO mytable (id, baz, bloo) SELECT id, bar, bloo FROM __temp__mytable",
+                "DROP TABLE __temp__mytable",
+                "ALTER TABLE mytable RENAME TO userlist",
+            ]
+        );
 
         Ok(())
     }
@@ -701,7 +707,12 @@ mod tests {
             .expect("failed to set primary key");
 
         let sql = schema_manager.get_create_table_sql(&table, None)?;
-        assert_eq!(sql, &["CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"]);
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE \"quoted\" (\"create\" VARCHAR(255) NOT NULL, PRIMARY KEY(\"create\"))"
+            ]
+        );
 
         Ok(())
     }
@@ -845,8 +856,10 @@ mod tests {
             &table,
             Some(CreateFlags::CREATE_INDEXES | CreateFlags::CREATE_FOREIGN_KEYS),
         )?;
-        assert_eq!(sql, &[
-            "CREATE TABLE \"quoted\" (\
+        assert_eq!(
+            sql,
+            &[
+                "CREATE TABLE \"quoted\" (\
             \"create\" VARCHAR(255) NOT NULL, foo VARCHAR(255) NOT NULL, \"bar\" VARCHAR(255) NOT NULL, \
             CONSTRAINT FK_WITH_RESERVED_KEYWORD FOREIGN KEY (\"create\", foo, \"bar\") \
             REFERENCES \"foreign\" (\"create\", bar, \"foo-bar\") NOT DEFERRABLE INITIALLY IMMEDIATE, \
@@ -854,8 +867,9 @@ mod tests {
             REFERENCES foo (\"create\", bar, \"foo-bar\") NOT DEFERRABLE INITIALLY IMMEDIATE, \
             CONSTRAINT FK_WITH_INTENDED_QUOTATION FOREIGN KEY (\"create\", foo, \"bar\") \
             REFERENCES \"foo-bar\" (\"create\", bar, \"foo-bar\") NOT DEFERRABLE INITIALLY IMMEDIATE)",
-            "CREATE INDEX IDX_22660D028FD6E0FB8C73652176FF8CAA ON \"quoted\" (\"create\", foo, \"bar\")",
-        ]);
+                "CREATE INDEX IDX_22660D028FD6E0FB8C73652176FF8CAA ON \"quoted\" (\"create\", foo, \"bar\")",
+            ]
+        );
 
         Ok(())
     }

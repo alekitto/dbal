@@ -3,7 +3,7 @@ use crate::error::ErrorKind;
 use crate::tls::{DbalTls, PgMaybeTlsStream};
 use crate::{Error, Result};
 use rand::prelude::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 use socket2::{SockRef, TcpKeepalive};
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -50,7 +50,7 @@ pub(crate) async fn connect(
 
     let mut indices = (0..num_hosts).collect::<Vec<_>>();
     if config.get_load_balance_hosts() == LoadBalanceHosts::Random {
-        indices.shuffle(&mut thread_rng());
+        indices.shuffle(&mut rng());
     }
 
     let mut error = None;
@@ -113,7 +113,7 @@ async fn connect_host(
                 .collect::<Vec<_>>();
 
             if config.get_load_balance_hosts() == LoadBalanceHosts::Random {
-                addrs.shuffle(&mut thread_rng());
+                addrs.shuffle(&mut rng());
             }
 
             let mut last_err = None;
